@@ -73,7 +73,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 }
 .starter-card:hover,.starter-card.sel{border-color:var(--cyan);
   box-shadow:0 0 20px rgba(55,230,255,.25);transform:translateY(-3px)}
-.starter-sprite{width:96px;height:96px;object-fit:contain;display:block;margin:0 auto 6px}
+.starter-sprite{width:96px;height:96px;display:block;margin:0 auto 6px;overflow:visible}
 .starter-name{font-family:var(--pixel);font-size:8px;margin-bottom:4px}
 .starter-hint{font-size:12px;color:var(--muted)}
 #player-name{
@@ -153,7 +153,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .pc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
 .pc-attr{font-size:15px}
 .pc-rar{font-size:10px;color:var(--rar);letter-spacing:.5px}
-.pc-sprite{width:86px;height:86px;object-fit:contain;display:block;margin:0 auto 4px}
+.pc-sprite{width:86px;height:86px;display:block;margin:0 auto 4px;overflow:visible}
 .pc-name{font-family:var(--pixel);font-size:7px;text-align:center;margin-bottom:3px}
 .pc-trait{font-size:10px}
 .pc-lv{font-size:11px;color:var(--muted);text-align:center;margin-bottom:4px}
@@ -194,7 +194,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .sc-cost{font-size:13px;color:var(--gold);margin-bottom:7px}
 .clinic-row{display:flex;align-items:center;gap:10px;padding:8px;
   border:1px solid var(--line);background:var(--panel);margin-bottom:7px}
-.cr-sprite{width:44px;height:44px;object-fit:contain}
+.cr-sprite{width:44px;height:44px;display:block;overflow:visible}
 .cr-info{flex:1;display:flex;flex-direction:column;gap:2px}
 .cr-info b{font-family:var(--pixel);font-size:7px}
 .cr-info span{font-size:12px;color:var(--muted)}
@@ -229,16 +229,104 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   background:linear-gradient(90deg,transparent,rgba(55,230,255,.18),transparent)}
 .bside{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;flex:1}
 #battle-enemies{justify-content:flex-end}
-.bunit{width:92px;text-align:center;position:relative;transition:transform .18s}
+.bunit{width:92px;text-align:center;position:relative;z-index:1}
 .bunit.dead{opacity:.25;filter:grayscale(1)}
-.bunit.lunge{transform:translateY(-8px) scale(1.06)}
-.bunit.hit{animation:shake .3s}
-@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+/* Attack movement: the whole unit (bar, name, sprite) slides toward
+   the target using the --tx/--ty custom properties set in JS, holds
+   briefly at the target, then eases back to its original spot. Using
+   a real translate (not just the sprite) keeps the HP bar/name glued
+   to the sprite while it moves, which reads much clearer in combat. */
+.bunit.lunge-out{
+  animation-name: lungeOut;
+  animation-duration: var(--lunge-ms, 320ms);
+  animation-timing-function: cubic-bezier(.3,.05,.4,1);
+  animation-fill-mode: forwards;
+  z-index:5;
+}
+.bunit.lunge-back{
+  animation-name: lungeBack;
+  animation-duration: var(--return-ms, 260ms);
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+  z-index:5;
+}
+@keyframes lungeOut{
+  0%   { transform: translate(0,0) scale(1); }
+  100% { transform: translate(var(--tx,0), var(--ty,0)) scale(1.08); }
+}
+@keyframes lungeBack{
+  0%   { transform: translate(var(--tx,0), var(--ty,0)) scale(1.08); }
+  100% { transform: translate(0,0) scale(1); }
+}
+
+/* Impact: target flashes white and shakes. The flash is a CSS filter
+   pulse rather than swapping images, so it works on every sprite with
+   zero extra assets. */
+.bunit.hit .bu-sprite-wrap{ animation-name: hitShake; animation-duration: var(--hit-ms, 480ms); animation-timing-function: ease; }
+/* White-out on hit. Applied to the SVG's inner group so the drop
+   shadow and the fill both flash, which reads much stronger than
+   a filter on the wrapper alone. */
+.bunit.hit .bu-sprite .cr-body{ animation-name: hitWhite; animation-duration: var(--hit-ms, 480ms); animation-timing-function: ease; }
+/* Raster creatures can't target an inner group, so flash the img itself */
+.bunit.hit img.bu-sprite{ animation-name: hitWhiteRaster; animation-duration: var(--hit-ms, 480ms); animation-timing-function: ease; }
+@keyframes hitWhiteRaster{
+  0%   { filter:brightness(1); }
+  12%  { filter:brightness(0) invert(1) drop-shadow(0 0 14px #fff); }
+  45%  { filter:brightness(0) invert(1) drop-shadow(0 0 8px #fff); }
+  100% { filter:brightness(1); }
+}
+@keyframes hitWhite{
+  0%   { filter:none; }
+  12%  { filter:brightness(0) invert(1) drop-shadow(0 0 14px #fff); }
+  45%  { filter:brightness(0) invert(1) drop-shadow(0 0 8px #fff); }
+  100% { filter:none; }
+}
+
+/* Idle float — every creature bobs gently while standing still.
+   Randomised per unit via --float-delay so they don't bob in sync. */
+.float{ animation: floatBob 2.4s ease-in-out infinite; animation-delay: var(--float-delay, 0s); }
+@keyframes floatBob{
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(-7px); }
+}
+/* Attack pose: lean forward and squash slightly. Replaces the old
+   attack.gif swap now that creatures are SVG. */
+.bu-sprite.attacking{ animation: attackPose var(--lunge-ms,520ms) ease-out forwards; }
+@keyframes attackPose{
+  0%   { transform: rotate(0deg) scale(1,1); }
+  40%  { transform: rotate(-13deg) scale(1.1,.92); }
+  100% { transform: rotate(-7deg) scale(1.06,.96); }
+}
+.bu-sprite.flip.attacking{ animation-name: attackPoseFlip; }
+@keyframes attackPoseFlip{
+  0%   { transform: scaleX(-1) rotate(0deg); }
+  40%  { transform: scaleX(-1) rotate(-13deg) scale(1.1,.92); }
+  100% { transform: scaleX(-1) rotate(-7deg) scale(1.06,.96); }
+}
+@keyframes hitShake{
+  0%,100%{ transform:translateX(0); }
+  20%{ transform:translateX(-7px); }
+  40%{ transform:translateX(6px); }
+  60%{ transform:translateX(-4px); }
+  80%{ transform:translateX(3px); }
+}
+@keyframes hitFlash{
+  0%   { filter:brightness(1) drop-shadow(0 0 0 rgba(255,255,255,0)); }
+  15%  { filter:brightness(2.6) saturate(0) drop-shadow(0 0 14px #fff); }
+  40%  { filter:brightness(1.9) saturate(.2) drop-shadow(0 0 10px #fff); }
+  100% { filter:brightness(1) drop-shadow(0 0 0 rgba(255,255,255,0)); }
+}
+.bu-sprite-wrap{ position:relative; display:inline-block; }
 .bu-bar{height:5px;background:rgba(0,0,0,.6);border:1px solid var(--line);overflow:hidden;margin-bottom:2px}
 .bu-bar i{display:block;height:100%;background:var(--green);transition:width .3s}
 .bu-hp{font-size:10px;color:var(--muted);margin-bottom:3px}
-.bu-sprite{width:76px;height:76px;object-fit:contain}
+.bu-sprite{width:76px;height:76px;display:block;margin:0 auto;overflow:visible}
+/* GIF creatures are raster; keep pixel art crisp and match SVG sizing */
+img.is-gif{image-rendering:pixelated;object-fit:contain}
 .bu-sprite.flip{transform:scaleX(-1)}
+.bu-sprite.flip.float{animation-name:floatBobFlip}
+@keyframes floatBobFlip{0%,100%{transform:scaleX(-1) translateY(0)}50%{transform:scaleX(-1) translateY(-7px)}}
 .bu-name{font-size:11px;margin-top:2px;color:var(--attr)}
 .bu-lv{font-size:10px;color:var(--muted)}
 #fx-layer{position:absolute;inset:0;pointer-events:none;z-index:20}
@@ -306,7 +394,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 #modal-body{padding:12px}
 .modal-grid{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .reveal{text-align:center;padding:10px;border:1px solid var(--rar)}
-.reveal-sprite{width:128px;height:128px;object-fit:contain;
+.reveal-sprite{width:128px;height:128px;display:block;margin:0 auto;overflow:visible;
   filter:drop-shadow(0 0 22px var(--attr))}
 .reveal-name{font-family:var(--pixel);font-size:12px;margin:8px 0 4px}
 .reveal-rar{font-size:13px;color:var(--rar);margin-bottom:6px}

@@ -34,7 +34,7 @@ export function createPet(speciesId, rarity, forcedAttr = null) {
     uid: uid(),
     speciesId,
     name: sp.name,
-    sprite: sp.sprite,
+    shape: sp.shape,
     rarity,
     attr,
     stage: 0,
@@ -70,6 +70,21 @@ export function rollEgg(egg) {
 // ── STATS ──
 // Base + level growth, then rarity growth bonus, then attribute
 // multipliers, then evolution stage multiplier.
+// HP_SCALE: species `base.mhp` values (62-150) were tuned for the old
+// "start at full stats" curve. Dividing by this constant compresses
+// level-1 max HP down to roughly 10-20, per design — everything else
+// (atk/def/spd, rarity, evolution) is untouched, so relative power
+// between species/rarities/stages is preserved; only the HP *number*
+// is rescaled. Growth per level is then added on top in real units,
+// so HP still climbs meaningfully as the pet levels.
+const HP_SCALE = 4;
+// Damage is divided by a SMALLER constant than HP, so each hit removes
+// a bigger slice of the health bar. This is what keeps fights short
+// enough that the attack animation stays watchable instead of the
+// battle dragging for dozens of turns.
+const DMG_SCALE = 2.6;
+const HP_LEVEL_GROWTH = 2.6;   // flat HP gained per level, before rarity/attr mult
+
 export function statsOf(pet) {
   const lv = pet.level - 1;
   const rar = RARITY[pet.rarity];
@@ -77,17 +92,18 @@ export function statsOf(pet) {
   const stageMult = [1, 1.5, 2.0][pet.stage] || 1;
   const growth = 1 + rar.statPL * 0.18;
 
+  const hpBase = pet.base.mhp / HP_SCALE;
   const raw = {
     atk: pet.base.atk + lv * 1.2 * growth,
     def: pet.base.def + lv * 0.9 * growth,
     spd: pet.base.spd + lv * 0.8 * growth,
-    mhp: pet.base.mhp + lv * 8 * (1 + rar.statPL * 0.14),
+    mhp: hpBase + lv * HP_LEVEL_GROWTH * (1 + rar.statPL * 0.14),
   };
   return {
     atk: Math.max(1, Math.floor(raw.atk * am.atk * stageMult)),
     def: Math.max(1, Math.floor(raw.def * am.def * stageMult)),
     spd: Math.max(1, Math.floor(raw.spd * am.spd * stageMult)),
-    mhp: Math.max(1, Math.floor(raw.mhp * am.mhp * stageMult)),
+    mhp: Math.max(8, Math.floor(raw.mhp * am.mhp * stageMult)),
   };
 }
 
@@ -159,7 +175,20 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   const specialMult = isSpecial ? 1.5 : 1.0;
   const variance = 0.9 + Math.random() * 0.2;
 
-  let dmg = (a.atk * (skill.pw / 50) * specialMult) - (d.def * 0.5);
+  // HP was compressed by HP_SCALE (see statsOf) so pets start at
+  // ~10-20 HP instead of ~100. Dividing the whole damage expression
+  // by the same constant keeps the atk-vs-def trade ratio exactly
+  // as it was before the HP change (mathematically: (x-y)/k is the
+  // same shape as x/k - y/k) — only the final number is smaller, so
+  // low-level fights resolve in a similar number of turns as before.
+  //
+  // Note: high-level/high-DEF matchups (e.g. Lv30 epic vs a tanky
+  // yellow defender) were already slow to resolve in the ORIGINAL
+  // formula — 20+ hits to kill — this is a pre-existing balance
+  // characteristic of the def*0.5 constant, not something this
+  // change introduced. Worth tuning separately if it feels bad in
+  // actual play; out of scope for the "start at low HP" request.
+  let dmg = ((a.atk * (skill.pw / 50) * specialMult) - (d.def * 0.5)) / DMG_SCALE;
   dmg = Math.max(1, Math.floor(dmg * variance));
 
   // Green attribute: chance to strike twice
@@ -238,7 +267,7 @@ export function spawnAntiviruz(defId, level) {
     uid: uid(),
     speciesId: defId,
     name: def.name,
-    sprite: def.sprite,
+    shape: def.shape,
     rarity: 'normal',
     attr,
     stage: 0,

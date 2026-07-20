@@ -6,27 +6,31 @@
 // ── ATTRIBUTES (replaces the old elemental system entirely) ──
 export const ATTR = {
   red: {
-    id: 'red', name: 'Red', icon: '⚔️', color: '#ff4d5e',
-    glow: 'rgba(255,77,94,.45)',
+    id: 'red', name: 'Red', icon: '⚔️', color: '#ff6a2b',
+    glow: 'rgba(255,106,43,.45)',
+    hue: { rotate: -18, sat: 1.85, bright: .95 },
     desc: 'โจมตีสูง ป้องกันต่ำ',
     mult: { atk: 1.35, def: 0.75, spd: 1.00, mhp: 0.95 },
   },
   green: {
     id: 'green', name: 'Green', icon: '🌪️', color: '#3ddc84',
     glow: 'rgba(61,220,132,.45)',
+    hue: { rotate: 88,  sat: 1.25, bright: 1.0  },
     desc: 'เร็วมาก มีโอกาสตีสองครั้ง',
     mult: { atk: 1.00, def: 0.75, spd: 1.40, mhp: 0.90 },
     doubleHit: 0.28,           // chance to strike twice
   },
   yellow: {
-    id: 'yellow', name: 'Yellow', icon: '🛡️', color: '#e0b020',
-    glow: 'rgba(224,176,32,.45)',
+    id: 'yellow', name: 'Yellow', icon: '🛡️', color: '#c98f1e',
+    glow: 'rgba(201,143,30,.45)',
+    hue: { rotate: 8,   sat: 1.45, bright: .80 },
     desc: 'ป้องกันสูง แต่ช้า',
     mult: { atk: 0.85, def: 1.45, spd: 0.70, mhp: 1.25 },
   },
   white: {
-    id: 'white', name: 'White', icon: '➕', color: '#e8f4ff',
-    glow: 'rgba(232,244,255,.5)',
+    id: 'white', name: 'White', icon: '➕', color: '#f6ecd8',
+    glow: 'rgba(246,236,216,.5)',
+    hue: { rotate: 14,  sat: .28, bright: 1.28 },
     desc: 'สายซัพพอร์ต บัฟทีมและฟื้นฟู',
     mult: { atk: 0.70, def: 0.90, spd: 0.90, mhp: 1.05 },
   },
@@ -75,40 +79,228 @@ export const RARITY = {
 export const RARITY_KEYS = ['normal','rare','epic','legendary','mythic'];
 
 // ── SPECIES ──
-// `sprite` maps to assets/sprites/<sprite>/{still,attack}.gif
+// `shape` maps to a builder in src/sprites.js (drawn as inline SVG,
+// so there are no image files to upload or lose).
 // Attributes are NOT fixed here — they are rolled at hatch (surprise).
 // To pin an attribute later, add `fixedAttr:'red'` to a species.
 export const SPECIES = {
-  dog: {
-    id:'dog', name:'ByteHound', sprite:'dog',
+  blobyte: {
+    id:'blobyte', name:'BloByte', shape:'blob',
     rarities:['normal','rare','epic'],
-    base:{ atk:12, def:11, spd:11, mhp:105 },
+    base:{ atk:20, def:9, spd:11, mhp:70 },
+    skills:[
+      { n:'Goo Packet', pw:38, special:false },
+      { n:'Split Fork', pw:58, special:true, reqLv:3, desc:'แยกร่างโจมตี x1.5' },
+    ],
+    evos:[ null,
+      { label:'Prime',  mult:1.5, reqLv:20, skill:{ n:'Mass Overflow', pw:78,  special:true, reqLv:20, desc:'ล้นหน่วยความจำ x1.8' } },
+      { label:'Omega',  mult:2.0, reqLv:50, skill:{ n:'Total Corrupt', pw:104, special:true, reqLv:50, desc:'ทุจริตทั้งระบบ x2' } },
+    ],
+  },
+  inkarm: {
+    id:'inkarm', name:'InkArm', shape:'octopus',
+    rarities:['normal','rare','epic','legendary'],
+    base:{ atk:22, def:10, spd:13, mhp:66 },
+    skills:[
+      { n:'Ink Flood', pw:40, special:false },
+      { n:'Eight Grip', pw:60, special:true, reqLv:3, desc:'รัดแปดขา x1.5' },
+    ],
+    evos:[ null,
+      { label:'Deep',   mult:1.5, reqLv:20, skill:{ n:'Abyss Pull',  pw:80,  special:true, reqLv:20, desc:'ดึงลงเหว x1.8' } },
+      { label:'Kraken', mult:2.0, reqLv:50, skill:{ n:'Black Tide',  pw:108, special:true, reqLv:50, desc:'คลื่นดำ x2' } },
+    ],
+  },
+  nulworm: {
+    id:'nulworm', name:'NulWorm', shape:'worm',
+    rarities:['normal','rare','epic'],
+    base:{ atk:24, def:7, spd:15, mhp:58 },
+    skills:[
+      { n:'Buffer Bite', pw:42, special:false },
+      { n:'Chain Crawl', pw:62, special:true, reqLv:3, desc:'ไต่ลูกโซ่ x1.5' },
+    ],
+    evos:[ null,
+      { label:'Coil',   mult:1.5, reqLv:20, skill:{ n:'Stack Smash', pw:82,  special:true, reqLv:20, desc:'ทุบสแต็ก x1.8' } },
+      { label:'Hydra',  mult:2.0, reqLv:50, skill:{ n:'Root Access', pw:110, special:true, reqLv:50, desc:'ยึดสิทธิ์รูท x2' } },
+    ],
+  },
+  clampr: {
+    id:'clampr', name:'Clampr', shape:'crab',
+    rarities:['normal','rare','epic'],
+    base:{ atk:19, def:16, spd:8, mhp:82 },
+    skills:[
+      { n:'Pincer Cut', pw:38, special:false },
+      { n:'Shell Guard', pw:56, special:true, reqLv:3, desc:'ตั้งเกราะกระดอง x1.5' },
+    ],
+    evos:[ null,
+      { label:'Bulwark', mult:1.5, reqLv:20, skill:{ n:'Iron Claw',  pw:78,  special:true, reqLv:20, desc:'ก้ามเหล็ก x1.8' } },
+      { label:'Fortress',mult:2.0, reqLv:50, skill:{ n:'Total Lock', pw:102, special:true, reqLv:50, desc:'ล็อกทั้งระบบ x2' } },
+    ],
+  },
+  hopbit: {
+    id:'hopbit', name:'HopBit', shape:'bunny',
+    rarities:['normal','rare','epic'],
+    base:{ atk:21, def:9, spd:18, mhp:62 },
+    skills:[
+      { n:'Quick Ping', pw:36, special:false },
+      { n:'Double Hop', pw:56, special:true, reqLv:3, desc:'กระโดดสองครั้ง x1.5' },
+    ],
+    evos:[ null,
+      { label:'Dasher',  mult:1.5, reqLv:20, skill:{ n:'Blink Rush', pw:76,  special:true, reqLv:20, desc:'พุ่งวาร์ป x1.8' } },
+      { label:'Phantom', mult:2.0, reqLv:50, skill:{ n:'Ghost Step', pw:100, special:true, reqLv:50, desc:'ก้าวเงา x2' } },
+    ],
+  },
+  jetsquid: {
+    id:'jetsquid', name:'JetSquid', shape:'squid',
+    rarities:['rare','epic','legendary'],
+    base:{ atk:25, def:10, spd:16, mhp:68 },
+    skills:[
+      { n:'Jet Burst', pw:42, special:false },
+      { n:'Ink Screen', pw:64, special:true, reqLv:3, desc:'ม่านหมึก x1.5' },
+    ],
+    evos:[ null,
+      { label:'Torrent', mult:1.5, reqLv:20, skill:{ n:'Pressure Jet', pw:84,  special:true, reqLv:20, desc:'พ่นแรงดัน x1.8' } },
+      { label:'Leviath', mult:2.0, reqLv:50, skill:{ n:'Deep Surge',   pw:112, special:true, reqLv:50, desc:'คลื่นลึก x2' } },
+    ],
+  },
+  chitbug: {
+    id:'chitbug', name:'ChitBug', shape:'bug',
+    rarities:['normal','rare','epic'],
+    base:{ atk:20, def:14, spd:12, mhp:76 },
+    skills:[
+      { n:'Mandible', pw:38, special:false },
+      { n:'Carapace', pw:58, special:true, reqLv:3, desc:'เปลือกแข็ง x1.5' },
+    ],
+    evos:[ null,
+      { label:'Scarab',  mult:1.5, reqLv:20, skill:{ n:'Swarm Call', pw:78,  special:true, reqLv:20, desc:'เรียกฝูง x1.8' } },
+      { label:'Titan',   mult:2.0, reqLv:50, skill:{ n:'Hive Mind',  pw:104, special:true, reqLv:50, desc:'จิตรวมรัง x2' } },
+    ],
+  },
+  echowing: {
+    id:'echowing', name:'EchoWing', shape:'bat',
+    rarities:['normal','rare','epic','legendary'],
+    base:{ atk:23, def:9, spd:17, mhp:64 },
+    skills:[
+      { n:'Sonic Ping', pw:40, special:false },
+      { n:'Night Dive', pw:60, special:true, reqLv:3, desc:'ดิ่งกลางคืน x1.5' },
+    ],
+    evos:[ null,
+      { label:'Shriek',  mult:1.5, reqLv:20, skill:{ n:'Echo Storm', pw:80,  special:true, reqLv:20, desc:'พายุเสียง x1.8' } },
+      { label:'Specter', mult:2.0, reqLv:50, skill:{ n:'Soul Echo',  pw:106, special:true, reqLv:50, desc:'เสียงวิญญาณ x2' } },
+    ],
+  },
+  dustmoth: {
+    id:'dustmoth', name:'DustMoth', shape:'moth',
+    rarities:['rare','epic','legendary'],
+    base:{ atk:18, def:11, spd:14, mhp:72 },
+    skills:[
+      { n:'Scale Dust', pw:36, special:false },
+      { n:'Lull Powder', pw:56, special:true, reqLv:3, desc:'ผงสะกด x1.5' },
+    ],
+    evos:[ null,
+      { label:'Silk',    mult:1.5, reqLv:20, skill:{ n:'Silk Bind',  pw:76,  special:true, reqLv:20, desc:'พันธนาการไหม x1.8' } },
+      { label:'Lumen',   mult:2.0, reqLv:50, skill:{ n:'Moon Flare', pw:104, special:true, reqLv:50, desc:'แสงจันทร์ x2' } },
+    ],
+  },
+  finbyte: {
+    id:'finbyte', name:'FinByte', shape:'fish',
+    rarities:['normal','rare','epic'],
+    base:{ atk:20, def:12, spd:14, mhp:70 },
+    skills:[
+      { n:'Stream Cut', pw:38, special:false },
+      { n:'Flow State', pw:58, special:true, reqLv:3, desc:'ไหลลื่น x1.5' },
+    ],
+    evos:[ null,
+      { label:'Current', mult:1.5, reqLv:20, skill:{ n:'Riptide',   pw:78,  special:true, reqLv:20, desc:'กระแสวน x1.8' } },
+      { label:'Tsunami', mult:2.0, reqLv:50, skill:{ n:'Flood Gate',pw:106, special:true, reqLv:50, desc:'เปิดประตูน้ำ x2' } },
+    ],
+  },
+  glitchimp: {
+    id:'glitchimp', name:'GlitchImp', shape:'imp',
+    rarities:['rare','epic','legendary','mythic'],
+    base:{ atk:26, def:11, spd:15, mhp:70 },
+    skills:[
+      { n:'Hex Poke', pw:44, special:false },
+      { n:'Fault Line', pw:66, special:true, reqLv:3, desc:'รอยร้าวระบบ x1.5' },
+    ],
+    evos:[ null,
+      { label:'Trickster', mult:1.5, reqLv:20, skill:{ n:'Logic Bomb', pw:86,  special:true, reqLv:20, desc:'ระเบิดตรรกะ x1.8' } },
+      { label:'Archon',    mult:2.0, reqLv:50, skill:{ n:'Kernel Rift',pw:116, special:true, reqLv:50, desc:'รอยแยกเคอร์เนล x2' } },
+    ],
+  },
+  spikeling: {
+    id:'spikeling', name:'Spikeling', shape:'spike',
+    rarities:['normal','rare','epic'],
+    base:{ atk:22, def:13, spd:10, mhp:78 },
+    skills:[
+      { n:'Barb Lash', pw:40, special:false },
+      { n:'Quill Wall', pw:60, special:true, reqLv:3, desc:'กำแพงหนาม x1.5' },
+    ],
+    evos:[ null,
+      { label:'Ridge',   mult:1.5, reqLv:20, skill:{ n:'Spine Storm', pw:80,  special:true, reqLv:20, desc:'พายุหนาม x1.8' } },
+      { label:'Draco',   mult:2.0, reqLv:50, skill:{ n:'Thorn Crown', pw:108, special:true, reqLv:50, desc:'มงกุฎหนาม x2' } },
+    ],
+  },
+  orbling: {
+    id:'orbling', name:'Orbling', shape:'orb',
+    rarities:['normal','rare','epic'],
+    base:{ atk:17, def:12, spd:12, mhp:80 },
+    skills:[
+      { n:'Orb Toss', pw:36, special:false },
+      { n:'Cluster Sync', pw:54, special:true, reqLv:3, desc:'ซิงก์กลุ่ม x1.5' },
+    ],
+    evos:[ null,
+      { label:'Cluster', mult:1.5, reqLv:20, skill:{ n:'Node Link', pw:74,  special:true, reqLv:20, desc:'เชื่อมโหนด x1.8' } },
+      { label:'Nexus',   mult:2.0, reqLv:50, skill:{ n:'Mesh Pulse',pw:100, special:true, reqLv:50, desc:'คลื่นเมช x2' } },
+    ],
+  },
+  haunbit: {
+    id:'haunbit', name:'HaunBit', shape:'wisp',
+    rarities:['epic','legendary','mythic'],
+    base:{ atk:24, def:10, spd:16, mhp:68 },
+    skills:[
+      { n:'Cold Ping', pw:42, special:false },
+      { n:'Phase Slip', pw:64, special:true, reqLv:3, desc:'ลอดมิติ x1.5' },
+    ],
+    evos:[ null,
+      { label:'Revenant', mult:1.5, reqLv:20, skill:{ n:'Dread Wave', pw:84,  special:true, reqLv:20, desc:'คลื่นสยอง x1.8' } },
+      { label:'Wraith',   mult:2.0, reqLv:50, skill:{ n:'Null Void',  pw:114, special:true, reqLv:50, desc:'ความว่างเปล่า x2' } },
+    ],
+  },
+
+  // ── GIF-based species ──
+  // These use real animated art from assets/sprites/<gif>/{still,attack}.gif
+  // instead of a procedural `shape`. Both kinds coexist: the renderer
+  // checks for `gif` first and falls back to `shape`.
+  bytehound: {
+    id:'bytehound', name:'ByteHound', gif:'dog',
+    rarities:['normal','rare','epic'],
+    base:{ atk:21, def:11, spd:12, mhp:72 },
     skills:[
       { n:'Packet Bite', pw:38, special:false },
       { n:'Firewall Fang', pw:58, special:true, reqLv:3, desc:'เจาะไฟร์วอลล์ x1.5' },
     ],
     evos:[ null,
-      { label:'Guard',   mult:1.5, reqLv:20, skill:{ n:'Sentry Howl', pw:78,  special:true, reqLv:20, desc:'เห่าเตือนภัย x1.8' } },
-      { label:'Warden',  mult:2.0, reqLv:50, skill:{ n:'Kernel Maul', pw:104, special:true, reqLv:50, desc:'ขย้ำเคอร์เนล x2' } },
+      { label:'Guard',  mult:1.5, reqLv:20, skill:{ n:'Sentry Howl', pw:78,  special:true, reqLv:20, desc:'เห่าเตือนภัย x1.8' } },
+      { label:'Warden', mult:2.0, reqLv:50, skill:{ n:'Kernel Maul', pw:104, special:true, reqLv:50, desc:'ขย้ำเคอร์เนล x2' } },
     ],
   },
-  dog2: {
-    id:'dog2', name:'ArmorHound', sprite:'dog2',
+  armorhound: {
+    id:'armorhound', name:'ArmorHound', gif:'dog2',
     rarities:['rare','epic','legendary'],
-    base:{ atk:13, def:15, spd:9, mhp:130 },
+    base:{ atk:20, def:17, spd:9, mhp:88 },
     skills:[
       { n:'Shield Rush', pw:42, special:false },
       { n:'Plated Charge', pw:62, special:true, reqLv:3, desc:'พุ่งชนเกราะ x1.5' },
     ],
     evos:[ null,
-      { label:'Bulwark',  mult:1.5, reqLv:20, skill:{ n:'Aegis Slam',  pw:82,  special:true, reqLv:20, desc:'ทุบอีจิส x1.8' } },
-      { label:'Paladin',  mult:2.0, reqLv:50, skill:{ n:'Last Stand',  pw:110, special:true, reqLv:50, desc:'ยืนหยัดครั้งสุดท้าย x2' } },
+      { label:'Bulwark', mult:1.5, reqLv:20, skill:{ n:'Aegis Slam', pw:82,  special:true, reqLv:20, desc:'ทุบอีจิส x1.8' } },
+      { label:'Paladin', mult:2.0, reqLv:50, skill:{ n:'Last Stand', pw:110, special:true, reqLv:50, desc:'ยืนหยัดครั้งสุดท้าย x2' } },
     ],
   },
-  cat: {
-    id:'cat', name:'TabbyProc', sprite:'cat',
+  tabbyproc: {
+    id:'tabbyproc', name:'TabbyProc', gif:'cat',
     rarities:['normal','rare','epic'],
-    base:{ atk:11, def:9, spd:15, mhp:92 },
+    base:{ atk:22, def:10, spd:16, mhp:66 },
     skills:[
       { n:'Claw Script', pw:36, special:false },
       { n:'Pounce Exploit', pw:56, special:true, reqLv:3, desc:'จู่โจมช่องโหว่ x1.5' },
@@ -118,17 +310,17 @@ export const SPECIES = {
       { label:'Stalker', mult:2.0, reqLv:50, skill:{ n:'Zero Day',    pw:100, special:true, reqLv:50, desc:'ช่องโหว่ศูนย์วัน x2' } },
     ],
   },
-  cat3: {
-    id:'cat3', name:'MysticProc', sprite:'cat3',
+  mysticproc: {
+    id:'mysticproc', name:'MysticProc', gif:'cat3',
     rarities:['epic','legendary','mythic'],
-    base:{ atk:14, def:12, spd:13, mhp:112 },
+    base:{ atk:24, def:13, spd:14, mhp:76 },
     skills:[
       { n:'Arcane Ping', pw:40, special:false },
       { n:'Spirit Flux', pw:64, special:true, reqLv:3, desc:'กระแสวิญญาณ x1.5' },
     ],
     evos:[ null,
-      { label:'Oracle',   mult:1.5, reqLv:20, skill:{ n:'Nine Tails',  pw:86,  special:true, reqLv:20, desc:'เก้าหาง x1.8' } },
-      { label:'Ascendant',mult:2.0, reqLv:50, skill:{ n:'Total Recall',pw:118, special:true, reqLv:50, desc:'เรียกคืนทั้งระบบ x2' } },
+      { label:'Oracle',    mult:1.5, reqLv:20, skill:{ n:'Nine Tails',   pw:86,  special:true, reqLv:20, desc:'เก้าหาง x1.8' } },
+      { label:'Ascendant', mult:2.0, reqLv:50, skill:{ n:'Total Recall', pw:118, special:true, reqLv:50, desc:'เรียกคืนทั้งระบบ x2' } },
     ],
   },
 };
@@ -140,25 +332,25 @@ export const HACK_TARGETS = [
   {
     id:'pc_home', name:'💻 Personal PC', tier:'EASY', color:'#3ddc84',
     desc:'คอมพิวเตอร์ส่วนตัว ระบบป้องกันอ่อน',
-    waves:[1,2], enemyLv:[1,6], pool:['guard_lite','sniffer'],
+    waves:[1,2], enemyLv:[1,6], pool:['guard_lite','sniffer','net_probe'],
     reward:{ bitzMult:1.0, expMult:1.0 },
   },
   {
     id:'pc_office', name:'🖥️ Office Workstation', tier:'NORMAL', color:'#4fc3f7',
     desc:'เครื่องทำงานในออฟฟิศ มีแอนตี้ไวรัสพื้นฐาน',
-    waves:[2,3], enemyLv:[6,16], pool:['guard_lite','sniffer','heur_scan'],
+    waves:[2,3], enemyLv:[6,16], pool:['guard_lite','sniffer','heur_scan','net_probe'],
     reward:{ bitzMult:1.6, expMult:1.5 },
   },
   {
     id:'srv_corp', name:'🏢 Corporate Server', tier:'HARD', color:'#ce93d8',
     desc:'เซิร์ฟเวอร์บริษัท ป้องกันหลายชั้น',
-    waves:[3,4], enemyLv:[16,34], pool:['heur_scan','sentinel_av','packet_wall'],
+    waves:[3,4], enemyLv:[16,34], pool:['heur_scan','sentinel_av','packet_wall','flux_turret'],
     reward:{ bitzMult:2.4, expMult:2.2 },
   },
   {
     id:'srv_bank', name:'🏦 Banking Core', tier:'EXTREME', color:'#ffd54a',
     desc:'แกนระบบธนาคาร ป้องกันระดับสูงสุด',
-    waves:[4,5], enemyLv:[34,60], pool:['sentinel_av','packet_wall','root_guard'],
+    waves:[4,5], enemyLv:[34,60], pool:['sentinel_av','packet_wall','root_guard','aegis_core','ward_bastion'],
     reward:{ bitzMult:3.5, expMult:3.2 },
   },
 ];
@@ -166,12 +358,16 @@ export const HACK_TARGETS = [
 // ── ANTIVIRUZ (enemies) ──
 // `attr` may be null → rolled at spawn.
 export const ANTIVIRUZ = {
-  guard_lite:  { id:'guard_lite',  name:'GuardLite',   sprite:'dog',  base:{atk:9, def:7, spd:9,  mhp:70},  attr:'yellow' },
-  sniffer:     { id:'sniffer',     name:'Sniffer',     sprite:'cat',  base:{atk:11,def:5, spd:14, mhp:62},  attr:'green'  },
-  heur_scan:   { id:'heur_scan',   name:'HeurScan',    sprite:'cat3', base:{atk:13,def:9, spd:12, mhp:88},  attr:null     },
-  sentinel_av: { id:'sentinel_av', name:'SentinelAV',  sprite:'dog2', base:{atk:15,def:14,spd:8,  mhp:125}, attr:'yellow' },
-  packet_wall: { id:'packet_wall', name:'PacketWall',  sprite:'dog2', base:{atk:12,def:18,spd:6,  mhp:150}, attr:'yellow' },
-  root_guard:  { id:'root_guard',  name:'RootGuard',   sprite:'cat3', base:{atk:20,def:13,spd:15, mhp:140}, attr:'red'    },
+  guard_lite:  { id:'guard_lite',  name:'GuardLite',   shape:'shield',   base:{atk:15,def:8, spd:9,  mhp:44}, attr:'yellow' },
+  sniffer:     { id:'sniffer',     name:'Sniffer',     shape:'scanner',  base:{atk:18,def:5, spd:14, mhp:36}, attr:'green'  },
+  heur_scan:   { id:'heur_scan',   name:'HeurScan',    shape:'scanner',  base:{atk:20,def:9, spd:12, mhp:50}, attr:null     },
+  sentinel_av: { id:'sentinel_av', name:'SentinelAV',  shape:'sentinel', base:{atk:22,def:14,spd:8,  mhp:66}, attr:'yellow' },
+  packet_wall: { id:'packet_wall', name:'PacketWall',  shape:'shield',   base:{atk:19,def:18,spd:6,  mhp:80}, attr:'yellow' },
+  root_guard:  { id:'root_guard',  name:'RootGuard',   shape:'turret',   base:{atk:28,def:12,spd:15, mhp:72}, attr:'red'    },
+  net_probe:   { id:'net_probe',   name:'NetProbe',    shape:'scanner',  base:{atk:17,def:7, spd:16, mhp:38}, attr:'green'  },
+  aegis_core:  { id:'aegis_core',  name:'AegisCore',   shape:'sentinel', base:{atk:26,def:16,spd:10, mhp:78}, attr:null     },
+  flux_turret: { id:'flux_turret', name:'FluxTurret',  shape:'turret',   base:{atk:30,def:10,spd:13, mhp:64}, attr:'red'    },
+  ward_bastion:{ id:'ward_bastion',name:'WardBastion', shape:'shield',   base:{atk:24,def:20,spd:7,  mhp:92}, attr:'yellow' },
 };
 
 // ── SHOP ──
