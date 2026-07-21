@@ -218,17 +218,158 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   border-bottom:1px solid var(--line);background:var(--panel)}
 #battle-title{font-family:var(--pixel);font-size:9px;color:var(--cyan)}
 #battle-wave{font-size:12px;color:var(--muted)}
+/* ── VR2-STYLE STAGE ──
+   Scenic sky + hills + grass platform. The stage is the screen; all
+   the HUD chrome that used to crowd it now sits below the fold. */
 #battle-stage{
-  position:relative;padding:16px 12px;min-height:220px;
-  background:
-    linear-gradient(180deg,rgba(8,12,28,.95),rgba(4,6,16,.98)),
-    repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(55,230,255,.02) 3px,rgba(55,230,255,.02) 4px);
-  display:flex;justify-content:space-between;align-items:flex-end;gap:12px;overflow:hidden;
+  position:relative;min-height:290px;overflow:hidden;
+  display:flex;justify-content:space-between;align-items:flex-end;
+  padding:0 16px 54px;
 }
-#battle-stage::after{content:'';position:absolute;left:0;right:0;bottom:52px;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(55,230,255,.18),transparent)}
-.bside{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;flex:1}
-#battle-enemies{justify-content:flex-end}
+#sky{position:absolute;inset:0;
+  background:linear-gradient(180deg,#1c2c6e 0%,#2f4a9e 42%,#5f86c9 78%,#8fb4dd 100%)}
+#sky::before,#sky::after{content:'';position:absolute;border-radius:50%;
+  background:rgba(255,255,255,.85);filter:blur(1px)}
+#sky::before{width:120px;height:30px;left:12%;top:18%;
+  box-shadow:38px 8px 0 -4px rgba(255,255,255,.75),80px -4px 0 -8px rgba(255,255,255,.6)}
+#sky::after{width:90px;height:24px;right:14%;top:30%;
+  box-shadow:-30px 6px 0 -4px rgba(255,255,255,.7)}
+#hills{position:absolute;left:0;right:0;bottom:34px;height:120px;
+  background:
+    radial-gradient(ellipse 180px 96px at 18% 100%, #e8eef7 0 46%, transparent 47%),
+    radial-gradient(ellipse 150px 80px at 46% 100%, #d3ddec 0 46%, transparent 47%),
+    radial-gradient(ellipse 200px 108px at 82% 100%, #e8eef7 0 46%, transparent 47%);
+  opacity:.95}
+#ground{position:absolute;left:0;right:0;bottom:0;height:52px;
+  background:linear-gradient(180deg,#4f9b34 0 34%,#3d7a28 34% 60%,#6b4a24 60% 100%)}
+#ground::before{content:'';position:absolute;left:0;right:0;top:0;height:8px;
+  background:repeating-linear-gradient(90deg,#5cb03c 0 5px,#4f9b34 5px 10px)}
+/* stone platform the fighters stand on */
+#ground::after{content:'';position:absolute;left:6%;right:6%;top:-16px;height:18px;
+  background:linear-gradient(180deg,#b8bec7,#8d949e);border-radius:3px;
+  box-shadow:inset 0 -3px 0 rgba(0,0,0,.18)}
+.bside{position:relative;z-index:2;display:flex;align-items:flex-end;justify-content:center;width:120px}
+
+/* ── NAME PLATES (VR2: name box + heart + number, no HP bar) ── */
+.name-plate{position:absolute;top:12px;z-index:6;min-width:118px}
+.name-plate.left{left:14px}
+.name-plate.right{right:14px;text-align:right}
+.np-name{display:inline-block;padding:5px 11px;background:#fff;color:#1d2430;
+  border:2px solid #97a3b4;border-radius:4px;font-size:12px;letter-spacing:.4px;
+  box-shadow:0 2px 0 rgba(0,0,0,.18)}
+.np-lv{font-size:10px;color:#eaf2ff;margin-top:2px;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.np-hp{display:flex;align-items:center;gap:5px;margin-top:5px;
+  font-size:19px;color:#fff;text-shadow:0 2px 3px rgba(0,0,0,.55)}
+.name-plate.right .np-hp{justify-content:flex-end}
+.np-heart{color:#ff4a5e;font-size:22px;text-shadow:0 0 8px rgba(255,74,94,.6)}
+
+/* ── TURN BANNERS ── */
+#banner-layer{position:absolute;left:0;right:0;top:74px;z-index:7;
+  display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.turn-banner{
+  padding:6px 20px;background:rgba(78,86,98,.94);color:#fff;
+  border:2px solid rgba(255,255,255,.5);border-radius:3px;
+  font-size:12px;letter-spacing:1.5px;white-space:nowrap;
+  box-shadow:0 3px 10px rgba(0,0,0,.35);
+  animation:bannerIn .22s cubic-bezier(.2,1.5,.4,1) both;
+}
+.turn-banner.out{animation:bannerOut .22s ease-in both}
+.turn-banner.crit{background:rgba(180,40,40,.95);font-weight:bold;letter-spacing:2.5px}
+.turn-banner.ko{background:rgba(30,34,42,.95)}
+@keyframes bannerIn{from{opacity:0;transform:translateY(-12px) scale(.9)}to{opacity:1;transform:none}}
+@keyframes bannerOut{to{opacity:0;transform:translateY(-8px) scale(.96)}}
+
+/* ── IMPACT BURST ── */
+.impact-burst{position:absolute;transform:translate(-50%,-50%);
+  width:0;height:0;z-index:8;pointer-events:none}
+.impact-burst .streak{position:absolute;left:0;top:0;display:block;
+  width:var(--len,90px);height:2px;transform-origin:0 50%;
+  background:linear-gradient(90deg,rgba(255,255,255,.95),rgba(255,255,255,0));
+  animation:streakOut .34s ease-out forwards}
+@keyframes streakOut{
+  0%{opacity:0;width:0}
+  25%{opacity:1}
+  100%{opacity:0;width:var(--len,90px)}}
+.impact-burst .slash{position:absolute;left:-46px;top:-46px;width:92px;height:92px;
+  border:6px solid transparent;border-top-color:#ffd23f;border-right-color:#ffb02e;
+  border-radius:50%;transform:rotate(-35deg);
+  animation:slashArc .3s ease-out forwards}
+@keyframes slashArc{
+  0%{opacity:0;transform:rotate(-95deg) scale(.4)}
+  40%{opacity:1}
+  100%{opacity:0;transform:rotate(35deg) scale(1.3)}}
+.impact-burst .spark{position:absolute;left:0;top:0;width:5px;height:5px;
+  border-radius:50%;background:#ffe066;
+  animation:sparkFly .42s ease-out forwards;
+  transform:rotate(var(--a)) translateX(0)}
+@keyframes sparkFly{
+  0%{opacity:1;transform:rotate(var(--a)) translateX(0) scale(1)}
+  100%{opacity:0;transform:rotate(var(--a)) translateX(var(--d)) scale(.3)}}
+.impact-burst.crit .slash{border-top-color:#fff;border-right-color:#ffd23f;
+  width:120px;height:120px;left:-60px;top:-60px}
+
+/* ── GIANT DAMAGE NUMBERS ── */
+.dmg-big{position:absolute;z-index:9;transform:translate(-50%,-50%);
+  display:flex;flex-direction:column;align-items:center;pointer-events:none;
+  animation:dmgPunch 1.1s cubic-bezier(.15,1.7,.4,1) forwards}
+.dmg-num{font-family:var(--pixel);font-size:52px;line-height:1;
+  color:#f0442c;
+  -webkit-text-stroke:6px #14100c;paint-order:stroke fill;
+  text-shadow:0 6px 0 rgba(0,0,0,.35);
+  transform:rotate(var(--tilt,-5deg))}
+.dmg-mult{font-family:var(--pixel);font-size:22px;color:#ffd23f;
+  -webkit-text-stroke:4px #14100c;paint-order:stroke fill;margin-top:2px;
+  transform:rotate(var(--tilt,-5deg))}
+.dmg-big.crit .dmg-num{font-size:70px;color:#ff6a1e}
+@keyframes dmgPunch{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}
+  18%{opacity:1;transform:translate(-50%,-56%) scale(1.25)}
+  32%{transform:translate(-50%,-52%) scale(1)}
+  72%{opacity:1;transform:translate(-50%,-58%) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-84%) scale(.9)}}
+
+/* ── SCREEN SHAKE + HIT-STOP ── */
+#battle-stage.shake{animation:stageShake .26s ease}
+#battle-stage.shake-hard{animation:stageShakeHard .34s ease}
+@keyframes stageShake{
+  0%,100%{transform:translate(0,0)}
+  25%{transform:translate(-4px,2px)}
+  60%{transform:translate(3px,-2px)}}
+@keyframes stageShakeHard{
+  0%,100%{transform:translate(0,0)}
+  15%{transform:translate(-8px,4px)}
+  35%{transform:translate(7px,-4px)}
+  55%{transform:translate(-5px,2px)}
+  80%{transform:translate(4px,-2px)}}
+/* Freeze all animation at the moment of contact — cheap, huge impact */
+#battle-stage.hitstop *{animation-play-state:paused !important}
+
+/* ── BENCH (your remaining VIRUZ) ── */
+#battle-bench{display:flex;gap:8px;justify-content:center;padding:10px 12px;
+  background:var(--panel);border-top:1px solid var(--line)}
+.bench-chip{position:relative;width:46px;height:46px;border:1px solid var(--line);
+  background:rgba(6,10,22,.7);display:flex;align-items:center;justify-content:center}
+.bench-chip.active{border-color:var(--cyan);box-shadow:0 0 12px rgba(55,230,255,.35)}
+.bench-chip.down{opacity:.3;filter:grayscale(1)}
+.bench-sprite{width:38px;height:38px;display:block}
+.bench-hp{position:absolute;bottom:-2px;right:2px;font-size:10px;color:#fff;
+  text-shadow:0 1px 2px #000}
+
+/* ── SWAP MENU ── */
+#swap-menu{position:absolute;inset:0;z-index:20;display:none;
+  flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  background:rgba(6,10,20,.86);backdrop-filter:blur(3px)}
+#swap-menu.on{display:flex}
+.swap-title{font-family:var(--pixel);font-size:10px;color:var(--cyan);letter-spacing:1px}
+.swap-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.swap-card{width:96px;padding:8px;background:var(--panel2);
+  border:1px solid var(--line2);cursor:pointer;transition:.12s;
+  clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}
+.swap-card:hover{border-color:var(--cyan);transform:translateY(-3px);
+  box-shadow:0 0 16px rgba(55,230,255,.3)}
+.swap-sprite{width:62px;height:62px;display:block;margin:0 auto}
+.swap-name{font-size:11px;text-align:center;margin-top:4px;color:var(--txt)}
+.swap-hp{font-size:11px;text-align:center;color:#ff8a9a}
 .bunit{width:92px;text-align:center;position:relative;z-index:1}
 .bunit.dead{opacity:.25;filter:grayscale(1)}
 
@@ -237,6 +378,19 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
    briefly at the target, then eases back to its original spot. Using
    a real translate (not just the sprite) keeps the HP bar/name glued
    to the sprite while it moves, which reads much clearer in combat. */
+/* Wind-up: pull back slightly before striking. This anticipation is
+   what makes an attack read as an attack rather than a teleport. */
+.bunit.wind-up{
+  animation-name: windUp;
+  animation-duration: var(--wind-ms, 220ms);
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+  z-index:5;
+}
+@keyframes windUp{
+  0%   { transform: translateX(0) scale(1); }
+  100% { transform: translateX(calc(var(--dir,1) * -14px)) scale(1.04,.97); }
+}
 .bunit.lunge-out{
   animation-name: lungeOut;
   animation-duration: var(--lunge-ms, 320ms);
@@ -252,12 +406,12 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   z-index:5;
 }
 @keyframes lungeOut{
-  0%   { transform: translate(0,0) scale(1); }
-  100% { transform: translate(var(--tx,0), var(--ty,0)) scale(1.08); }
+  0%   { transform: translateX(calc(var(--dir,1) * -14px)) scale(1.04,.97); }
+  100% { transform: translateX(calc(var(--dir,1) * 46px)) scale(1.1,.94); }
 }
 @keyframes lungeBack{
-  0%   { transform: translate(var(--tx,0), var(--ty,0)) scale(1.08); }
-  100% { transform: translate(0,0) scale(1); }
+  0%   { transform: translateX(calc(var(--dir,1) * 46px)) scale(1.1,.94); }
+  100% { transform: translateX(0) scale(1); }
 }
 
 /* Impact: target flashes white and shakes. The flash is a CSS filter
@@ -318,37 +472,13 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   100% { filter:brightness(1) drop-shadow(0 0 0 rgba(255,255,255,0)); }
 }
 .bu-sprite-wrap{ position:relative; display:inline-block; }
-.bu-bar{height:5px;background:rgba(0,0,0,.6);border:1px solid var(--line);overflow:hidden;margin-bottom:2px}
-.bu-bar i{display:block;height:100%;background:var(--green);transition:width .3s}
-.bu-hp{font-size:10px;color:var(--muted);margin-bottom:3px}
 .bu-sprite{width:76px;height:76px;display:block;margin:0 auto;overflow:visible}
 /* GIF creatures are raster; keep pixel art crisp and match SVG sizing */
 img.is-gif{image-rendering:pixelated;object-fit:contain}
 .bu-sprite.flip{transform:scaleX(-1)}
 .bu-sprite.flip.float{animation-name:floatBobFlip}
 @keyframes floatBobFlip{0%,100%{transform:scaleX(-1) translateY(0)}50%{transform:scaleX(-1) translateY(-7px)}}
-.bu-name{font-size:11px;margin-top:2px;color:var(--attr)}
-.bu-lv{font-size:10px;color:var(--muted)}
 #fx-layer{position:absolute;inset:0;pointer-events:none;z-index:20}
-.dmg-float{position:absolute;transform:translateX(-50%);
-  font-family:var(--pixel);font-size:12px;color:#ff8a8a;
-  text-shadow:0 2px 0 rgba(0,0,0,.8);animation:rise .9s ease-out forwards}
-.dmg-float.crit{font-size:16px;color:var(--gold)}
-@keyframes rise{0%{opacity:1;transform:translate(-50%,0) scale(1)}
-  30%{transform:translate(-50%,-16px) scale(1.25)}
-  100%{opacity:0;transform:translate(-50%,-52px) scale(.85)}}
-#skill-bar{display:flex;gap:7px;flex-wrap:wrap;padding:10px 12px;
-  border-top:1px solid var(--line);background:var(--panel)}
-.skill-btn{
-  display:flex;flex-direction:column;gap:2px;padding:7px 10px;
-  border:1px solid var(--line);background:var(--panel2);transition:.12s;
-  clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%);
-}
-.skill-btn:hover{border-color:var(--attr)}
-.skill-btn.queued{border-color:var(--gold);box-shadow:0 0 14px rgba(255,213,74,.28)}
-.sb-owner{font-size:10px;color:var(--attr)}
-.sb-name{font-family:var(--pixel);font-size:7px}
-.sb-pw{font-size:10px;color:var(--muted)}
 #battle-log{margin:10px 12px;background:rgba(4,6,14,.85);border:1px solid var(--line);
   padding:8px;height:110px;overflow-y:auto;font-size:13px;line-height:1.55}
 #battle-log::-webkit-scrollbar{width:4px}
@@ -538,11 +668,18 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
       <span id="battle-wave"></span>
     </div>
     <div id="battle-stage">
+      <div id="sky"></div>
+      <div id="hills"></div>
+      <div id="ground"></div>
+      <div id="plate-ally" class="name-plate left"></div>
+      <div id="plate-foe" class="name-plate right"></div>
       <div id="battle-allies" class="bside"></div>
       <div id="battle-enemies" class="bside"></div>
+      <div id="banner-layer"></div>
       <div id="fx-layer"></div>
+      <div id="swap-menu"></div>
     </div>
-    <div id="skill-bar"></div>
+    <div id="battle-bench"></div>
     <div id="battle-log"></div>
     <div id="battle-ctrl">
       <button id="flee-btn" class="btn small">🏃 ถอนตัว</button>

@@ -8,14 +8,12 @@ export const ATTR = {
   red: {
     id: 'red', name: 'Red', icon: '⚔️', color: '#ff6a2b',
     glow: 'rgba(255,106,43,.45)',
-    hue: { rotate: -18, sat: 1.85, bright: .95 },
     desc: 'โจมตีสูง ป้องกันต่ำ',
     mult: { atk: 1.35, def: 0.75, spd: 1.00, mhp: 0.95 },
   },
   green: {
     id: 'green', name: 'Green', icon: '🌪️', color: '#3ddc84',
     glow: 'rgba(61,220,132,.45)',
-    hue: { rotate: 88,  sat: 1.25, bright: 1.0  },
     desc: 'เร็วมาก มีโอกาสตีสองครั้ง',
     mult: { atk: 1.00, def: 0.75, spd: 1.40, mhp: 0.90 },
     doubleHit: 0.28,           // chance to strike twice
@@ -23,14 +21,12 @@ export const ATTR = {
   yellow: {
     id: 'yellow', name: 'Yellow', icon: '🛡️', color: '#c98f1e',
     glow: 'rgba(201,143,30,.45)',
-    hue: { rotate: 8,   sat: 1.45, bright: .80 },
     desc: 'ป้องกันสูง แต่ช้า',
     mult: { atk: 0.85, def: 1.45, spd: 0.70, mhp: 1.25 },
   },
   white: {
     id: 'white', name: 'White', icon: '➕', color: '#f6ecd8',
     glow: 'rgba(246,236,216,.5)',
-    hue: { rotate: 14,  sat: .28, bright: 1.28 },
     desc: 'สายซัพพอร์ต บัฟทีมและฟื้นฟู',
     mult: { atk: 0.70, def: 0.90, spd: 0.90, mhp: 1.05 },
   },
@@ -85,7 +81,7 @@ export const RARITY_KEYS = ['normal','rare','epic','legendary','mythic'];
 // To pin an attribute later, add `fixedAttr:'red'` to a species.
 export const SPECIES = {
   blobyte: {
-    id:'blobyte', name:'BloByte', shape:'blob',
+    id:'blobyte', name:'BloByte', shape:'royalslime', palette:'slime_royal',
     rarities:['normal','rare','epic'],
     base:{ atk:20, def:9, spd:11, mhp:70 },
     skills:[
@@ -98,7 +94,7 @@ export const SPECIES = {
     ],
   },
   inkarm: {
-    id:'inkarm', name:'InkArm', shape:'octopus',
+    id:'inkarm', name:'InkArm', shape:'frostsquid', palette:'frost_squid',
     rarities:['normal','rare','epic','legendary'],
     base:{ atk:22, def:10, spd:13, mhp:66 },
     skills:[
@@ -111,7 +107,7 @@ export const SPECIES = {
     ],
   },
   nulworm: {
-    id:'nulworm', name:'NulWorm', shape:'worm',
+    id:'nulworm', name:'NulWorm', shape:'crimworm', palette:'crimson_worm',
     rarities:['normal','rare','epic'],
     base:{ atk:24, def:7, spd:15, mhp:58 },
     skills:[
@@ -124,7 +120,7 @@ export const SPECIES = {
     ],
   },
   clampr: {
-    id:'clampr', name:'Clampr', shape:'crab',
+    id:'clampr', name:'Clampr', shape:'steelcrab', palette:'steel_crab',
     rarities:['normal','rare','epic'],
     base:{ atk:19, def:16, spd:8, mhp:82 },
     skills:[
@@ -137,7 +133,7 @@ export const SPECIES = {
     ],
   },
   hopbit: {
-    id:'hopbit', name:'HopBit', shape:'bunny',
+    id:'hopbit', name:'HopBit', shape:'violetbeast', palette:'beast_violet',
     rarities:['normal','rare','epic'],
     base:{ atk:21, def:9, spd:18, mhp:62 },
     skills:[
@@ -150,7 +146,7 @@ export const SPECIES = {
     ],
   },
   jetsquid: {
-    id:'jetsquid', name:'JetSquid', shape:'squid',
+    id:'jetsquid', name:'JetSquid', shape:'frostsquid', palette:'deep_fish',
     rarities:['rare','epic','legendary'],
     base:{ atk:25, def:10, spd:16, mhp:68 },
     skills:[
@@ -163,7 +159,7 @@ export const SPECIES = {
     ],
   },
   chitbug: {
-    id:'chitbug', name:'ChitBug', shape:'bug',
+    id:'chitbug', name:'ChitBug', shape:'sandbug', palette:'sand_bug',
     rarities:['normal','rare','epic'],
     base:{ atk:20, def:14, spd:12, mhp:76 },
     skills:[
@@ -176,7 +172,7 @@ export const SPECIES = {
     ],
   },
   echowing: {
-    id:'echowing', name:'EchoWing', shape:'bat',
+    id:'echowing', name:'EchoWing', shape:'shadowbat', palette:'shadow_bat',
     rarities:['normal','rare','epic','legendary'],
     base:{ atk:23, def:9, spd:17, mhp:64 },
     skills:[
@@ -189,7 +185,7 @@ export const SPECIES = {
     ],
   },
   dustmoth: {
-    id:'dustmoth', name:'DustMoth', shape:'moth',
+    id:'dustmoth', name:'DustMoth', shape:'embermoth', palette:'ember_moth',
     rarities:['rare','epic','legendary'],
     base:{ atk:18, def:11, spd:14, mhp:72 },
     skills:[
@@ -202,7 +198,7 @@ export const SPECIES = {
     ],
   },
   finbyte: {
-    id:'finbyte', name:'FinByte', shape:'fish',
+    id:'finbyte', name:'FinByte', shape:'deepfish', palette:'deep_fish',
     rarities:['normal','rare','epic'],
     base:{ atk:20, def:12, spd:14, mhp:70 },
     skills:[
@@ -215,7 +211,7 @@ export const SPECIES = {
     ],
   },
   glitchimp: {
-    id:'glitchimp', name:'GlitchImp', shape:'imp',
+    id:'glitchimp', name:'GlitchImp', shape:'angelwing', palette:'angel_light',
     rarities:['rare','epic','legendary','mythic'],
     base:{ atk:26, def:11, spd:15, mhp:70 },
     skills:[
@@ -228,7 +224,7 @@ export const SPECIES = {
     ],
   },
   spikeling: {
-    id:'spikeling', name:'Spikeling', shape:'spike',
+    id:'spikeling', name:'Spikeling', shape:'spikelizard', palette:'spike_lizard',
     rarities:['normal','rare','epic'],
     base:{ atk:22, def:13, spd:10, mhp:78 },
     skills:[
@@ -241,7 +237,7 @@ export const SPECIES = {
     ],
   },
   orbling: {
-    id:'orbling', name:'Orbling', shape:'orb',
+    id:'orbling', name:'Orbling', shape:'toxinblob', palette:'toxin_green',
     rarities:['normal','rare','epic'],
     base:{ atk:17, def:12, spd:12, mhp:80 },
     skills:[
@@ -254,7 +250,7 @@ export const SPECIES = {
     ],
   },
   haunbit: {
-    id:'haunbit', name:'HaunBit', shape:'wisp',
+    id:'haunbit', name:'HaunBit', shape:'voidwisp', palette:'void_wisp',
     rarities:['epic','legendary','mythic'],
     base:{ atk:24, def:10, spd:16, mhp:68 },
     skills:[
@@ -358,16 +354,16 @@ export const HACK_TARGETS = [
 // ── ANTIVIRUZ (enemies) ──
 // `attr` may be null → rolled at spawn.
 export const ANTIVIRUZ = {
-  guard_lite:  { id:'guard_lite',  name:'GuardLite',   shape:'shield',   base:{atk:15,def:8, spd:9,  mhp:44}, attr:'yellow' },
-  sniffer:     { id:'sniffer',     name:'Sniffer',     shape:'scanner',  base:{atk:18,def:5, spd:14, mhp:36}, attr:'green'  },
-  heur_scan:   { id:'heur_scan',   name:'HeurScan',    shape:'scanner',  base:{atk:20,def:9, spd:12, mhp:50}, attr:null     },
-  sentinel_av: { id:'sentinel_av', name:'SentinelAV',  shape:'sentinel', base:{atk:22,def:14,spd:8,  mhp:66}, attr:'yellow' },
-  packet_wall: { id:'packet_wall', name:'PacketWall',  shape:'shield',   base:{atk:19,def:18,spd:6,  mhp:80}, attr:'yellow' },
-  root_guard:  { id:'root_guard',  name:'RootGuard',   shape:'turret',   base:{atk:28,def:12,spd:15, mhp:72}, attr:'red'    },
-  net_probe:   { id:'net_probe',   name:'NetProbe',    shape:'scanner',  base:{atk:17,def:7, spd:16, mhp:38}, attr:'green'  },
-  aegis_core:  { id:'aegis_core',  name:'AegisCore',   shape:'sentinel', base:{atk:26,def:16,spd:10, mhp:78}, attr:null     },
-  flux_turret: { id:'flux_turret', name:'FluxTurret',  shape:'turret',   base:{atk:30,def:10,spd:13, mhp:64}, attr:'red'    },
-  ward_bastion:{ id:'ward_bastion',name:'WardBastion', shape:'shield',   base:{atk:24,def:20,spd:7,  mhp:92}, attr:'yellow' },
+  guard_lite:  { id:'guard_lite',  name:'GuardLite',   shape:'shield', palette:'av_shield',   base:{atk:15,def:8, spd:9,  mhp:44}, attr:'yellow' },
+  sniffer:     { id:'sniffer',     name:'Sniffer',     shape:'scanner', palette:'av_scanner',  base:{atk:18,def:5, spd:14, mhp:36}, attr:'green'  },
+  heur_scan:   { id:'heur_scan',   name:'HeurScan',    shape:'scanner', palette:'av_scanner',  base:{atk:20,def:9, spd:12, mhp:50}, attr:null     },
+  sentinel_av: { id:'sentinel_av', name:'SentinelAV',  shape:'sentinel', palette:'av_sentinel', base:{atk:22,def:14,spd:8,  mhp:66}, attr:'yellow' },
+  packet_wall: { id:'packet_wall', name:'PacketWall',  shape:'shield', palette:'av_shield',   base:{atk:19,def:18,spd:6,  mhp:80}, attr:'yellow' },
+  root_guard:  { id:'root_guard',  name:'RootGuard',   shape:'turret', palette:'av_turret',   base:{atk:28,def:12,spd:15, mhp:72}, attr:'red'    },
+  net_probe:   { id:'net_probe',   name:'NetProbe',    shape:'scanner', palette:'av_scanner',  base:{atk:17,def:7, spd:16, mhp:38}, attr:'green'  },
+  aegis_core:  { id:'aegis_core',  name:'AegisCore',   shape:'sentinel', palette:'av_sentinel', base:{atk:26,def:16,spd:10, mhp:78}, attr:null     },
+  flux_turret: { id:'flux_turret', name:'FluxTurret',  shape:'turret', palette:'av_turret',   base:{atk:30,def:10,spd:13, mhp:64}, attr:'red'    },
+  ward_bastion:{ id:'ward_bastion',name:'WardBastion', shape:'shield', palette:'av_shield',   base:{atk:24,def:20,spd:7,  mhp:92}, attr:'yellow' },
 };
 
 // ── SHOP ──
@@ -413,7 +409,9 @@ export const TUNING = {
   startBitz: 300,
   expCurve: (lv) => Math.floor(100 * Math.pow(1.35, lv - 1) + lv * 10),
   statPerPoint: 3,
-  turnBaseMs: 1600,
+  turnBaseMs: 420,   // gap BETWEEN exchanges; the attack sequence itself
+                     // (banner + wind-up + lunge + hit-stop + return) adds ~1.5s,
+                     // so this stays short or the fight drags
   fleePenalty: 0.0,
   loseHpRestore: 0.10,
 };

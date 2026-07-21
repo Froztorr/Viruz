@@ -15,7 +15,7 @@ import {
   teamAlive, availableSkills, clamp,
 } from './engine.js';
 import { NET } from './net.js';
-import { creatureSVG, creatureMarkupFor, gifURL, hueFilter } from './sprites.js';
+import { creatureMarkupFor, gifURL } from './sprites.js';
 
 // Creatures come from either real GIF art or procedural SVG —
 // creatureMarkupFor() picks per species, so both coexist.
@@ -46,7 +46,6 @@ let battle = null;   // active battle state
 let battleTimer = null;
 let regenTimer = null;
 let battleSpeed = 1;
-let queuedSkill = null;
 
 // ═══════════════ DOM HELPERS ═══════════════
 const $ = id => document.getElementById(id);
@@ -617,13 +616,13 @@ function startHack(target) {
     enemies: run.waves[0],
     wave: 0,
     turn: 0,
-    queue: null,
+    activeIdx: 0,      // which team member is currently fighting
+    phase: 'ally',     // whose swing is next
     round: 0,
     over: false,
     totalExp: 0,
     totalBitz: 0,
   };
-  queuedSkill = null;
   showScreen('battle');
   setText('battle-title', target.name);
   setText('battle-wave', `คลื่น 1 / ${run.waveCount}`);
@@ -658,10 +657,9 @@ function startArena() {
   battle = {
     mode: 'arena',
     team, enemies,
-    wave: 0, turn: 0, queue: null, round: 0, over: false,
+    wave: 0, turn: 0, activeIdx: 0, phase: 'ally', round: 0, over: false,
     totalExp: 0, totalBitz: 0,
   };
-  queuedSkill = null;
   showScreen('battle');
   setText('battle-title', '⚔️ Arena 3v3');
   setText('battle-wave', 'แมตช์เดี่ยว');
@@ -678,82 +676,153 @@ function startArena() {
 // lunge/hit classes and the swapped sprite src before the browser
 // paints a frame, which is why attacks used to look like nothing
 // happened. Use refreshBattleUnits() for per-turn updates instead.
+// VR2-style stage: ONE fighter per side, name plate + heart, no bars.
 function renderBattle() {
   if (!battle) return;
-  const side = (list, elId, isEnemy) => {
+  const side = (pet, elId, isEnemy) => {
     const wrap = $(elId);
     wrap.innerHTML = '';
-    list.forEach(pet => {
-      const s = statsOf(pet);
-      const a = ATTR[pet.attr];
-      const hpPct = clamp(Math.round(pet.hp / s.mhp * 100), 0, 100);
-      const unit = el('div','bunit');
-      unit.dataset.uid = pet.uid;
-      unit.dataset.side = isEnemy ? 'foe' : 'ally';
-      unit.style.setProperty('--attr', a.color);
-      // Desync the idle bob so the field doesn't pulse in unison
-      unit.style.setProperty('--float-delay', (Math.random() * 1.6).toFixed(2) + 's');
-      if (pet.hp <= 0) unit.classList.add('dead');
-      unit.innerHTML = `
-        <div class="bu-bar"><i style="width:${hpPct}%"></i></div>
-        <div class="bu-hp">${Math.max(0,pet.hp)}/${s.mhp}</div>
-        <div class="bu-sprite-wrap">
-          ${creatureMarkup(pet, 'bu-sprite float' + (isEnemy ? ' flip' : ''))}
-        </div>
-        <div class="bu-name">${a.icon} ${pet.name}</div>
-        <div class="bu-lv">Lv.${pet.level}</div>`;
-      wrap.appendChild(unit);
-    });
+    if (!pet) return;
+    const s = statsOf(pet);
+    const unit = el('div','bunit');
+    unit.dataset.uid = pet.uid;
+    unit.dataset.side = isEnemy ? 'foe' : 'ally';
+    unit.style.setProperty('--float-delay', (Math.random() * 1.6).toFixed(2) + 's');
+    if (pet.hp <= 0) unit.classList.add('dead');
+    unit.innerHTML = `
+      <div class="bu-sprite-wrap">
+        ${creatureMarkup(pet, 'bu-sprite float' + (isEnemy ? ' flip' : ''))}
+      </div>`;
+    wrap.appendChild(unit);
+
+    // Name plate lives outside the sprite so it never moves with a lunge
+    const plate = $(isEnemy ? 'plate-foe' : 'plate-ally');
+    if (plate) {
+      plate.innerHTML = `
+        <div class="np-name">${pet.name}</div>
+        <div class="np-lv">Lv.${pet.level}</div>
+        <div class="np-hp"><span class="np-heart">♥</span><b>${Math.max(0,pet.hp)}</b></div>`;
+    }
   };
-  side(battle.team, 'battle-allies', false);
-  side(battle.enemies, 'battle-enemies', true);
-  renderSkillBar();
+  side(activeAlly(), 'battle-allies', false);
+  side(activeFoe(),  'battle-enemies', true);
+  renderBench();
 }
 
-// Lightweight per-turn refresh: updates HP bars/text and dead state
-// on EXISTING elements, never touches innerHTML of a unit that's
-// mid-animation. Safe to call any time.
+// The ally currently fighting (one at a time, VR2 style)
+function activeAlly() {
+  if (!battle) return null;
+  const cur = battle.team[battle.activeIdx];
+  if (cur && cur.hp > 0) return cur;
+  return null;
+}
+function activeFoe() {
+  if (!battle) return null;
+  return battle.enemies.find(e => e.hp > 0) || null;
+}
+
+// Small row of your remaining VIRUZ under the stage
+function renderBench() {
+  const bench = $('battle-bench');
+  if (!bench || !battle) return;
+  bench.innerHTML = '';
+  battle.team.forEach((p, i) => {
+    const chip = el('div','bench-chip');
+    if (i === battle.activeIdx) chip.classList.add('active');
+    if (p.hp <= 0) chip.classList.add('down');
+    chip.innerHTML = `
+      ${creatureMarkup(p, 'bench-sprite')}
+      <span class="bench-hp">${Math.max(0,p.hp)}</span>`;
+    bench.appendChild(chip);
+  });
+}
+
 function refreshBattleUnits() {
   if (!battle) return;
-  [...battle.team, ...battle.enemies].forEach(pet => {
+  const a = activeAlly(), f = activeFoe();
+  [[a,'plate-ally'],[f,'plate-foe']].forEach(([pet, plateId]) => {
+    if (!pet) return;
+    const plate = $(plateId);
+    const b = plate && plate.querySelector('.np-hp b');
+    if (b) b.textContent = Math.max(0, pet.hp);
     const u = document.querySelector(`.bunit[data-uid="${pet.uid}"]`);
-    if (!u) return;
-    const s = statsOf(pet);
-    const hpPct = clamp(Math.round(pet.hp / s.mhp * 100), 0, 100);
-    const bar = u.querySelector('.bu-bar i');
-    const hpText = u.querySelector('.bu-hp');
-    if (bar) bar.style.width = hpPct + '%';
-    if (hpText) hpText.textContent = `${Math.max(0,pet.hp)}/${s.mhp}`;
-    u.classList.toggle('dead', pet.hp <= 0);
+    if (u) u.classList.toggle('dead', pet.hp <= 0);
+  });
+  renderBench();
+}
+
+// ── VR2 TURN BANNER ──
+// Grey pill announcing what is about to happen. Slides in, holds, fades.
+function showBanner(text, kind = '') {
+  return new Promise(resolve => {
+    const host = $('banner-layer');
+    if (!host) { resolve(); return; }
+    const b = el('div', 'turn-banner ' + kind, text);
+    host.appendChild(b);
+    const hold = 620 / battleSpeed;
+    setTimeout(() => {
+      b.classList.add('out');
+      setTimeout(() => { b.remove(); resolve(); }, 220 / battleSpeed);
+    }, hold);
   });
 }
 
-function renderSkillBar() {
-  const bar = $('skill-bar');
-  bar.innerHTML = '';
-  const alive = battle.team.filter(p => p.hp > 0);
-  alive.forEach(pet => {
-    availableSkills(pet).filter(s => s.special).forEach(sk => {
-      const btn = el('button','skill-btn');
-      const a = ATTR[pet.attr];
-      btn.style.setProperty('--attr', a.color);
-      const queued = queuedSkill && queuedSkill.petId === pet.uid && queuedSkill.skill.n === sk.n;
-      if (queued) btn.classList.add('queued');
-      btn.innerHTML = `
-        <span class="sb-owner">${a.icon} ${pet.name}</span>
-        <span class="sb-name">${sk.n}</span>
-        <span class="sb-pw">PWR ${sk.pw}</span>`;
-      btn.onclick = () => {
-        queuedSkill = queued ? null : { petId: pet.uid, skill: sk };
-        renderSkillBar();
-        if (queuedSkill) blog(`⭐ เตรียมใช้ ${sk.n} (${pet.name})`, 'buff');
-      };
-      bar.appendChild(btn);
-    });
-  });
-  if (!bar.children.length) {
-    bar.appendChild(el('div','muted','ยังไม่มีสกิลพิเศษที่ปลดล็อก'));
+// ── VR2 IMPACT BURST ──
+// White radiating streak lines across the stage + a yellow slash arc
+// at the contact point. This is what sells the hit in VR2 — the
+// effect crosses the field, not the fighter.
+function impactBurst(targetEl, crit) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  if (!layer || !stage || !targetEl) return;
+  const host = stage.getBoundingClientRect();
+  const r = targetEl.getBoundingClientRect();
+  const cx = r.left - host.left + r.width / 2;
+  const cy = r.top - host.top + r.height / 2;
+
+  const burst = el('div', 'impact-burst' + (crit ? ' crit' : ''));
+  burst.style.left = cx + 'px';
+  burst.style.top  = cy + 'px';
+
+  // radiating streak lines
+  let inner = '';
+  const n = crit ? 14 : 10;
+  for (let i = 0; i < n; i++) {
+    const ang = (360 / n) * i + (Math.random() * 12 - 6);
+    const len = 70 + Math.random() * 90;
+    inner += `<i class="streak" style="transform:rotate(${ang}deg);--len:${len}px"></i>`;
   }
+  // slash arc
+  inner += `<b class="slash"></b>`;
+  // sparks
+  for (let i = 0; i < (crit ? 10 : 6); i++) {
+    const ang = Math.random() * 360, dist = 30 + Math.random() * 55;
+    inner += `<s class="spark" style="--a:${ang}deg;--d:${dist}px"></s>`;
+  }
+  burst.innerHTML = inner;
+  layer.appendChild(burst);
+  setTimeout(() => burst.remove(), 620);
+}
+
+// ── VR2 DAMAGE NUMBER ──
+// Huge, red-orange, thick black stroke, tilted, scale-punch on entry.
+// Multi-hits stack a "× N" underneath. Crits append "!".
+function floatDamage(anchor, res) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  if (!layer || !stage || !anchor) return;
+  const host = stage.getBoundingClientRect();
+  const r = anchor.getBoundingClientRect();
+
+  const wrap = el('div', 'dmg-big' + (res.crit ? ' crit' : ''));
+  wrap.style.left = (r.left - host.left + r.width / 2) + 'px';
+  wrap.style.top  = (r.top - host.top + r.height * 0.18) + 'px';
+  wrap.style.setProperty('--tilt', (Math.random() * 14 - 7).toFixed(1) + 'deg');
+  wrap.innerHTML = `
+    <span class="dmg-num">${res.dmg}${res.crit ? '!' : ''}</span>
+    ${res.hits > 1 ? `<span class="dmg-mult">× ${res.hits}</span>` : ''}`;
+  layer.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 1100);
 }
 
 function scheduleTurn(delay) {
@@ -765,77 +834,71 @@ function scheduleTurn(delay) {
 // runTurn is async now: it AWAITS the attack animation before
 // scheduling the next turn, so animations can never be interrupted
 // or skipped by the next action firing early.
+// One-at-a-time duel loop. Your active VIRUZ trades blows with the
+// current antiviruz until one falls. No skill input — fully automatic,
+// paced so each hit is readable.
 async function runTurn() {
   if (!battle || battle.over) return;
 
-  // Build the round queue once per round, then consume it one actor
-  // at a time. Recomputing the order every turn (the old behaviour)
-  // made the index skip around as units died, so it looked like all
-  // three pets swung at once. A persistent queue guarantees strict
-  // one-at-a-time turns.
-  if (!battle.queue || !battle.queue.length) {
-    const units = [
-      ...battle.team.map(p => ({ pet: p, team: battle.team, foes: battle.enemies, side: 'ally' })),
-      ...battle.enemies.map(p => ({ pet: p, team: battle.enemies, foes: battle.team, side: 'foe' })),
-    ];
-    if (battle.mode === 'arena') {
-      // Arena: pure speed order, both sides interleaved.
-      battle.queue = turnOrder(units);
-    } else {
-      // Hack: your party acts in slot order first, then the antiviruz.
-      const allies = units.filter(u => u.side === 'ally' && u.pet.hp > 0);
-      const foes   = turnOrder(units.filter(u => u.side === 'foe'));
-      battle.queue = [...allies, ...foes];
+  const ally = activeAlly();
+  const foe  = activeFoe();
+
+  if (!ally) { promptSwap(); return; }
+  if (!foe)  { checkBattleEnd(); return; }
+
+  // Alternate: ally strikes, then foe strikes back.
+  const allyFirst = combatStats(ally, battle.team).spd >= combatStats(foe, battle.enemies).spd;
+  const seq = battle.phase === 'foe' ? [[foe, ally, 'foe']] : [[ally, foe, 'ally']];
+  battle.phase = battle.phase === 'foe' ? 'ally' : 'foe';
+
+  for (const [attacker, target, side] of seq) {
+    if (attacker.hp <= 0 || target.hp <= 0) continue;
+
+    await showBanner(side === 'ally' ? `${attacker.name} โจมตี!` : `${attacker.name} ตอบโต้!`,
+                     side === 'ally' ? 'ally' : 'foe');
+    if (!battle || battle.over) return;
+
+    const skills = availableSkills(attacker);
+    const skill = skills[Math.floor(Math.random() * skills.length)] || { n:'Strike', pw:35 };
+    const res = computeDamage(attacker, side==='ally'?battle.team:battle.enemies,
+                              target, side==='ally'?battle.enemies:battle.team,
+                              skill, !!skill.special);
+
+    if (res.crit) await showBanner('CRITICAL!!', 'crit');
+    if (!battle || battle.over) return;
+
+    await playAttack(attacker, target, res, side);
+    target.hp = Math.max(0, target.hp - res.dmg);
+    refreshBattleUnits();
+
+    let line = `${attacker.name} → ${skill.n}`;
+    if (res.hits > 1) line += ` ×${res.hits}`;
+    if (res.crit) line += ' CRIT';
+    line += ` · -${res.dmg}`;
+    blog(line, side);
+
+    if (target.hp <= 0) {
+      await showBanner(`${target.name} ถูกกำจัด`, 'ko');
+      const koEl = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
+      if (koEl) koEl.classList.add('dead');
+      break;
     }
-    battle.round = (battle.round || 0) + 1;
   }
 
-  const actor = battle.queue.shift();
-  battle.turn++;
-  if (!actor || actor.pet.hp <= 0) { scheduleTurn(120); return; }
+  if (checkBattleEnd()) return;
 
-  const targets = actor.foes.filter(p => p.hp > 0);
-  if (!targets.length) { checkBattleEnd(); return; }
-  const target = targets[Math.floor(Math.random() * targets.length)];
+  // If our fighter fell, let the player pick the next one.
+  if (!activeAlly() && battle.team.some(p => p.hp > 0)) { promptSwap(); return; }
+  // If the foe fell but more remain, refresh onto the next one.
+  if (!activeFoe()) { checkBattleEnd(); return; }
 
-  let skill, isSpecial = false;
-  if (actor.side === 'ally' && queuedSkill && queuedSkill.petId === actor.pet.uid) {
-    skill = queuedSkill.skill; isSpecial = true; queuedSkill = null; renderSkillBar();
-  } else {
-    const normals = availableSkills(actor.pet).filter(s => !s.special);
-    skill = normals[0] || availableSkills(actor.pet)[0] || { n:'Strike', pw:35 };
-  }
-
-  const res = computeDamage(actor.pet, actor.team, target, actor.foes, skill, isSpecial);
-
-  // Play the full animation (lunge in, impact, retreat) BEFORE
-  // touching HP/DOM state, so the hit always lands in sync with
-  // the visual, and refreshBattleUnits() never fights a rebuild.
-  await playAttack(actor.pet, target, res, actor.side);
-
-  target.hp = Math.max(0, target.hp - res.dmg);
-  refreshBattleUnits();
-
-  const tag = actor.side === 'ally' ? 'ally' : 'foe';
-  let line = `${ATTR[actor.pet.attr].icon} ${actor.pet.name} → ${skill.n}`;
-  if (isSpecial) line += ' ⭐';
-  if (res.hits > 1) line += ` ×${res.hits}`;
-  if (res.crit) line += ' 💥CRIT';
-  line += ` · -${res.dmg} HP`;
-  blog(line, tag);
-
-  if (target.hp <= 0) {
-    blog(`${target.name} ถูกกำจัด`, target.isEnemy ? 'ally' : 'foe');
-  }
-
-  if (!checkBattleEnd()) scheduleTurn();
+  renderBattle();
+  scheduleTurn();
 }
 
-// Attacker's sprite swaps to its attack gif and physically slides
-// toward the target's position, then snaps back; the target flashes
-// white and shakes on impact. Returns a Promise that resolves once
-// the whole sequence has finished, so runTurn can await it — nothing
-// re-renders mid-animation.
+// Attack sequence with hit-stop. Fighters barely travel — VR2 sells
+// the hit through the burst effect, not by crossing the field — so
+// the lunge is a short forward push and the burst does the rest.
 function playAttack(attacker, target, res, side) {
   return new Promise(resolve => {
     const stage = $('battle-stage');
@@ -844,32 +907,18 @@ function playAttack(attacker, target, res, side) {
     if (!aEl || !tEl || !stage) { resolve(); return; }
 
     const img = aEl.querySelector('.bu-sprite');
+    const dir = side === 'ally' ? 1 : -1;
 
-    // Compute how far to slide: distance between the two units,
-    // pulled in slightly so the attacker stops just short of contact.
-    const aRect = aEl.getBoundingClientRect();
-    const tRect = tEl.getBoundingClientRect();
-    const dx = (tRect.left + tRect.width / 2) - (aRect.left + aRect.width / 2);
-    const dy = (tRect.top  + tRect.height / 2) - (aRect.top  + aRect.height / 2);
-    const pullBack = 0.72; // stop at 72% of the way there
-    const travelX = dx * pullBack;
-    const travelY = dy * pullBack;
+    const windMs   = 220 / battleSpeed;   // pull back
+    const lungeMs  = 190 / battleSpeed;   // drive forward
+    const stopMs   =  90 / battleSpeed;   // hit-stop freeze
+    const returnMs = 300 / battleSpeed;
 
-    const lungeMs  = 520 / battleSpeed;
-    const holdMs   = 200 / battleSpeed;
-    const returnMs = 420 / battleSpeed;
-    const hitMs    = 480 / battleSpeed;
-
-    // Drive the CSS animation-duration from the same speed value the
-    // setTimeouts use, so at x2/x3 the visual motion actually speeds
-    // up instead of snapping (CSS durations were previously fixed
-    // while the JS timers scaled, causing a mismatch).
-    aEl.style.setProperty('--lunge-ms', lungeMs.toFixed(0) + 'ms');
+    aEl.style.setProperty('--wind-ms',   windMs.toFixed(0) + 'ms');
+    aEl.style.setProperty('--lunge-ms',  lungeMs.toFixed(0) + 'ms');
     aEl.style.setProperty('--return-ms', returnMs.toFixed(0) + 'ms');
-    tEl.style.setProperty('--hit-ms', hitMs.toFixed(0) + 'ms');
+    aEl.style.setProperty('--dir', dir);
 
-    // GIF creatures swap to their attack animation; SVG creatures
-    // use a CSS pose instead. Same call site handles both.
     const atkSpecies = SPECIES[attacker.speciesId];
     if (img) {
       img.classList.remove('float');
@@ -879,45 +928,78 @@ function playAttack(attacker, target, res, side) {
         img.setAttribute('src', gifURL(atkSpecies.gif, 'attack'));
       }
     }
-    aEl.style.setProperty('--tx', travelX.toFixed(1) + 'px');
-    aEl.style.setProperty('--ty', travelY.toFixed(1) + 'px');
-    aEl.classList.add('lunge-out');
 
+    // wind up, then lunge
+    aEl.classList.add('wind-up');
     setTimeout(() => {
-      // Impact: flash the target white, shake it, pop the damage number
-      tEl.classList.add('hit');
-      floatDamage(tEl, res);
-      setTimeout(() => tEl.classList.remove('hit'), hitMs);
+      aEl.classList.remove('wind-up');
+      aEl.classList.add('lunge-out');
 
-      // Attacker returns to its original spot
-      aEl.classList.remove('lunge-out');
-      aEl.classList.add('lunge-back');
       setTimeout(() => {
-        aEl.classList.remove('lunge-back');
-        if (img) {
-          img.classList.remove('attacking');
-          img.classList.add('float');
-          if (img.dataset.stillSrc) {
-            img.setAttribute('src', img.dataset.stillSrc);
-            delete img.dataset.stillSrc;
+        // ── CONTACT ──
+        impactBurst(tEl, res.crit);
+        floatDamage(tEl, res);
+        tEl.classList.add('hit');
+        stage.classList.add('shake' + (res.crit ? '-hard' : ''));
+
+        // Hit-stop: freeze everything briefly so the blow lands with weight
+        stage.classList.add('hitstop');
+        setTimeout(() => stage.classList.remove('hitstop'), stopMs);
+
+        setTimeout(() => {
+          tEl.classList.remove('hit');
+          stage.classList.remove('shake','shake-hard');
+        }, 380 / battleSpeed);
+
+        aEl.classList.remove('lunge-out');
+        aEl.classList.add('lunge-back');
+        setTimeout(() => {
+          aEl.classList.remove('lunge-back');
+          if (img) {
+            img.classList.remove('attacking');
+            img.classList.add('float');
+            if (img.dataset.stillSrc) {
+              img.setAttribute('src', img.dataset.stillSrc);
+              delete img.dataset.stillSrc;
+            }
           }
-        }
-        resolve();
-      }, returnMs);
-    }, lungeMs + holdMs);
+          resolve();
+        }, returnMs + stopMs);
+      }, lungeMs);
+    }, windMs);
   });
 }
 
-function floatDamage(anchor, res) {
-  const layer = $('fx-layer');
-  const rect = anchor.getBoundingClientRect();
-  const host = $('battle-stage').getBoundingClientRect();
-  const d = el('div','dmg-float', `-${res.dmg}${res.crit ? '!' : ''}`);
-  if (res.crit) d.classList.add('crit');
-  d.style.left = (rect.left - host.left + rect.width/2) + 'px';
-  d.style.top  = (rect.top - host.top + 10) + 'px';
-  layer.appendChild(d);
-  setTimeout(() => d.remove(), 900);
+// ── SWAP MENU ──
+// When your fighter falls, choose which VIRUZ steps up next.
+function promptSwap() {
+  if (!battle || battle.over) return;
+  clearTimeout(battleTimer);
+  const alive = battle.team.map((p,i) => ({p,i})).filter(x => x.p.hp > 0);
+  if (!alive.length) { endBattle(false); return; }
+
+  const host = $('swap-menu');
+  if (!host) { battle.activeIdx = alive[0].i; renderBattle(); scheduleTurn(400); return; }
+  host.innerHTML = `<div class="swap-title">เลือก VIRUZ ตัวถัดไป</div>`;
+  const row = el('div','swap-row');
+  alive.forEach(({p,i}) => {
+    const s = statsOf(p);
+    const card = el('button','swap-card');
+    card.innerHTML = `
+      ${creatureMarkup(p, 'swap-sprite')}
+      <div class="swap-name">${p.name}</div>
+      <div class="swap-hp">♥ ${p.hp}/${s.mhp}</div>`;
+    card.onclick = () => {
+      host.classList.remove('on');
+      battle.activeIdx = i;
+      battle.phase = 'ally';
+      renderBattle();
+      showBanner(`${p.name} ออกสู้!`, 'ally').then(() => scheduleTurn(200));
+    };
+    row.appendChild(card);
+  });
+  host.appendChild(row);
+  host.classList.add('on');
 }
 
 function startRegen() {
@@ -960,7 +1042,7 @@ function checkBattleEnd() {
       battle.wave++;
       battle.enemies = battle.run.waves[battle.wave];
       battle.turn = 0;
-      battle.queue = null;   // rebuild order for the new wave
+      battle.phase = 'ally';
       setText('battle-wave', `คลื่น ${battle.wave+1} / ${battle.run.waveCount}`);
       blog(`คลื่นถัดไป (${battle.wave+1}/${battle.run.waveCount}) — HP คงเดิม`, 'sys');
       renderBattle();

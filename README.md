@@ -44,15 +44,29 @@ Species use one of two art sources. The renderer picks automatically.
 To replace an SVG species with real art later, just add `gif:'<folder>'`
 to it — the `shape` becomes an automatic fallback. No renderer changes.
 
-## Attribute tinting
+## Creature palettes
 
-Each attribute in `ATTR` (src/data.js) has a `hue` block:
+Colour is creature IDENTITY, not attribute. Each SVG species names a
+palette from `PALETTES` in `src/sprites.js`:
 
-    hue: { rotate: -18, sat: 1.85, bright: .95 }
+    blobyte: { shape:'royalslime', palette:'slime_royal', ... }
 
-GIF art is tinted with a CSS filter built from these values; SVG
-creatures use the attribute `color` directly for their fills. Tune the
-numbers there to shift a whole attribute's palette.
+Attributes still drive stats and synergy — they just don't recolour
+the art, so a blue whale stays blue whether it rolls Red or Green.
+
+## Battle system
+
+Fights are fully automatic, one VIRUZ per side at a time (VR2 style).
+When your active fighter falls, a menu lets you pick who steps up next.
+There are no skill buttons — attacks are chosen automatically.
+
+Presentation tuning lives in two places:
+- `TUNING.turnBaseMs` (src/data.js) — gap between exchanges
+- `playAttack()` (src/game.js) — wind-up / lunge / hit-stop / return timings
+
+The attack sequence is: turn banner → wind-up (pull back) → lunge →
+contact (impact burst + giant damage number + hit-stop freeze + screen
+shake) → return.
 
 Attributes are rolled randomly at hatch. To pin one, add `fixedAttr:'red'` to the species.
 
