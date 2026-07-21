@@ -212,6 +212,145 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .hc-desc{font-size:13px;color:var(--muted);margin-bottom:6px}
 .hc-meta{display:flex;gap:12px;font-size:12px;color:var(--muted)}
 
+/* ── PET CARD EXTRAS (exp, loyalty, signature) ── */
+.pc-cap{color:var(--muted);font-size:9px}
+.pc-xpbar{height:3px;background:rgba(0,0,0,.55);border:1px solid var(--line);
+  overflow:hidden;margin:3px 0 1px}
+.pc-xpbar i{display:block;height:100%;background:var(--gold);transition:width .3s}
+.pc-xp{font-size:9px;color:var(--muted);margin-bottom:3px}
+.pc-loy{font-size:10px;color:var(--txt);display:flex;align-items:center;gap:5px;
+  margin-top:4px;padding-top:4px;border-top:1px solid var(--line)}
+.pc-loy-bar{flex:1;height:3px;background:rgba(0,0,0,.55);border:1px solid var(--line);
+  overflow:hidden}
+.pc-loy-bar i{display:block;height:100%;
+  background:linear-gradient(90deg,#ff6a8a,#ff2d55)}
+.pc-sig{font-size:9px;color:#ffd23f;margin-top:3px;
+  text-shadow:0 0 8px rgba(255,210,63,.5)}
+
+/* ── CARE SCREEN ── */
+#care-picker{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px}
+.care-chip{flex:0 0 auto;width:64px;padding:6px 4px;background:var(--panel2);
+  border:1px solid var(--line);text-align:center;transition:.12s;
+  clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%)}
+.care-chip.on{border-color:var(--cyan);box-shadow:0 0 12px rgba(55,230,255,.3)}
+.care-chip-sprite{width:44px;height:44px;display:block;margin:0 auto}
+.care-chip span{font-size:9px;color:var(--muted);display:block;margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+#care-head{position:relative;display:flex;gap:14px;align-items:center;
+  padding:14px;background:var(--panel);border:1px solid var(--line2);
+  margin-bottom:12px;overflow:hidden}
+.care-portrait{flex:0 0 auto}
+.care-sprite{width:92px;height:92px;display:block}
+.care-info{flex:1;min-width:0}
+.care-name{font-size:15px;margin-bottom:3px}
+.care-tier{font-size:13px;margin-bottom:6px}
+.care-tier i{font-size:11px;color:var(--muted);font-style:normal}
+.loy-bar{height:8px;background:rgba(0,0,0,.5);border:1px solid var(--line);
+  overflow:hidden;margin-bottom:4px}
+.loy-bar i{display:block;height:100%;
+  background:linear-gradient(90deg,#ff6a8a,#ff2d55);transition:width .4s}
+.care-next{font-size:11px;color:var(--muted)}
+.care-perk{font-size:11px;color:#ffd23f;margin-top:5px;line-height:1.5}
+.care-particle{position:absolute;bottom:10px;font-size:20px;pointer-events:none;
+  animation:careFloat 1.2s ease-out forwards}
+@keyframes careFloat{
+  0%{opacity:0;transform:translateY(0) scale(.5)}
+  25%{opacity:1;transform:translateY(-18px) scale(1.15)}
+  100%{opacity:0;transform:translateY(-70px) scale(.9)}}
+
+.care-card{padding:10px;background:var(--panel2);border:1px solid var(--line);
+  text-align:center;transition:.12s;
+  clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}
+.care-card.cooling{opacity:.55}
+.cc-icon{font-size:26px;margin-bottom:4px}
+.cc-name{font-size:12px;margin-bottom:2px}
+.cc-loy{font-size:11px;color:#ff6a8a;margin-bottom:2px}
+.cc-stock{font-size:10px;color:var(--muted);margin-bottom:6px}
+.cc-cd{font-size:11px;color:var(--gold)}
+.cc-action{min-height:28px;display:flex;align-items:center;justify-content:center}
+
+/* ── WORLD MAP ── */
+.world-sub{font-size:12px;color:var(--muted)}
+#world-tabs{display:flex;gap:8px;margin-bottom:10px}
+.map-tab{font-family:var(--pixel);font-size:8px;padding:8px 12px;
+  border:1px solid var(--line);background:var(--panel);color:var(--muted);
+  clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%)}
+.map-tab.on{border-color:var(--cyan);color:var(--cyan);
+  box-shadow:0 0 14px rgba(55,230,255,.22)}
+#world-stage{position:relative;width:100%;aspect-ratio:9/16;max-height:74vh;
+  overflow:hidden;border:1px solid var(--line2);background:#05060f}
+#world-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#world-scrim{position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 50%,transparent 45%,rgba(4,6,14,.5) 100%)}
+#world-pins{position:absolute;inset:0}
+
+.zone-pin{position:absolute;transform:translate(-50%,-50%);
+  display:flex;flex-direction:column;align-items:center;gap:3px;z-index:2}
+.pin-dot{width:16px;height:16px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.9);animation:pinPulse 2.2s infinite}
+.zone-pin.battle .pin-dot{background:#f0442c;
+  box-shadow:0 0 0 4px rgba(240,68,44,.25),0 0 14px rgba(240,68,44,.8)}
+.zone-pin.safe .pin-dot{background:#5cd65c;
+  box-shadow:0 0 0 4px rgba(92,214,92,.25),0 0 14px rgba(92,214,92,.8)}
+.zone-pin.hard .pin-dot{background:#8a1f1f;
+  box-shadow:0 0 0 4px rgba(138,31,31,.3),0 0 12px rgba(138,31,31,.7)}
+@keyframes pinPulse{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.22)}}
+.pin-card{display:flex;flex-direction:column;align-items:center;
+  padding:4px 9px;background:rgba(6,10,20,.9);border:1px solid rgba(140,190,255,.45);
+  backdrop-filter:blur(3px);white-space:nowrap;transition:.14s;
+  clip-path:polygon(0 0,calc(100% - 5px) 0,100% 5px,100% 100%,0 100%)}
+.pin-card b{font-family:var(--pixel);font-size:6.5px;letter-spacing:.4px;color:#eaf4ff}
+.pin-card i{font-size:10px;color:var(--muted);font-style:normal}
+.pin-card em{font-size:10px;font-style:normal;color:var(--cyan)}
+.zone-pin.safe .pin-card em{color:var(--green)}
+.zone-pin.hard .pin-card em{color:#ff6a6a}
+.zone-pin:hover .pin-card,.zone-pin:active .pin-card{
+  border-color:var(--cyan);transform:translateY(-2px);
+  box-shadow:0 0 16px rgba(55,230,255,.35)}
+
+/* zone briefing modal */
+.zone-brief{font-size:13px}
+.zb-desc{color:var(--muted);margin-bottom:10px;line-height:1.6}
+.zb-meta{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);
+  padding:8px;border:1px solid var(--line);margin-bottom:10px}
+.zb-meta b{color:var(--cyan);font-weight:400}
+.zb-mons{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.zb-mon{width:76px;text-align:center;padding:6px;
+  background:rgba(6,10,22,.6);border:1px solid var(--line)}
+.zb-sprite{width:56px;height:56px;display:block;margin:0 auto}
+.zb-mon span{font-size:10px;color:var(--muted)}
+.zb-warn{padding:8px;border:1px solid #8a1f1f;background:rgba(138,31,31,.15);
+  color:#ff9a9a;font-size:12px;margin-bottom:8px}
+
+/* ── SAFE SPOT ── */
+.sc-owned{font-size:11px;color:var(--green);margin-bottom:6px}
+
+/* ── COMBAT POTIONS ── */
+#potion-bar{display:flex;gap:8px;justify-content:center;padding:8px 12px;
+  background:var(--panel);border-top:1px solid var(--line);min-height:44px;
+  align-items:center}
+.potion-btn{position:relative;width:44px;height:36px;
+  border:1px solid var(--line2);background:var(--panel2);transition:.12s;
+  display:flex;align-items:center;justify-content:center;
+  clip-path:polygon(0 0,calc(100% - 5px) 0,100% 5px,100% 100%,0 100%)}
+.potion-btn:hover{border-color:var(--green);
+  box-shadow:0 0 12px rgba(61,220,132,.3);transform:translateY(-2px)}
+.pb-icon{font-size:19px}
+.pb-n{position:absolute;bottom:-1px;right:2px;font-size:10px;color:var(--gold)}
+.potion-empty{font-size:11px;color:var(--muted)}
+.heal-pop{position:absolute;transform:translate(-50%,-50%);z-index:9;
+  font-family:var(--pixel);font-size:26px;color:#4ee88a;
+  -webkit-text-stroke:4px #0d2416;paint-order:stroke fill;
+  animation:healRise 1s ease-out forwards;pointer-events:none}
+@keyframes healRise{
+  0%{opacity:0;transform:translate(-50%,-40%) scale(.5)}
+  20%{opacity:1;transform:translate(-50%,-55%) scale(1.15)}
+  35%{transform:translate(-50%,-52%) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-90%) scale(.9)}}
+
 /* ── BATTLE ── */
 #screen-battle{padding:0}
 #battle-top{display:flex;align-items:center;gap:10px;padding:10px 12px;
@@ -276,6 +415,9 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .turn-banner.out{animation:bannerOut .22s ease-in both}
 .turn-banner.crit{background:rgba(180,40,40,.95);font-weight:bold;letter-spacing:2.5px}
 .turn-banner.ko{background:rgba(30,34,42,.95)}
+.turn-banner.sig{background:linear-gradient(90deg,rgba(160,90,20,.95),rgba(200,140,30,.95));
+  border-color:#ffd23f;color:#fff8e0;letter-spacing:2px;
+  box-shadow:0 0 18px rgba(255,210,63,.5)}
 @keyframes bannerIn{from{opacity:0;transform:translateY(-12px) scale(.9)}to{opacity:1;transform:none}}
 @keyframes bannerOut{to{opacity:0;transform:translateY(-8px) scale(.96)}}
 
@@ -308,6 +450,54 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .impact-burst.crit .slash{border-top-color:#fff;border-right-color:#ffd23f;
   width:120px;height:120px;left:-60px;top:-60px}
 
+/* ── CRIT ATTACK: attacker swells and slams ── */
+.bunit.crit-attack{ z-index:7 !important; }
+.bunit.crit-attack.wind-up{ animation-name: windUpCrit; }
+@keyframes windUpCrit{
+  0%   { transform: translateX(0) scale(1); }
+  100% { transform: translateX(calc(var(--dir,1) * -22px)) scale(1.35,1.28); }
+}
+.bunit.crit-attack.lunge-out{ animation-name: lungeOutCrit; }
+@keyframes lungeOutCrit{
+  0%   { transform: translateX(calc(var(--dir,1) * -22px)) scale(1.35,1.28); }
+  100% { transform: translateX(calc(var(--dir,1) * 62px)) scale(1.45,1.2); }
+}
+.bunit.crit-attack.lunge-back{ animation-name: lungeBackCrit; }
+@keyframes lungeBackCrit{
+  0%   { transform: translateX(calc(var(--dir,1) * 62px)) scale(1.45,1.2); }
+  100% { transform: translateX(0) scale(1); }
+}
+
+/* ── POW! comic burst on crits ── */
+.pow-burst{position:absolute;z-index:10;transform:translate(-50%,-50%);
+  width:0;height:0;pointer-events:none;
+  animation:powPop .78s cubic-bezier(.2,1.8,.4,1) forwards}
+.pow-star{position:absolute;left:-72px;top:-72px;width:144px;height:144px;
+  background:
+    conic-gradient(from 0deg,
+      #ffd23f 0 8deg, transparent 8deg 22deg, #ffd23f 22deg 30deg,
+      transparent 30deg 45deg, #ffb02e 45deg 53deg, transparent 53deg 68deg,
+      #ffd23f 68deg 76deg, transparent 76deg 90deg, #ffb02e 90deg 98deg,
+      transparent 98deg 113deg, #ffd23f 113deg 121deg, transparent 121deg 135deg,
+      #ffb02e 135deg 143deg, transparent 143deg 158deg, #ffd23f 158deg 166deg,
+      transparent 166deg 180deg, #ffb02e 180deg 188deg, transparent 188deg 203deg,
+      #ffd23f 203deg 211deg, transparent 211deg 225deg, #ffb02e 225deg 233deg,
+      transparent 233deg 248deg, #ffd23f 248deg 256deg, transparent 256deg 270deg,
+      #ffb02e 270deg 278deg, transparent 278deg 293deg, #ffd23f 293deg 301deg,
+      transparent 301deg 315deg, #ffb02e 315deg 323deg, transparent 323deg 338deg,
+      #ffd23f 338deg 346deg, transparent 346deg 360deg);
+  border-radius:50%;filter:drop-shadow(0 0 10px rgba(255,190,60,.75))}
+.pow-text{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(var(--spin,-6deg));
+  font-family:var(--pixel);font-size:30px;color:#fff;white-space:nowrap;
+  -webkit-text-stroke:7px #c21f1f;paint-order:stroke fill;
+  text-shadow:0 4px 0 rgba(0,0,0,.4)}
+@keyframes powPop{
+  0%   {opacity:0;transform:translate(-50%,-50%) scale(.25) rotate(-25deg)}
+  22%  {opacity:1;transform:translate(-50%,-50%) scale(1.3) rotate(6deg)}
+  40%  {transform:translate(-50%,-50%) scale(1.05) rotate(-2deg)}
+  75%  {opacity:1;transform:translate(-50%,-50%) scale(1) rotate(0)}
+  100% {opacity:0;transform:translate(-50%,-58%) scale(1.1)}}
+
 /* ── GIANT DAMAGE NUMBERS ── */
 .dmg-big{position:absolute;z-index:9;transform:translate(-50%,-50%);
   display:flex;flex-direction:column;align-items:center;pointer-events:none;
@@ -320,7 +510,9 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .dmg-mult{font-family:var(--pixel);font-size:22px;color:#ffd23f;
   -webkit-text-stroke:4px #14100c;paint-order:stroke fill;margin-top:2px;
   transform:rotate(var(--tilt,-5deg))}
-.dmg-big.crit .dmg-num{font-size:70px;color:#ff6a1e}
+.dmg-big.crit .dmg-num{font-size:76px;color:#ff1f1f;
+  -webkit-text-stroke:8px #2b0505;
+  text-shadow:0 0 22px rgba(255,40,40,.7),0 8px 0 rgba(0,0,0,.4)}
 @keyframes dmgPunch{
   0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}
   18%{opacity:1;transform:translate(-50%,-56%) scale(1.25)}
@@ -594,6 +786,7 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
     <div class="screen-head">
       <button class="back-btn" data-goto="map">← กลับ</button>
       <h2>🏠 ฐานของคุณ</h2>
+      <button class="btn small primary" data-goto="care" style="margin-left:auto">💗 ดูแล VIRUZ</button>
     </div>
 
     <div class="section">
@@ -650,15 +843,56 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
   </section>
 
   <!-- ═══ HACK ═══ -->
-  <section id="screen-hack" class="screen">
+  <section id="screen-world" class="screen">
     <div class="screen-head">
       <button class="back-btn" data-goto="map">← กลับ</button>
-      <h2>📡 Data Center — เลือกเป้าหมาย</h2>
+      <h2>🗺️ <span id="world-name">—</span></h2>
+      <span class="world-sub"><span id="world-thai"></span> · <span id="world-lv"></span></span>
     </div>
-    <p class="muted" style="margin-bottom:10px">
-      เจาะเข้าเครื่องเป้าหมาย ปะทะแอนตี้ไวรัสเป็นคลื่น — HP ไม่ฟื้นระหว่างคลื่น
+    <div id="world-tabs"></div>
+    <div id="world-stage">
+      <video id="world-video" muted loop playsinline autoplay></video>
+      <div id="world-scrim"></div>
+      <div id="world-pins"></div>
+    </div>
+    <p class="muted" style="margin-top:8px">
+      แตะจุดสีแดงเพื่อเข้าสู้ · จุดสีเขียวคือที่พักปลอดภัย
     </p>
-    <div id="hack-list"></div>
+  </section>
+
+  <!-- ═══ CARE / TAMAGOTCHI ═══ -->
+  <section id="screen-care" class="screen">
+    <div class="screen-head">
+      <button class="back-btn" data-goto="home">← กลับ</button>
+      <h2>💗 ดูแล VIRUZ</h2>
+      <span class="world-sub">เล่นกับเพื่อนเพื่อเพิ่มความผูกพัน</span>
+    </div>
+    <div id="care-picker"></div>
+    <div id="care-head"></div>
+    <div class="section">
+      <div class="section-title">// กิจกรรม — แต่ละอย่างรอ 1 ชม. //</div>
+      <div id="care-acts" class="grid"></div>
+    </div>
+  </section>
+
+  <!-- ═══ SAFE SPOT ═══ -->
+  <section id="screen-safe" class="screen">
+    <div class="screen-head">
+      <button class="back-btn" data-goto="world">← กลับสู่แผนที่</button>
+      <h2>🔥 <span id="safe-name">—</span></h2>
+      <span class="world-sub" id="safe-thai"></span>
+    </div>
+    <div class="section">
+      <div class="section-title">// พักฟื้น //</div>
+      <p class="muted" style="margin-bottom:8px">
+        พักที่นี่เพื่อฟื้น HP ของ VIRUZ ทุกตัวจนเต็ม
+      </p>
+      <button id="safe-rest" class="btn wide primary"></button>
+    </div>
+    <div class="section">
+      <div class="section-title">// ร้านยา — ใช้ได้ระหว่างต่อสู้ //</div>
+      <div id="safe-potions" class="grid"></div>
+    </div>
   </section>
 
   <!-- ═══ BATTLE ═══ -->
@@ -679,6 +913,7 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
       <div id="fx-layer"></div>
       <div id="swap-menu"></div>
     </div>
+    <div id="potion-bar"></div>
     <div id="battle-bench"></div>
     <div id="battle-log"></div>
     <div id="battle-ctrl">

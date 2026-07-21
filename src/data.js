@@ -324,47 +324,228 @@ export const SPECIES_KEYS = Object.keys(SPECIES);
 
 // ── HACK TARGETS (dungeons) ──
 // Sequential waves. HP carries over between waves.
-export const HACK_TARGETS = [
+// ── WORLD MAPS ──
+// Each map has a looping video background and clickable pin locations.
+// Pin x/y are PERCENTAGES of the video frame so they scale on any screen.
+// Coordinates were measured directly from the marked reference images.
+export const MAPS = [
   {
-    id:'pc_home', name:'💻 Personal PC', tier:'EASY', color:'#3ddc84',
-    desc:'คอมพิวเตอร์ส่วนตัว ระบบป้องกันอ่อน',
-    waves:[1,2], enemyLv:[1,6], pool:['guard_lite','sniffer','net_probe'],
-    reward:{ bitzMult:1.0, expMult:1.0 },
+    id:'forest', name:'Verdant Realm', thai:'ดินแดนพงไพร',
+    video:'assets/maps/forest.mp4', poster:'assets/maps/forest.jpg',
+    levelRange:[1,50],
+    desc:'ดินแดนเริ่มต้น — ป่า ภูเขา ทะเลทราย และเกาะกลางทะเล',
   },
   {
-    id:'pc_office', name:'🖥️ Office Workstation', tier:'NORMAL', color:'#4fc3f7',
-    desc:'เครื่องทำงานในออฟฟิศ มีแอนตี้ไวรัสพื้นฐาน',
-    waves:[2,3], enemyLv:[6,16], pool:['guard_lite','sniffer','heur_scan','net_probe'],
-    reward:{ bitzMult:1.6, expMult:1.5 },
-  },
-  {
-    id:'srv_corp', name:'🏢 Corporate Server', tier:'HARD', color:'#ce93d8',
-    desc:'เซิร์ฟเวอร์บริษัท ป้องกันหลายชั้น',
-    waves:[3,4], enemyLv:[16,34], pool:['heur_scan','sentinel_av','packet_wall','flux_turret'],
-    reward:{ bitzMult:2.4, expMult:2.2 },
-  },
-  {
-    id:'srv_bank', name:'🏦 Banking Core', tier:'EXTREME', color:'#ffd54a',
-    desc:'แกนระบบธนาคาร ป้องกันระดับสูงสุด',
-    waves:[4,5], enemyLv:[34,60], pool:['sentinel_av','packet_wall','root_guard','aegis_core','ward_bastion'],
-    reward:{ bitzMult:3.5, expMult:3.2 },
+    id:'hell', name:'Infernal Realm', thai:'ดินแดนนรก',
+    video:'assets/maps/hell.mp4', poster:'assets/maps/hell.jpg',
+    levelRange:[51,100],
+    desc:'ดินแดนขั้นสูง — ลาวา ปีศาจ และปราสาทจอมมาร',
   },
 ];
 
-// ── ANTIVIRUZ (enemies) ──
-// `attr` may be null → rolled at spawn.
+// ── ZONES ──
+// `kind:'battle'` = fight zone, `kind:'safe'` = rest + shop.
+// `order` drives the recommended progression path drawn on the map.
+export const ZONES = [
+  // ══ FOREST (Lv 1-50) ══
+  { id:'f_forest',   map:'forest', kind:'battle', order:1,
+    name:'The Forest', thai:'ป่าใหญ่', x:34.69, y:14.80,
+    lv:[1,3], waves:[1,2], pool:['greenworm','beetle'],
+    reward:{ bitzMult:1.0, expMult:1.0 },
+    desc:'ป่าทึบ จุดเริ่มต้นของการผจญภัย' },
+
+  { id:'f_mountain', map:'forest', kind:'battle', order:2,
+    name:'The Mountain', thai:'ภูเขา', x:36.25, y:39.77,
+    lv:[4,9], waves:[2,2], pool:['beetle','stone_imp'],
+    reward:{ bitzMult:1.3, expMult:1.25 },
+    desc:'ทางลาดชัน มีสัตว์หินอาศัยอยู่' },
+
+  { id:'f_riverfall', map:'forest', kind:'battle', order:3,
+    name:'Riverfall Mountain', thai:'ภูเขาน้ำตก', x:74.56, y:31.00,
+    lv:[10,16], waves:[2,3], pool:['kappa','stone_imp'],
+    reward:{ bitzMult:1.6, expMult:1.5 },
+    desc:'น้ำตกสูง อากาศชื้นและหมอกหนา' },
+
+  { id:'f_wolfden',  map:'forest', kind:'battle', order:4,
+    name:'The Wolf Den', thai:'ถ้ำหมาป่า', x:85.52, y:53.19,
+    lv:[17,24], waves:[2,3], pool:['fang_stalker','kappa'],
+    reward:{ bitzMult:1.9, expMult:1.8 },
+    desc:'ถ้ำมืด กลิ่นสัตว์ร้ายคละคลุ้ง' },
+
+  { id:'f_desert',   map:'forest', kind:'battle', order:5,
+    name:'The Desert', thai:'ทะเลทราย', x:48.76, y:68.18,
+    lv:[25,32], waves:[3,3], pool:['sand_worm','sand_turtle'],
+    reward:{ bitzMult:2.2, expMult:2.1 },
+    desc:'ผืนทรายร้อนระอุ ไร้ที่กำบัง' },
+
+  { id:'f_oasis',    map:'forest', kind:'battle', order:6,
+    name:'The Oasis', thai:'โอเอซิส', x:24.59, y:69.05,
+    lv:[33,41], waves:[3,4], pool:['oasis_otter','rainbow_frog'],
+    reward:{ bitzMult:2.6, expMult:2.4 },
+    desc:'บ่อน้ำกลางทะเลทราย — ดูสงบเกินจริง' },
+
+  { id:'f_island',   map:'forest', kind:'battle', order:7,
+    name:'The Island', thai:'เกาะร้าง', x:26.43, y:91.04,
+    lv:[42,50], waves:[3,4], pool:['flying_fish','island_monkey'],
+    reward:{ bitzMult:3.0, expMult:2.8 },
+    desc:'เกาะโดดเดี่ยวกลางทะเล บทสุดท้ายของดินแดนนี้' },
+
+  { id:'f_harbor',   map:'forest', kind:'safe', order:0,
+    name:'Harbor Village', thai:'หมู่บ้านท่าเรือ', x:82.11, y:84.84,
+    desc:'พักฟื้น VIRUZ และซื้อยา' },
+
+  // ══ HELL (Lv 51-100) ══
+  { id:'h_village',  map:'hell', kind:'battle', order:1,
+    name:'Outer Ruined Village', thai:'หมู่บ้านร้างชั้นนอก', x:76.71, y:88.18,
+    lv:[51,58], waves:[2,3], pool:['goblin_grunt','goblin_miner'],
+    reward:{ bitzMult:3.4, expMult:3.2 },
+    desc:'ซากหมู่บ้านที่ถูกเผาจนราบ' },
+
+  { id:'h_crossroads', map:'hell', kind:'battle', order:2,
+    name:'The Crossroads', thai:'สี่แยกนรก', x:59.24, y:75.34,
+    lv:[59,66], waves:[3,3], pool:['goblin_miner','black_beast'],
+    reward:{ bitzMult:3.8, expMult:3.6 },
+    desc:'ทางแยกกลางธารลาวา' },
+
+  { id:'h_beastden', map:'hell', kind:'battle', order:3,
+    name:'Demonbeast Den', thai:'รังอสูรสัตว์', x:83.36, y:63.15,
+    lv:[67,74], waves:[3,4], pool:['black_beast','rock_golem'],
+    reward:{ bitzMult:4.3, expMult:4.0 },
+    desc:'ฝูงอสูรสัตว์รวมตัวกันอยู่' },
+
+  { id:'h_quarter',  map:'hell', kind:'battle', order:4,
+    name:'Servant Demon Quarter', thai:'เขตปีศาจรับใช้', x:49.93, y:51.65,
+    lv:[75,82], waves:[3,4], pool:['hobgoblin','fire_golem'],
+    reward:{ bitzMult:4.8, expMult:4.5 },
+    desc:'หอคอยกลางทะเลลาวา ที่พำนักของปีศาจรับใช้' },
+
+  { id:'h_manor',    map:'hell', kind:'battle', order:5,
+    name:'Vice Manor Castle', thai:'ปราสาทอุปราช', x:81.82, y:34.54,
+    lv:[83,90], waves:[4,4], pool:['butler_vamp','vampire_lady'],
+    reward:{ bitzMult:5.4, expMult:5.0 },
+    desc:'ปราสาทของรองจอมมาร' },
+
+  { id:'h_castle',   map:'hell', kind:'battle', order:6,
+    name:'Demon Lord Castle', thai:'ปราสาทจอมมาร', x:34.70, y:14.82,
+    lv:[91,100], waves:[4,5], pool:['vampire_lord','vampire_lady','butler_vamp'],
+    reward:{ bitzMult:6.5, expMult:6.0 },
+    desc:'ที่สุดของดินแดนนรก — จอมมารรออยู่' },
+
+  { id:'h_campfire', map:'hell', kind:'safe', order:0,
+    name:'Crossroads Campfire', thai:'กองไฟสี่แยก', x:29.98, y:87.78,
+    desc:'กองไฟปลอดภัย พักฟื้นและซื้อยา' },
+];
+
+export function zonesOfMap(mapId) {
+  return ZONES.filter(z => z.map === mapId);
+}
+export function zoneById(id) {
+  return ZONES.find(z => z.id === id) || null;
+}
+
+// ── MONSTERS ──
+// Themed per region. `attr` may be null → rolled at spawn.
+// Stats are BASE values; spawnAntiviruz() scales them by level.
 export const ANTIVIRUZ = {
-  guard_lite:  { id:'guard_lite',  name:'GuardLite',   shape:'shield', palette:'av_shield',   base:{atk:15,def:8, spd:9,  mhp:44}, attr:'yellow' },
-  sniffer:     { id:'sniffer',     name:'Sniffer',     shape:'scanner', palette:'av_scanner',  base:{atk:18,def:5, spd:14, mhp:36}, attr:'green'  },
-  heur_scan:   { id:'heur_scan',   name:'HeurScan',    shape:'scanner', palette:'av_scanner',  base:{atk:20,def:9, spd:12, mhp:50}, attr:null     },
-  sentinel_av: { id:'sentinel_av', name:'SentinelAV',  shape:'sentinel', palette:'av_sentinel', base:{atk:22,def:14,spd:8,  mhp:66}, attr:'yellow' },
-  packet_wall: { id:'packet_wall', name:'PacketWall',  shape:'shield', palette:'av_shield',   base:{atk:19,def:18,spd:6,  mhp:80}, attr:'yellow' },
-  root_guard:  { id:'root_guard',  name:'RootGuard',   shape:'turret', palette:'av_turret',   base:{atk:28,def:12,spd:15, mhp:72}, attr:'red'    },
-  net_probe:   { id:'net_probe',   name:'NetProbe',    shape:'scanner', palette:'av_scanner',  base:{atk:17,def:7, spd:16, mhp:38}, attr:'green'  },
-  aegis_core:  { id:'aegis_core',  name:'AegisCore',   shape:'sentinel', palette:'av_sentinel', base:{atk:26,def:16,spd:10, mhp:78}, attr:null     },
-  flux_turret: { id:'flux_turret', name:'FluxTurret',  shape:'turret', palette:'av_turret',   base:{atk:30,def:10,spd:13, mhp:64}, attr:'red'    },
-  ward_bastion:{ id:'ward_bastion',name:'WardBastion', shape:'shield', palette:'av_shield',   base:{atk:24,def:20,spd:7,  mhp:92}, attr:'yellow' },
+  // ══ FOREST ══
+  // Hand-drawn art (assets/sprites/<gif>/still.png + attack.png).
+  // Placement follows habitat: bugs in the woods, a kappa at the
+  // waterfall, reptiles in the sand, otter/frog at the water, and
+  // island wildlife out at sea.
+  greenworm:    { id:'greenworm',    name:'GreenWorm',   gif:'greenworm',     ext:'png', base:{atk:15,def:7, spd:10, mhp:38}, attr:'green'  },
+  beetle:       { id:'beetle',       name:'JadeBeetle',  gif:'beetle',        ext:'png', base:{atk:18,def:12,spd:9,  mhp:48}, attr:'yellow' },
+  stone_imp:    { id:'stone_imp',    name:'StoneImp',    shape:'steelcrab',   palette:'steel_crab',   base:{atk:19,def:14,spd:8,  mhp:58}, attr:'yellow' },
+  kappa:        { id:'kappa',        name:'Kappa',       gif:'kappa',         ext:'png', base:{atk:23,def:13,spd:14, mhp:60}, attr:null     },
+  fang_stalker: { id:'fang_stalker', name:'FangStalker', shape:'shadowbat',   palette:'shadow_bat',   base:{atk:26,def:10,spd:17, mhp:54}, attr:'red'    },
+  sand_worm:    { id:'sand_worm',    name:'SandWorm',    gif:'sand_worm',     ext:'png', base:{atk:30,def:12,spd:13, mhp:68}, attr:'yellow' },
+  sand_turtle:  { id:'sand_turtle',  name:'SandTurtle',  gif:'sand_turtle',   ext:'png', base:{atk:26,def:22,spd:7,  mhp:88}, attr:'yellow' },
+  oasis_otter:  { id:'oasis_otter',  name:'OasisOtter',  gif:'oasis_otter',   ext:'png', base:{atk:33,def:14,spd:19, mhp:70}, attr:'green'  },
+  rainbow_frog: { id:'rainbow_frog', name:'RainbowFrog', gif:'rainbow_frog',  ext:'png', base:{atk:35,def:15,spd:16, mhp:74}, attr:null     },
+  flying_fish:  { id:'flying_fish',  name:'FlyingFish',  gif:'flying_fish',   ext:'png', base:{atk:36,def:14,spd:21, mhp:72}, attr:'green'  },
+  island_monkey:{ id:'island_monkey',name:'IslandMonkey',gif:'island_monkey', ext:'png', base:{atk:40,def:18,spd:18, mhp:84}, attr:'red'    },
+
+  // ══ HELL ══
+  // These use real art (assets/sprites/<gif>/still.png + attack.png).
+  // `ext:'png'` tells the renderer which extension to load.
+  goblin_grunt: { id:'goblin_grunt', name:'Goblin',        gif:'goblin',       ext:'png', base:{atk:38,def:14,spd:15, mhp:70},  attr:'green'  },
+  goblin_miner: { id:'goblin_miner', name:'MinerGoblin',   gif:'miner_goblin', ext:'png', base:{atk:43,def:17,spd:13, mhp:80},  attr:'yellow' },
+  black_beast:  { id:'black_beast',  name:'BlackBeast',    gif:'black_beast',  ext:'png', base:{atk:50,def:16,spd:20, mhp:86},  attr:'red'    },
+  rock_golem:   { id:'rock_golem',   name:'RockGolem',     gif:'rock_golem',   ext:'png', base:{atk:46,def:28,spd:8,  mhp:118}, attr:'yellow' },
+  hobgoblin:    { id:'hobgoblin',    name:'RedHobgoblin',  gif:'hobgoblin',    ext:'png', base:{atk:56,def:20,spd:16, mhp:98},  attr:'red'    },
+  fire_golem:   { id:'fire_golem',   name:'FireGolem',     gif:'fire_golem',   ext:'png', base:{atk:60,def:26,spd:11, mhp:126}, attr:'red'    },
+  butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', base:{atk:64,def:22,spd:19, mhp:110}, attr:null     },
+  vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', base:{atk:72,def:24,spd:22, mhp:130}, attr:null     },
+  vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    },
 };
+
+
+// ── LOYALTY ──
+// Every VIRUZ tracks a loyalty score (0-100). Crossing a threshold
+// promotes it to the next tier. At "Loyal Buddy" it gains a 1.5x stat
+// multiplier AND unlocks a named special attack plus a battle-start buff.
+export const LOYALTY_TIERS = [
+  { id:'stranger', name:'Stranger',    thai:'คนแปลกหน้า', min:0,  mult:1.00, icon:'🤍',
+    perk:null },
+  { id:'friendly', name:'Friendly',    thai:'เป็นมิตร',   min:25, mult:1.10, icon:'💛',
+    perk:'เริ่มต้นด้วย DEF +8%' },
+  { id:'trusted',  name:'Trusted',     thai:'ไว้ใจ',      min:55, mult:1.25, icon:'🧡',
+    perk:'เริ่มต้นด้วย DEF +15% · SPD +10%' },
+  { id:'loyal',    name:'Loyal Buddy', thai:'เพื่อนแท้',  min:85, mult:1.50, icon:'❤️',
+    perk:'สเตตัส ×1.5 · ปลดล็อกท่าไม้ตาย · DEF +20% · SPD +15%' },
+];
+
+export function loyaltyTier(loyalty) {
+  const v = Math.max(0, Math.min(100, loyalty || 0));
+  let t = LOYALTY_TIERS[0];
+  for (const tier of LOYALTY_TIERS) if (v >= tier.min) t = tier;
+  return t;
+}
+// Progress toward the NEXT tier, for the UI bar.
+export function loyaltyProgress(loyalty) {
+  const v = Math.max(0, Math.min(100, loyalty || 0));
+  const i = LOYALTY_TIERS.findIndex(t => t.id === loyaltyTier(v).id);
+  const cur = LOYALTY_TIERS[i], nxt = LOYALTY_TIERS[i + 1];
+  if (!nxt) return { pct: 100, next: null, need: 0 };
+  const span = nxt.min - cur.min;
+  return { pct: Math.round(((v - cur.min) / span) * 100), next: nxt, need: nxt.min - v };
+}
+
+// Signature attacks unlocked at Loyal Buddy, keyed by attribute so
+// each VIRUZ gets a move that suits it.
+export const SIGNATURE_SKILLS = {
+  red:    { n:'Overclock Fang',  pw:118, special:true, sig:true, desc:'ท่าไม้ตาย — เขี้ยวโอเวอร์คล็อก' },
+  green:  { n:'Phantom Rush',    pw:104, special:true, sig:true, desc:'ท่าไม้ตาย — จู่โจมสายฟ้า' },
+  yellow: { n:'Bastion Crush',   pw:112, special:true, sig:true, desc:'ท่าไม้ตาย — ทุบป้อมปราการ' },
+  white:  { n:'Radiant Cascade', pw:108, special:true, sig:true, desc:'ท่าไม้ตาย — สายธารแสง' },
+};
+
+// ── TAMAGOTCHI CARE ──
+// Each activity has its own 1-hour cooldown, tracked per pet.
+// Foods are consumables (bought, depleted on use). Toys are permanent
+// purchases but each toy has its own cooldown before it can be used again.
+export const CARE_COOLDOWN_MS = 60 * 60 * 1000;   // 1 hour
+
+export const FOODS = [
+  { id:'food_basic',  name:'Data Crumbs',   icon:'🍪', cost:80,   loyalty:3,  desc:'ขนมพื้นฐาน +3 ความผูกพัน' },
+  { id:'food_good',   name:'Byte Burger',   icon:'🍔', cost:220,  loyalty:7,  desc:'อาหารอย่างดี +7 ความผูกพัน' },
+  { id:'food_premium',name:'Golden Cache',  icon:'🍰', cost:600,  loyalty:14, desc:'ของหวานชั้นเลิศ +14 ความผูกพัน' },
+  { id:'food_feast',  name:'Quantum Feast', icon:'🍱', cost:1400, loyalty:24, desc:'มื้อพิเศษสุด +24 ความผูกพัน' },
+];
+
+export const TOYS = [
+  { id:'toy_ball',   name:'Packet Ball',   icon:'⚽', cost:400,  loyalty:5,  desc:'ลูกบอล +5 ความผูกพัน' },
+  { id:'toy_laser',  name:'Laser Pointer', icon:'🔦', cost:1100, loyalty:10, desc:'เลเซอร์ +10 ความผูกพัน' },
+  { id:'toy_puzzle', name:'Logic Cube',    icon:'🧩', cost:2400, loyalty:16, desc:'ลูกบาศก์ปริศนา +16 ความผูกพัน' },
+  { id:'toy_arcade', name:'Mini Arcade',   icon:'🕹️', cost:4800, loyalty:26, desc:'ตู้เกมจิ๋ว +26 ความผูกพัน' },
+];
+
+// Cleaning is free but gives the least — always available as a fallback.
+export const CARE_CLEAN = { id:'clean', name:'Clean', icon:'🧼', loyalty:4,
+  desc:'ทำความสะอาด +4 ความผูกพัน (ฟรี)' };
+
+// Loyalty earned per battle won — deliberately slow, so care activities
+// are the fast path and fighting is the passive one.
+export const LOYALTY_PER_WIN = 1;
 
 // ── SHOP ──
 export const EGGS = [
@@ -377,11 +558,19 @@ export const EGGS = [
 ];
 
 export const ITEMS = [
-  { id:'hp_s',  name:'HP Patch',    icon:'💊', cost:200,  type:'hp',   val:0.30, desc:'ฟื้น HP 30% (ตัวที่เลือก)' },
-  { id:'hp_l',  name:'HP Core',     icon:'💉', cost:500,  type:'hp',   val:0.80, desc:'ฟื้น HP 80% (ตัวที่เลือก)' },
-  { id:'hp_all',name:'Team Repair', icon:'🧬', cost:900,  type:'hpall',val:0.60, desc:'ฟื้น HP 60% ทั้งทีม' },
-  { id:'exp_b', name:'EXP Booster', icon:'⚡', cost:800,  type:'exp',  val:500,  desc:'+500 EXP' },
-  { id:'evo_s', name:'Evo Stone',   icon:'💎', cost:3000, type:'evo',  val:1,    desc:'วิวัฒน์ทันที' },
+  // combat:true → usable DURING a fight from the potion bar
+  { id:'hp_s',  name:'HP Patch',    icon:'💊', cost:200,  type:'hp',   val:0.30, combat:true,  desc:'ฟื้น HP 30%' },
+  { id:'hp_l',  name:'HP Core',     icon:'💉', cost:500,  type:'hp',   val:0.80, combat:true,  desc:'ฟื้น HP 80%' },
+  { id:'hp_all',name:'Team Repair', icon:'🧬', cost:900,  type:'hpall',val:0.60, combat:true,  desc:'ฟื้น HP 60% ทั้งทีม' },
+  { id:'exp_b', name:'EXP Booster', icon:'⚡', cost:800,  type:'exp',  val:500,  combat:false, desc:'+500 EXP' },
+  { id:'evo_s', name:'Evo Stone',   icon:'💎', cost:3000, type:'evo',  val:1,    combat:false, desc:'วิวัฒน์ทันที' },
+];
+
+// Potions sold at safe spots. Bought here, consumed in battle.
+export const POTIONS = [
+  { id:'pot_s', name:'Small Potion', icon:'🧪', cost:120, heal:0.35, desc:'ฟื้น HP 35% ระหว่างสู้' },
+  { id:'pot_m', name:'Large Potion', icon:'⚗️', cost:320, heal:0.70, desc:'ฟื้น HP 70% ระหว่างสู้' },
+  { id:'pot_f', name:'Full Elixir',  icon:'🍶', cost:700, heal:1.00, desc:'ฟื้น HP เต็ม ระหว่างสู้' },
 ];
 
 // ── BASE DEFENSE BOTS ──
@@ -398,8 +587,8 @@ export const MAP_NODES = [
     hint:'รักษา VIRUZ · ฟักไข่' },
   { id:'shop',   label:'Shop',        icon:'🛒', x:61.8, y:78.0, screen:'shop',
     hint:'ไอเทม · บูสเตอร์' },
-  { id:'tower',  label:'Data Center', icon:'📡', x:15.4, y:28.0, screen:'hack',
-    hint:'เจาะระบบ · ดันเจี้ยน' },
+  { id:'tower',  label:'World Gate', icon:'🌐', x:15.4, y:28.0, screen:'world',
+    hint:'ออกผจญภัย · แผนที่โลก' },
   { id:'home',   label:'Your Home',   icon:'🏠', x:87.4, y:44.0, screen:'home',
     hint:'ฐานของคุณ · ทีม · ป้องกัน' },
 ];
@@ -407,9 +596,13 @@ export const MAP_NODES = [
 // ── PROGRESSION TUNING ──
 export const TUNING = {
   startBitz: 300,
-  expCurve: (lv) => Math.floor(100 * Math.pow(1.35, lv - 1) + lv * 10),
+  // EXP curve. The old formula was exponential (1.35^lv) which hit
+  // 243 MILLION exp by Lv50 — unreachable. This is a polynomial curve:
+  // very cheap for the first few levels so a new player levels after
+  // 1-2 fights, then ramping steadily so progression still has weight.
+  expCurve: (lv) => Math.floor(28 * Math.pow(lv, 1.55) + lv * 12),
   statPerPoint: 3,
-  turnBaseMs: 420,   // gap BETWEEN exchanges; the attack sequence itself
+  turnBaseMs: 900,   // gap BETWEEN exchanges; the attack sequence itself
                      // (banner + wind-up + lunge + hit-stop + return) adds ~1.5s,
                      // so this stays short or the fight drags
   fleePenalty: 0.0,

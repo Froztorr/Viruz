@@ -7,8 +7,7 @@
 
 import {
   ATTR, ATTR_KEYS, WHITE_TRAIT_ROLL, SUPPORT, SYNERGY,
-  RARITY, RARITY_KEYS, SPECIES, ANTIVIRUZ, TUNING,
-} from './data.js';
+  RARITY, RARITY_KEYS, SPECIES, ANTIVIRUZ, TUNING, loyaltyTier, SIGNATURE_SKILLS, LOYALTY_TIERS } from './data.js';
 
 // ── Helpers ──
 export function uid() {
@@ -43,6 +42,7 @@ export function createPet(speciesId, rarity, forcedAttr = null) {
     level: 1,
     exp: 0,
     expNeed: TUNING.expCurve(1),
+    loyalty: 0,            // 0-100, drives LOYALTY_TIERS
     statPts: 0,
     base: { ...sp.base },
     skills: sp.skills.map(s => ({ ...s })),
@@ -84,7 +84,7 @@ const HP_SCALE = 4;
 // a bigger slice of the health bar. This is what keeps fights short
 // enough that the attack animation stays watchable instead of the
 // battle dragging for dozens of turns.
-const DMG_SCALE = 2.6;
+const DMG_SCALE = 1.55;
 const HP_LEVEL_GROWTH = 2.6;   // flat HP gained per level, before rarity/attr mult
 
 export function statsOf(pet) {
@@ -93,6 +93,9 @@ export function statsOf(pet) {
   const am = ATTR[pet.attr].mult;
   const stageMult = [1, 1.5, 2.0][pet.stage] || 1;
   const growth = 1 + rar.statPL * 0.18;
+  // Loyalty scales the whole stat line — 1.0x at Stranger up to 1.5x
+  // at Loyal Buddy. This is the headline reward for caring for a pet.
+  const loyMult = loyaltyTier(pet.loyalty).mult;
 
   const hpBase = pet.base.mhp / HP_SCALE;
   const raw = {
@@ -102,10 +105,10 @@ export function statsOf(pet) {
     mhp: hpBase + lv * HP_LEVEL_GROWTH * (1 + rar.statPL * 0.14),
   };
   return {
-    atk: Math.max(1, Math.floor(raw.atk * am.atk * stageMult)),
-    def: Math.max(1, Math.floor(raw.def * am.def * stageMult)),
-    spd: Math.max(1, Math.floor(raw.spd * am.spd * stageMult)),
-    mhp: Math.max(8, Math.floor(raw.mhp * am.mhp * stageMult)),
+    atk: Math.max(1, Math.floor(raw.atk * am.atk * stageMult * loyMult)),
+    def: Math.max(1, Math.floor(raw.def * am.def * stageMult * loyMult)),
+    spd: Math.max(1, Math.floor(raw.spd * am.spd * stageMult * loyMult)),
+    mhp: Math.max(8, Math.floor(raw.mhp * am.mhp * stageMult * loyMult)),
   };
 }
 
@@ -120,7 +123,30 @@ export function teamPower(team) {
 }
 
 export function availableSkills(pet) {
-  return pet.skills.filter(s => !s.reqLv || pet.level >= s.reqLv);
+  const list = pet.skills.filter(s => !s.reqLv || pet.level >= s.reqLv);
+  // Loyal Buddy unlocks a signature attack chosen by attribute.
+  const sig = signatureSkillOf(pet);
+  if (sig) list.push(sig);
+  return list;
+}
+
+// The named special a pet has earned, or null if not yet Loyal Buddy.
+export function signatureSkillOf(pet) {
+  if (!pet) return null;
+  if (loyaltyTier(pet.loyalty).id !== 'loyal') return null;
+  return SIGNATURE_SKILLS[pet.attr] || null;
+}
+
+// Battle-start buffs from loyalty tier. Applied once when a fighter
+// steps onto the stage, not per-turn.
+export function loyaltyBuffs(pet) {
+  const tier = loyaltyTier(pet && pet.loyalty);
+  switch (tier.id) {
+    case 'friendly': return { def: 1.08, spd: 1.00 };
+    case 'trusted':  return { def: 1.15, spd: 1.10 };
+    case 'loyal':    return { def: 1.20, spd: 1.15 };
+    default:         return { def: 1.00, spd: 1.00 };
+  }
 }
 
 // ── SYNERGY ──
@@ -162,10 +188,13 @@ export function combatStats(pet, team) {
   const syn = synergyOf(team).mult;
   const sup = supportOf(team);
   const m = syn * (1 + sup.auraPct);
+  // Loyalty battle-start buffs (DEF/SPD) apply on top of team synergy.
+  // statsOf() already applied the loyalty STAT multiplier separately.
+  const lb = loyaltyBuffs(pet);
   return {
     atk: Math.floor(s.atk * m),
-    def: Math.floor(s.def * m),
-    spd: Math.floor(s.spd * m),
+    def: Math.floor(s.def * m * lb.def),
+    spd: Math.floor(s.spd * m * lb.spd),
     mhp: s.mhp,          // max HP is not buffed, only offense/defense/speed
   };
 }
@@ -271,6 +300,8 @@ export function spawnAntiviruz(defId, level) {
     name: def.name,
     shape: def.shape,
     palette: def.palette,
+    gif: def.gif || null,
+    ext: def.ext || null,
     rarity: 'normal',
     attr,
     stage: 0,
@@ -296,7 +327,7 @@ export function spawnAntiviruz(defId, level) {
 export function buildHackRun(target) {
   const [wMin, wMax] = target.waves;
   const waveCount = wMin + Math.floor(Math.random() * (wMax - wMin + 1));
-  const [lMin, lMax] = target.enemyLv;
+  const [lMin, lMax] = target.lv || target.enemyLv;
   const waves = [];
   for (let w = 0; w < waveCount; w++) {
     // Later waves get bigger and stronger

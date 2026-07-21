@@ -278,8 +278,11 @@ export const SHAPE_KEYS = Object.keys(SHAPES);
 export const GUARD_KEYS = Object.keys(GUARD_SHAPES);
 
 // Build the full SVG for a creature.
-export function gifURL(gif, anim) {
-  return `${SPRITE_BASE}/${gif}/${anim}.gif`;
+// Art folders may hold .gif (animated) or .png (still art). A species
+// declares its extension via `ext`; default stays .gif so existing
+// species keep working unchanged.
+export function gifURL(gif, anim, ext = 'gif') {
+  return `${SPRITE_BASE}/${gif}/${anim}.${ext}`;
 }
 
 // Build the SVG for a creature using its OWN fixed palette.
@@ -299,7 +302,8 @@ export function creatureSVG(shape, paletteKey, opts = {}) {
 // palette is part of its identity, like VR2's blue whale / red bull.
 export function creatureMarkupFor(species, _attr, cls = '', anim = 'still') {
   if (species && species.gif) {
-    return `<img class="${cls} is-gif" src="${gifURL(species.gif, anim)}" alt="${species.name || ''}">`;
+    const ext = species.ext || 'gif';
+    return `<img class="${cls} is-gif" src="${gifURL(species.gif, anim, ext)}" alt="${species.name || ''}">`;
   }
   return creatureSVG(
     (species && species.shape) || 'royalslime',

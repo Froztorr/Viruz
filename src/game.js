@@ -5,22 +5,27 @@
 
 import {
   ATTR, ATTR_KEYS, RARITY, RARITY_KEYS, SPECIES, SPECIES_KEYS,
-  HACK_TARGETS, EGGS, ITEMS, DEFENSE_BOTS, MAP_NODES, TUNING,
+  MAPS, ZONES, zonesOfMap, zoneById, ANTIVIRUZ, EGGS, ITEMS, POTIONS, DEFENSE_BOTS, MAP_NODES, TUNING,
   SYNERGY, WHITE_TRAITS,
+  LOYALTY_TIERS, loyaltyTier, loyaltyProgress, SIGNATURE_SKILLS,
+  FOODS, TOYS, CARE_CLEAN, CARE_COOLDOWN_MS, LOYALTY_PER_WIN,
 } from './data.js';
 import {
   createPet, rollEgg, statsOf, combatStats, powerOf, teamPower,
   synergyOf, supportOf, computeDamage, turnOrder, grantExp,
   canEvolve, evolve, buildHackRun, resolveRaid, healTeam,
-  teamAlive, availableSkills, clamp,
-} from './engine.js';
+  teamAlive, availableSkills, clamp, loyaltyBuffs, signatureSkillOf } from './engine.js';
 import { NET } from './net.js';
 import { creatureMarkupFor, gifURL } from './sprites.js';
 
 // Creatures come from either real GIF art or procedural SVG —
 // creatureMarkupFor() picks per species, so both coexist.
 function creatureMarkup(pet, cls, anim = 'still') {
-  const sp = SPECIES[pet.speciesId] || { shape: pet.shape, gif: pet.gif, name: pet.name };
+  // Enemies aren't in SPECIES, so fall back to the fields copied onto
+  // the spawned unit. Must include ext/palette or PNG art resolves to
+  // a .gif path and 404s.
+  const sp = SPECIES[pet.speciesId] ||
+    { shape: pet.shape, palette: pet.palette, gif: pet.gif, ext: pet.ext, name: pet.name };
   const attr = ATTR[pet.attr] || ATTR.red;
   return creatureMarkupFor(sp, attr, cls, anim);
 }
@@ -40,6 +45,11 @@ let G = {
   bots: [],          // purchased defense bots
   inbox: [],
   raidHistory: [],
+  potions: {},      // combat potions, bought at safe spots
+  lastSafe: null,   // which safe zone the player last visited
+  foods: {},        // consumable care food counts
+  toys: [],         // permanently owned toy ids
+  care: {},         // { petUid: { activityId: lastUsedTimestamp } }
 };
 
 let battle = null;   // active battle state
@@ -97,6 +107,7 @@ async function boot() {
       // Art source is authoritative from SPECIES — a species may use
       // either procedural SVG (`shape`) or real art (`gif`), and can
       // switch between them in a later build without breaking saves.
+      if (typeof p.loyalty !== 'number') p.loyalty = 0;
       p.shape = sp.shape || null;
       p.gif   = sp.gif   || null;
       if (!p.name) p.name = sp.name;
@@ -114,6 +125,10 @@ async function boot() {
     });
     // Drop team/defense references to pets that no longer exist
     const ids = new Set(G.roster.map(p => p.uid));
+    G.potions = G.potions || {};
+    G.foods   = G.foods   || {};
+    G.toys    = G.toys    || [];
+    G.care    = G.care    || {};
     G.teamIds    = (G.teamIds || []).filter(id => ids.has(id));
     G.defenseIds = (G.defenseIds || []).filter(id => ids.has(id));
     if (!G.teamIds.length && G.roster.length) G.teamIds = [G.roster[0].uid];
@@ -173,7 +188,7 @@ async function claimStarter() {
 }
 
 // ═══════════════ SCREENS ═══════════════
-const SCREENS = ['intro','map','home','clinic','shop','hack','battle','arena','raid'];
+const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care'];
 function showScreen(id) {
   SCREENS.forEach(s => {
     const e = $('screen-' + s);
@@ -189,7 +204,9 @@ function showScreen(id) {
   if (id === 'home')   renderHome();
   if (id === 'clinic') renderClinic();
   if (id === 'shop')   renderShop();
-  if (id === 'hack')   renderHackTargets();
+  if (id === 'world')  renderWorld();
+  if (id === 'safe')   renderSafeSpot();
+  if (id === 'care')   renderCare();
   if (id === 'raid')   renderRaidList();
 }
 
@@ -254,6 +271,10 @@ function petCard(pet, opts = {}) {
   if (pet.hp <= 0) card.classList.add('down');
 
   const trait = pet.whiteTrait ? WHITE_TRAITS[pet.whiteTrait] : null;
+  const expPct = Math.min(100, Math.round((pet.exp / Math.max(1, pet.expNeed)) * 100));
+  const tier = loyaltyTier(pet.loyalty);
+  const loyProg = loyaltyProgress(pet.loyalty);
+  const sig = signatureSkillOf(pet);
   card.innerHTML = `
     <div class="pc-top">
       <span class="pc-attr" title="${a.desc}">${a.icon}</span>
@@ -261,12 +282,22 @@ function petCard(pet, opts = {}) {
     </div>
     ${creatureMarkup(pet, 'pc-sprite float')}
     <div class="pc-name">${pet.name}${trait ? ` <span class="pc-trait" title="${trait.desc}">${trait.icon}</span>` : ''}</div>
-    <div class="pc-lv">Lv.${pet.level}/${pet.maxLv} · St.${pet.stage+1}</div>
+    <div class="pc-lv">Lv.${pet.level}<span class="pc-cap">/${pet.maxLv}</span> · St.${pet.stage+1}</div>
     <div class="pc-bar"><i style="width:${hpPct}%"></i></div>
-    <div class="pc-hp">${pet.hp}/${s.mhp}</div>
+    <div class="pc-hp">HP ${pet.hp}/${s.mhp}</div>
+    <div class="pc-xpbar" title="EXP ${pet.exp}/${pet.expNeed}">
+      <i style="width:${expPct}%"></i></div>
+    <div class="pc-xp">EXP ${pet.exp}/${pet.expNeed}</div>
     <div class="pc-stats">
-      <span>⚔ ${s.atk}</span><span>🛡 ${s.def}</span><span>⚡ ${s.spd}</span>
-    </div>`;
+      <span title="Attack">⚔ ${s.atk}</span>
+      <span title="Defense">🛡 ${s.def}</span>
+      <span title="Speed">⚡ ${s.spd}</span>
+    </div>
+    <div class="pc-loy" title="${tier.perk || 'ยังไม่มีโบนัส'}">
+      ${tier.icon} ${tier.name}
+      <span class="pc-loy-bar"><i style="width:${loyProg.pct}%"></i></span>
+    </div>
+    ${sig ? `<div class="pc-sig" title="${sig.desc}">✦ ${sig.n}</div>` : ''}`;
   if (opts.onClick) card.onclick = () => opts.onClick(pet);
   return card;
 }
@@ -476,6 +507,10 @@ function hatchEgg(egg) {
 function hatchReveal(pet) {
   const a = ATTR[pet.attr], r = RARITY[pet.rarity];
   const trait = pet.whiteTrait ? WHITE_TRAITS[pet.whiteTrait] : null;
+  const expPct = Math.min(100, Math.round((pet.exp / Math.max(1, pet.expNeed)) * 100));
+  const tier = loyaltyTier(pet.loyalty);
+  const loyProg = loyaltyProgress(pet.loyalty);
+  const sig = signatureSkillOf(pet);
   modal('🥚 ฟักสำเร็จ!', wrap => {
     const box = el('div','reveal');
     box.style.setProperty('--attr', a.color);
@@ -578,31 +613,304 @@ function applyItem(it, pet) {
 }
 
 // ═══════════════ SCREEN: HACK ═══════════════
-function renderHackTargets() {
-  const wrap = $('hack-list');
-  wrap.innerHTML = '';
-  HACK_TARGETS.forEach(t => {
-    const card = el('div','hack-card');
-    card.style.setProperty('--tier', t.color);
-    card.innerHTML = `
-      <div class="hc-head">
-        <span class="hc-name">${t.name}</span>
-        <span class="hc-tier">${t.tier}</span>
-      </div>
-      <div class="hc-desc">${t.desc}</div>
-      <div class="hc-meta">
-        <span>คลื่น ${t.waves[0]}–${t.waves[1]}</span>
-        <span>Lv ${t.enemyLv[0]}–${t.enemyLv[1]}</span>
-        <span>Bitz ×${t.reward.bitzMult}</span>
-      </div>
-      <button class="btn wide">เริ่มเจาะระบบ</button>`;
-    card.querySelector('button').onclick = () => startHack(t);
-    wrap.appendChild(card);
+// ── WORLD MAP ──
+// Looping video background with clickable pins positioned by percentage.
+let currentMapId = 'forest';
+
+function renderWorld() {
+  const map = MAPS.find(m => m.id === currentMapId) || MAPS[0];
+  const vid = $('world-video');
+  if (vid) {
+    const want = map.video;
+    if (!vid.getAttribute('src') || !vid.getAttribute('src').endsWith(want)) {
+      vid.setAttribute('src', want);
+      vid.setAttribute('poster', map.poster);
+      vid.load();
+    }
+    vid.play().catch(()=>{});
+  }
+  setText('world-name', map.name);
+  setText('world-thai', map.thai);
+  setText('world-lv', `Lv ${map.levelRange[0]}–${map.levelRange[1]}`);
+
+  // map switcher
+  const tabs = $('world-tabs');
+  if (tabs) {
+    tabs.innerHTML = '';
+    MAPS.forEach(m => {
+      const b = el('button','map-tab' + (m.id === currentMapId ? ' on' : ''), m.name);
+      b.onclick = () => { currentMapId = m.id; renderWorld(); };
+      tabs.appendChild(b);
+    });
+  }
+
+  const layer = $('world-pins');
+  layer.innerHTML = '';
+  const teamLv = Math.max(1, ...activeTeam().map(p => p.level));
+
+  zonesOfMap(map.id).forEach(z => {
+    const pin = el('button', 'zone-pin ' + (z.kind === 'safe' ? 'safe' : 'battle'));
+    pin.style.left = z.x + '%';
+    pin.style.top  = z.y + '%';
+
+    if (z.kind === 'safe') {
+      pin.innerHTML = `
+        <span class="pin-dot"></span>
+        <span class="pin-card">
+          <b>${z.name}</b>
+          <i>${z.thai}</i>
+          <em>พักฟื้น · ร้านยา</em>
+        </span>`;
+      pin.onclick = () => { G.lastSafe = z.id; showScreen('safe'); };
+    } else {
+      // Warn when the zone is well above the team's level
+      const gap = z.lv[0] - teamLv;
+      const tier = gap > 8 ? 'hard' : gap > 0 ? 'warn' : 'ok';
+      pin.classList.add(tier);
+      pin.innerHTML = `
+        <span class="pin-dot"></span>
+        <span class="pin-card">
+          <b>${z.name}</b>
+          <i>${z.thai}</i>
+          <em>Lv ${z.lv[0]}–${z.lv[1]}</em>
+        </span>`;
+      pin.onclick = () => openZone(z);
+    }
+    layer.appendChild(pin);
   });
 }
 
-// ═══════════════ BATTLE ═══════════════
-function startHack(target) {
+// Zone briefing before committing to the fight
+function openZone(z) {
+  modal(`${z.name} · ${z.thai}`, wrap => {
+    const teamLv = Math.max(1, ...activeTeam().map(p => p.level));
+    const gap = z.lv[0] - teamLv;
+    const box = el('div','zone-brief');
+    box.innerHTML = `
+      <div class="zb-desc">${z.desc}</div>
+      <div class="zb-meta">
+        <span>ระดับศัตรู <b>Lv ${z.lv[0]}–${z.lv[1]}</b></span>
+        <span>คลื่น <b>${z.waves[0]}–${z.waves[1]}</b></span>
+        <span>Bitz <b>×${z.reward.bitzMult}</b></span>
+      </div>
+      <div class="zb-mons">
+        ${z.pool.map(id => {
+          const m = ANTIVIRUZ[id];
+          return `<div class="zb-mon">${creatureMarkupFor(m, null, 'zb-sprite')}<span>${m.name}</span></div>`;
+        }).join('')}
+      </div>
+      ${gap > 8 ? `<div class="zb-warn">⚠ ศัตรูสูงกว่าทีมคุณมาก (ทีม Lv ${teamLv})</div>` : ''}
+    `;
+    const go = el('button','btn primary wide','⚔ เข้าสู้');
+    go.onclick = () => { closeModal(); startZone(z); };
+    box.appendChild(go);
+    wrap.appendChild(box);
+  });
+}
+
+// ── CARE (TAMAGOTCHI MINIGAME) ──
+// Each activity is on its own 1-hour cooldown, tracked per pet in
+// G.care[petUid][activityId] = timestamp. Foods deplete when used;
+// toys are kept forever but each has its own cooldown.
+let carePetId = null;
+
+function careReady(petUid, actId) {
+  const rec = (G.care && G.care[petUid] && G.care[petUid][actId]) || 0;
+  return Date.now() - rec >= CARE_COOLDOWN_MS;
+}
+function careRemaining(petUid, actId) {
+  const rec = (G.care && G.care[petUid] && G.care[petUid][actId]) || 0;
+  return Math.max(0, CARE_COOLDOWN_MS - (Date.now() - rec));
+}
+function fmtCooldown(ms) {
+  const m = Math.ceil(ms / 60000);
+  if (m >= 60) return `${Math.floor(m/60)} ชม. ${m%60} น.`;
+  return `${m} นาที`;
+}
+function markCare(petUid, actId) {
+  G.care = G.care || {};
+  G.care[petUid] = G.care[petUid] || {};
+  G.care[petUid][actId] = Date.now();
+}
+
+function addLoyalty(pet, amount) {
+  const before = loyaltyTier(pet.loyalty).id;
+  pet.loyalty = clamp((pet.loyalty || 0) + amount, 0, 100);
+  const t = loyaltyTier(pet.loyalty);
+  if (t.id !== before) {
+    toast(`${pet.name} → ${t.icon} ${t.name}!\n${t.perk || ''}`);
+    log(`${t.icon} ${pet.name} เลื่อนขั้นเป็น ${t.name}`, 'win');
+  }
+  return t;
+}
+
+function renderCare() {
+  const pet = G.roster.find(p => p.uid === carePetId) || activeTeam()[0] || G.roster[0];
+  if (!pet) return;
+  carePetId = pet.uid;
+
+  // pet picker
+  const picker = $('care-picker');
+  if (picker) {
+    picker.innerHTML = '';
+    G.roster.forEach(p => {
+      const chip = el('button','care-chip' + (p.uid === carePetId ? ' on' : ''));
+      chip.innerHTML = `${creatureMarkup(p,'care-chip-sprite')}<span>${p.name}</span>`;
+      chip.onclick = () => { carePetId = p.uid; renderCare(); };
+      picker.appendChild(chip);
+    });
+  }
+
+  const tier = loyaltyTier(pet.loyalty);
+  const prog = loyaltyProgress(pet.loyalty);
+  const head = $('care-head');
+  if (head) {
+    head.innerHTML = `
+      <div class="care-portrait">${creatureMarkup(pet,'care-sprite float')}</div>
+      <div class="care-info">
+        <div class="care-name">${pet.name} <span class="muted">Lv.${pet.level}</span></div>
+        <div class="care-tier">${tier.icon} ${tier.name} <i>${tier.thai}</i></div>
+        <div class="loy-bar"><i style="width:${prog.pct}%"></i></div>
+        <div class="care-next">${prog.next
+          ? `อีก ${prog.need} แต้มถึง ${prog.next.name}`
+          : 'ความผูกพันสูงสุดแล้ว'}</div>
+        ${tier.perk ? `<div class="care-perk">✦ ${tier.perk}</div>` : ''}
+      </div>`;
+  }
+
+  // activities
+  const acts = $('care-acts');
+  if (!acts) return;
+  acts.innerHTML = '';
+
+  // free cleaning
+  acts.appendChild(careCard({
+    id: CARE_CLEAN.id, icon: CARE_CLEAN.icon, name: CARE_CLEAN.name,
+    desc: CARE_CLEAN.desc, loyalty: CARE_CLEAN.loyalty, kind: 'free',
+  }, pet));
+
+  // owned foods
+  FOODS.forEach(f => {
+    const owned = (G.foods && G.foods[f.id]) || 0;
+    acts.appendChild(careCard({ ...f, kind:'food', owned }, pet));
+  });
+  // owned toys
+  TOYS.forEach(t => {
+    const owned = (G.toys || []).includes(t.id);
+    acts.appendChild(careCard({ ...t, kind:'toy', owned: owned ? 1 : 0 }, pet));
+  });
+}
+
+function careCard(act, pet) {
+  const ready = careReady(pet.uid, act.id);
+  const card = el('div','care-card' + (ready ? '' : ' cooling'));
+  const stock = act.kind === 'food'
+    ? `<div class="cc-stock">มี ${act.owned} ชิ้น</div>`
+    : act.kind === 'toy'
+      ? `<div class="cc-stock">${act.owned ? 'เป็นเจ้าของแล้ว' : 'ยังไม่มี'}</div>`
+      : `<div class="cc-stock">ฟรี</div>`;
+  card.innerHTML = `
+    <div class="cc-icon">${act.icon}</div>
+    <div class="cc-name">${act.name}</div>
+    <div class="cc-loy">+${act.loyalty} ❤</div>
+    ${stock}
+    <div class="cc-action"></div>`;
+
+  const slot = card.querySelector('.cc-action');
+  if (act.kind !== 'free' && !act.owned) {
+    const buy = el('button','btn small', `ซื้อ ${act.cost}`);
+    buy.onclick = () => {
+      if (G.bitz < act.cost) { toast('Bitz ไม่พอ'); return; }
+      G.bitz -= act.cost;
+      if (act.kind === 'food') {
+        G.foods = G.foods || {};
+        G.foods[act.id] = (G.foods[act.id] || 0) + 1;
+      } else {
+        G.toys = G.toys || [];
+        if (!G.toys.includes(act.id)) G.toys.push(act.id);
+      }
+      save(); renderCare(); renderHUD();
+    };
+    slot.appendChild(buy);
+  } else if (!ready) {
+    slot.innerHTML = `<span class="cc-cd">⏳ ${fmtCooldown(careRemaining(pet.uid, act.id))}</span>`;
+  } else {
+    const use = el('button','btn small primary', act.kind==='toy' ? 'เล่น' : act.kind==='food' ? 'ให้กิน' : 'ทำ');
+    use.onclick = () => {
+      if (act.kind === 'food') {
+        if (!((G.foods && G.foods[act.id]) > 0)) { toast('ไม่มีอาหารนี้'); return; }
+        G.foods[act.id]--;
+      }
+      addLoyalty(pet, act.loyalty);
+      markCare(pet.uid, act.id);
+      save(); renderCare(); renderHUD();
+      careFx(act.icon);
+    };
+    slot.appendChild(use);
+  }
+  return card;
+}
+
+// Little burst of the activity icon as feedback
+function careFx(icon) {
+  const host = $('care-head');
+  if (!host) return;
+  for (let i = 0; i < 6; i++) {
+    const d = el('div','care-particle', icon);
+    d.style.left = (30 + Math.random()*40) + '%';
+    d.style.animationDelay = (i*0.07) + 's';
+    host.appendChild(d);
+    setTimeout(() => d.remove(), 1200);
+  }
+}
+
+// ── SAFE SPOT ──
+function renderSafeSpot() {
+  const z = zoneById(G.lastSafe) || ZONES.find(x => x.kind === 'safe');
+  if (!z) return;
+  setText('safe-name', z.name);
+  setText('safe-thai', z.thai);
+
+  // Rest — full heal, costs nothing but advances the day counter
+  const restBtn = $('safe-rest');
+  if (restBtn) {
+    const hurt = G.roster.filter(p => p.hp < statsOf(p).mhp).length;
+    restBtn.textContent = hurt ? `🔥 พักฟื้น (${hurt} ตัวบาดเจ็บ)` : '🔥 ทุกตัวสมบูรณ์แล้ว';
+    restBtn.disabled = !hurt;
+    restBtn.onclick = () => {
+      G.roster.forEach(p => p.hp = statsOf(p).mhp);
+      G.day++;
+      save(); renderSafeSpot(); renderHUD();
+      toast('พักฟื้นเรียบร้อย\nHP เต็มทุกตัว');
+    };
+  }
+
+  // Potion shop
+  const shop = $('safe-potions');
+  if (!shop) return;
+  shop.innerHTML = '';
+  POTIONS.forEach(pt => {
+    const owned = (G.potions && G.potions[pt.id]) || 0;
+    const card = el('div','shop-card');
+    card.innerHTML = `
+      <div class="sc-icon">${pt.icon}</div>
+      <div class="sc-name">${pt.name}</div>
+      <div class="sc-desc">${pt.desc}</div>
+      <div class="sc-cost">${pt.cost} Bitz</div>
+      <div class="sc-owned">มี ${owned} ชิ้น</div>
+      <button class="btn">ซื้อ</button>`;
+    card.querySelector('button').onclick = () => {
+      if (G.bitz < pt.cost) { toast('Bitz ไม่พอ'); return; }
+      G.bitz -= pt.cost;
+      G.potions = G.potions || {};
+      G.potions[pt.id] = (G.potions[pt.id] || 0) + 1;
+      save(); renderSafeSpot(); renderHUD();
+    };
+    shop.appendChild(card);
+  });
+}
+
+function startZone(target) {
   const team = activeTeam();
   if (!team.length) { toast('ยังไม่ได้จัดทีม'); return; }
   if (!teamAlive(team)) { toast('ทีมหมด HP — ไปรักษาที่ Clinic'); return; }
@@ -707,6 +1015,70 @@ function renderBattle() {
   side(activeAlly(), 'battle-allies', false);
   side(activeFoe(),  'battle-enemies', true);
   renderBench();
+  renderPotionBar();
+}
+
+// ── COMBAT POTIONS ──
+// Click during a fight to heal the ACTIVE VIRUZ. Using one costs the
+// player their tempo — the enemy still gets its swing — so it's a real
+// decision rather than a free heal.
+function renderPotionBar() {
+  const bar = $('potion-bar');
+  if (!bar || !battle) return;
+  bar.innerHTML = '';
+  const owned = G.potions || {};
+  const any = POTIONS.some(p => (owned[p.id] || 0) > 0);
+  if (!any) {
+    bar.innerHTML = `<div class="potion-empty">ไม่มียา — ซื้อได้ที่จุดพัก</div>`;
+    return;
+  }
+  POTIONS.forEach(pt => {
+    const n = owned[pt.id] || 0;
+    if (!n) return;
+    const b = el('button','potion-btn');
+    b.innerHTML = `<span class="pb-icon">${pt.icon}</span>
+                   <span class="pb-n">${n}</span>`;
+    b.title = `${pt.name} — ${pt.desc}`;
+    b.onclick = () => usePotion(pt);
+    bar.appendChild(b);
+  });
+}
+
+function usePotion(pt) {
+  if (!battle || battle.over) return;
+  const pet = activeAlly();
+  if (!pet) { toast('ไม่มี VIRUZ ที่สู้อยู่'); return; }
+  const owned = G.potions || {};
+  if (!(owned[pt.id] > 0)) return;
+  const mhp = statsOf(pet).mhp;
+  if (pet.hp >= mhp) { toast('HP เต็มแล้ว'); return; }
+
+  owned[pt.id]--;
+  G.potions = owned;
+  const before = pet.hp;
+  pet.hp = clamp(Math.floor(pet.hp + mhp * pt.heal), 0, mhp);
+  const healed = pet.hp - before;
+
+  healPop(pet, healed);
+  blog(`${pt.icon} ใช้ ${pt.name} · +${healed} HP`, 'buff');
+  refreshBattleUnits();
+  renderPotionBar();
+  save();
+}
+
+// Green rising number for heals, mirroring the damage number style
+function healPop(pet, amount) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  const unit = document.querySelector(`.bunit[data-uid="${pet.uid}"]`);
+  if (!layer || !stage || !unit) return;
+  const host = stage.getBoundingClientRect();
+  const r = unit.getBoundingClientRect();
+  const d = el('div','heal-pop', `+${amount}`);
+  d.style.left = (r.left - host.left + r.width/2) + 'px';
+  d.style.top  = (r.top - host.top + r.height*0.25) + 'px';
+  layer.appendChild(d);
+  setTimeout(() => d.remove(), 1000);
 }
 
 // The ally currently fighting (one at a time, VR2 style)
@@ -739,14 +1111,20 @@ function renderBench() {
 
 function refreshBattleUnits() {
   if (!battle) return;
-  const a = activeAlly(), f = activeFoe();
-  [[a,'plate-ally'],[f,'plate-foe']].forEach(([pet, plateId]) => {
+  // Resolve by the unit actually ON STAGE, not by activeAlly()/activeFoe():
+  // those return null the moment a fighter hits 0 HP, which left the name
+  // plate frozen on its last value and hid the killing blow.
+  ['plate-ally','plate-foe'].forEach(plateId => {
+    const wrapId = plateId === 'plate-ally' ? 'battle-allies' : 'battle-enemies';
+    const unit = $(wrapId) && $(wrapId).querySelector('.bunit');
+    if (!unit) return;
+    const uid = unit.dataset.uid;
+    const pet = [...battle.team, ...battle.enemies].find(p => p.uid === uid);
     if (!pet) return;
     const plate = $(plateId);
     const b = plate && plate.querySelector('.np-hp b');
     if (b) b.textContent = Math.max(0, pet.hp);
-    const u = document.querySelector(`.bunit[data-uid="${pet.uid}"]`);
-    if (u) u.classList.toggle('dead', pet.hp <= 0);
+    unit.classList.toggle('dead', pet.hp <= 0);
   });
   renderBench();
 }
@@ -804,6 +1182,23 @@ function impactBurst(targetEl, crit) {
   setTimeout(() => burst.remove(), 620);
 }
 
+// ── CRIT "POW!" ──
+// Comic-style starburst with POW! text, fired only on crits.
+function powEffect(targetEl) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  if (!layer || !stage || !targetEl) return;
+  const host = stage.getBoundingClientRect();
+  const r = targetEl.getBoundingClientRect();
+  const pow = el('div','pow-burst');
+  pow.style.left = (r.left - host.left + r.width/2) + 'px';
+  pow.style.top  = (r.top - host.top + r.height*0.42) + 'px';
+  pow.style.setProperty('--spin', (Math.random()*20-10).toFixed(1) + 'deg');
+  pow.innerHTML = `<span class="pow-star"></span><b class="pow-text">POW!</b>`;
+  layer.appendChild(pow);
+  setTimeout(() => pow.remove(), 780);
+}
+
 // ── VR2 DAMAGE NUMBER ──
 // Huge, red-orange, thick black stroke, tilted, scale-punch on entry.
 // Multi-hits stack a "× N" underneath. Crits append "!".
@@ -858,12 +1253,19 @@ async function runTurn() {
                      side === 'ally' ? 'ally' : 'foe');
     if (!battle || battle.over) return;
 
-    const skills = availableSkills(attacker);
-    const skill = skills[Math.floor(Math.random() * skills.length)] || { n:'Strike', pw:35 };
+    // Signature moves are powerful, so they fire only ~25% of the time
+    // rather than competing equally in the random pick.
+    const all = availableSkills(attacker);
+    const sig = all.find(sk => sk.sig);
+    const normal = all.filter(sk => !sk.sig);
+    let skill;
+    if (sig && Math.random() < 0.25) skill = sig;
+    else skill = normal[Math.floor(Math.random() * normal.length)] || { n:'Strike', pw:35 };
     const res = computeDamage(attacker, side==='ally'?battle.team:battle.enemies,
                               target, side==='ally'?battle.enemies:battle.team,
                               skill, !!skill.special);
 
+    if (skill.sig) await showBanner(`✦ ${skill.n} ✦`, 'sig');
     if (res.crit) await showBanner('CRITICAL!!', 'crit');
     if (!battle || battle.over) return;
 
@@ -919,17 +1321,24 @@ function playAttack(attacker, target, res, side) {
     aEl.style.setProperty('--return-ms', returnMs.toFixed(0) + 'ms');
     aEl.style.setProperty('--dir', dir);
 
-    const atkSpecies = SPECIES[attacker.speciesId];
+    // Same fallback as creatureMarkup — enemies live outside SPECIES.
+    const atkSpecies = SPECIES[attacker.speciesId] ||
+      { gif: attacker.gif, ext: attacker.ext };
     if (img) {
       img.classList.remove('float');
       img.classList.add('attacking');
       if (atkSpecies && atkSpecies.gif && img.tagName === 'IMG') {
         img.dataset.stillSrc = img.getAttribute('src');
-        img.setAttribute('src', gifURL(atkSpecies.gif, 'attack'));
+        img.setAttribute('src', gifURL(atkSpecies.gif, 'attack', atkSpecies.ext || 'gif'));
       }
     }
 
     // wind up, then lunge
+    // Crits get an exaggerated version of the whole sequence: the
+    // attacker swells during wind-up and slams across with a bigger,
+    // faster strike.
+    if (res.crit) aEl.classList.add('crit-attack');
+
     aEl.classList.add('wind-up');
     setTimeout(() => {
       aEl.classList.remove('wind-up');
@@ -938,6 +1347,7 @@ function playAttack(attacker, target, res, side) {
       setTimeout(() => {
         // ── CONTACT ──
         impactBurst(tEl, res.crit);
+        if (res.crit) powEffect(tEl);
         floatDamage(tEl, res);
         tEl.classList.add('hit');
         stage.classList.add('shake' + (res.crit ? '-hard' : ''));
@@ -955,6 +1365,7 @@ function playAttack(attacker, target, res, side) {
         aEl.classList.add('lunge-back');
         setTimeout(() => {
           aEl.classList.remove('lunge-back');
+          aEl.classList.remove('crit-attack');
           if (img) {
             img.classList.remove('attacking');
             img.classList.add('float');
@@ -1071,6 +1482,18 @@ function endBattle(win) {
         if (e.type === 'levelup') blog(`⬆️ ${p.name} → Lv.${e.level} (+${e.pts} แต้ม)`, 'buff');
         if (e.type === 'skill')   blog(`✨ ${p.name} ปลดล็อก ${e.name}`, 'buff');
       });
+    });
+    // Fighting builds loyalty slowly — the patient path. Only VIRUZ
+    // that actually took the field earn it.
+    battle.team.forEach(p => {
+      const before = loyaltyTier(p.loyalty).id;
+      p.loyalty = clamp((p.loyalty || 0) + LOYALTY_PER_WIN, 0, 100);
+      const after = loyaltyTier(p.loyalty).id;
+      if (after !== before) {
+        const t = loyaltyTier(p.loyalty);
+        blog(`${t.icon} ${p.name} → ${t.name}!`, 'buff');
+        toast(`${p.name} สนิทขึ้น!\n${t.icon} ${t.name}`);
+      }
     });
     blog(`สำเร็จ! +${battle.totalExp} EXP · +${battle.totalBitz} Bitz`, 'win');
     toast(`เจาะสำเร็จ!\n+${battle.totalBitz} Bitz`);
