@@ -9,12 +9,12 @@ import {
   SYNERGY, WHITE_TRAITS,
   LOYALTY_TIERS, loyaltyTier, loyaltyProgress, SIGNATURE_SKILLS,
   FOODS, TOYS, CARE_CLEAN, CARE_COOLDOWN_MS, LOYALTY_PER_WIN,
-} from './data.js';
+  buildLootMenu, chanceToEnemyMult, RAID_LOSS_BITZ } from './data.js';
 import {
-  createPet, rollEgg, statsOf, combatStats, powerOf, teamPower,
+  createPet, rollEgg, statsOf, combatStats, powerOf, teamPower, spawnAntiviruz,
   synergyOf, supportOf, computeDamage, turnOrder, grantExp,
   canEvolve, evolve, buildHackRun, resolveRaid, healTeam,
-  teamAlive, availableSkills, clamp, loyaltyBuffs, signatureSkillOf } from './engine.js';
+  teamAlive, availableSkills, clamp, loyaltyBuffs, signatureSkillOf, buildHackPuzzle, checkHackGuess } from './engine.js';
 import { NET } from './net.js';
 import { creatureMarkupFor, gifURL } from './sprites.js';
 
@@ -50,6 +50,7 @@ let G = {
   foods: {},        // consumable care food counts
   toys: [],         // permanently owned toy ids
   care: {},         // { petUid: { activityId: lastUsedTimestamp } }
+  feed: [],         // persistent PROCESS activity records
 };
 
 let battle = null;   // active battle state
@@ -129,6 +130,7 @@ async function boot() {
     G.foods   = G.foods   || {};
     G.toys    = G.toys    || [];
     G.care    = G.care    || {};
+    G.feed    = G.feed    || [];
     G.teamIds    = (G.teamIds || []).filter(id => ids.has(id));
     G.defenseIds = (G.defenseIds || []).filter(id => ids.has(id));
     if (!G.teamIds.length && G.roster.length) G.teamIds = [G.roster[0].uid];
@@ -188,7 +190,7 @@ async function claimStarter() {
 }
 
 // ═══════════════ SCREENS ═══════════════
-const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care'];
+const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care','hack','steal'];
 function showScreen(id) {
   SCREENS.forEach(s => {
     const e = $('screen-' + s);
@@ -208,6 +210,7 @@ function showScreen(id) {
   if (id === 'safe')   renderSafeSpot();
   if (id === 'care')   renderCare();
   if (id === 'raid')   renderRaidList();
+  if (id === 'map')    renderFeed();
 }
 
 function wireGlobalUI() {
@@ -215,6 +218,23 @@ function wireGlobalUI() {
     b.onclick = () => showScreen(b.dataset.goto);
   });
   $('start-btn').onclick = claimStarter;
+
+  // team strip nav
+  const tp = $('ts-prev'), tn = $('ts-next');
+  if (tp) tp.onclick = () => stripStep(-1);
+  if (tn) tn.onclick = () => stripStep(1);
+  // swipe on touch
+  const vp = $('ts-viewport');
+  if (vp) {
+    let x0 = null;
+    vp.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, {passive:true});
+    vp.addEventListener('touchend', e => {
+      if (x0 == null) return;
+      const dx = e.changedTouches[0].clientX - x0;
+      if (Math.abs(dx) > 40) stripStep(dx < 0 ? 1 : -1);
+      x0 = null;
+    }, {passive:true});
+  }
   document.querySelectorAll('.speed-btn').forEach(b => {
     b.onclick = () => {
       battleSpeed = Number(b.dataset.speed);
@@ -255,7 +275,76 @@ function renderHUD() {
   setText('hud-bitz', G.bitz.toLocaleString());
   setText('hud-name', G.name);
   setText('hud-power', teamPower(activeTeam()).toLocaleString());
-  setText('hud-roster', G.roster.length);
+  renderTeamStrip();
+  syncQuickbar();
+}
+
+// Highlight the quickbar button for the current screen
+function syncQuickbar() {
+  const cur = $('app').getAttribute('data-screen');
+  document.querySelectorAll('#quickbar .qb').forEach(b =>
+    b.classList.toggle('on', b.dataset.goto === cur));
+}
+
+// ── PERSISTENT TEAM STRIP ──
+// Shows one active-team pet at a time; arrows/dots/scroll cycle through
+// the (up to 3) team members. Lives under the HUD on every main screen.
+let stripIdx = 0;
+function renderTeamStrip() {
+  const track = $('ts-track');
+  const strip = $('teamstrip');
+  if (!track || !strip) return;
+  const team = activeTeam();
+  if (!team.length) { strip.style.display = 'none'; return; }
+  strip.style.display = '';
+  stripIdx = Math.max(0, Math.min(stripIdx, team.length - 1));
+
+  track.innerHTML = '';
+  team.forEach(pet => {
+    const s = statsOf(pet);
+    const tier = loyaltyTier(pet.loyalty);
+    const hpPct = Math.round(pet.hp / s.mhp * 100);
+    const expPct = Math.min(100, Math.round(pet.exp / Math.max(1, pet.expNeed) * 100));
+    const a = ATTR[pet.attr];
+    const cell = el('div','ts-cell');
+    cell.style.setProperty('--attr', a.color);
+    cell.innerHTML = `
+      <div class="ts-sprite">${creatureMarkup(pet,'ts-art')}</div>
+      <div class="ts-body">
+        <div class="ts-name">${pet.name} <span class="ts-attr">${a.icon}</span></div>
+        <div class="ts-lv">Lv.${pet.level}<span class="muted">/${pet.maxLv}</span> · ${tier.icon}${tier.name}</div>
+        <div class="ts-baropts">
+          <span class="ts-lab">HP</span>
+          <span class="ts-bar hp"><i style="width:${hpPct}%"></i></span>
+          <span class="ts-val">${pet.hp}/${s.mhp}</span>
+        </div>
+        <div class="ts-baropts">
+          <span class="ts-lab">XP</span>
+          <span class="ts-bar xp"><i style="width:${expPct}%"></i></span>
+          <span class="ts-val">${pet.exp}/${pet.expNeed}</span>
+        </div>
+        <div class="ts-stats">⚔${s.atk} 🛡${s.def} ⚡${s.spd}</div>
+      </div>`;
+    track.appendChild(cell);
+  });
+  track.style.transform = `translateX(-${stripIdx * 100}%)`;
+
+  const dots = $('ts-dots');
+  if (dots) {
+    dots.innerHTML = '';
+    team.forEach((_, i) => {
+      const d = el('span','ts-dot' + (i === stripIdx ? ' on' : ''));
+      d.onclick = () => { stripIdx = i; renderTeamStrip(); };
+      dots.appendChild(d);
+    });
+  }
+}
+
+function stripStep(dir) {
+  const n = activeTeam().length;
+  if (!n) return;
+  stripIdx = (stripIdx + dir + n) % n;
+  renderTeamStrip();
 }
 
 function petCard(pet, opts = {}) {
@@ -910,6 +999,47 @@ function renderSafeSpot() {
   });
 }
 
+// ── RAID FIGHT ──
+// A single-pet defense battle. The enemy is the target's antiviruz
+// defenders (a themed monster stand-in), scaled by the loot multiplier.
+function startRaidFight(rival, sendPet, loot, mult) {
+  // Build a defender scaled to the rival's level and the difficulty mult.
+  const defLevel = Math.max(1, rival.level);
+  const pool = defLevel >= 51
+    ? ['vampire_lord','fire_golem','hobgoblin']
+    : ['stone_imp','fang_stalker','tide_warden'];
+  const defId = pool[Math.floor(Math.random() * pool.length)];
+  const foe = spawnAntiviruz(defId, defLevel);
+  foe.name = rival.name + "'s Guard";
+  // scale enemy stats by the multiplier from the chosen loot's risk
+  foe.base = {
+    atk: Math.round(foe.base.atk * mult),
+    def: Math.round(foe.base.def * mult),
+    spd: Math.round(foe.base.spd * mult),
+    mhp: Math.round(foe.base.mhp * mult),
+  };
+  foe.hp = statsOf(foe).mhp;
+
+  battle = {
+    mode: 'raid',
+    raid: { rival, loot, mult },
+    team: [sendPet],
+    enemies: [foe],
+    wave: 0, run: { waveCount: 1, waves: [[foe]] },
+    turn: 0, activeIdx: 0, phase: 'ally', round: 0, over: false,
+    totalExp: 0, totalBitz: 0,
+  };
+  showScreen('battle');
+  setText('battle-title', `เจาะบ้าน ${rival.name}`);
+  setText('battle-wave', `เสี่ยง ×${mult.toFixed(2)}`);
+  clearBattleLog();
+  blog(`บุกเข้าบ้าน ${rival.name}!`, 'sys');
+  blog(`ส่ง ${sendPet.name} เข้าเจาะ`, 'buff');
+  renderBattle();
+  startRegen();
+  scheduleTurn(900);
+}
+
 function startZone(target) {
   const team = activeTeam();
   if (!team.length) { toast('ยังไม่ได้จัดทีม'); return; }
@@ -1472,47 +1602,150 @@ function endBattle(win) {
   clearTimeout(battleTimer);
   clearInterval(regenTimer);
 
+  // Raid fights resolve through the hack flow, not the normal reward path.
+  if (battle.mode === 'raid') {
+    const { rival, loot } = battle.raid;
+    // heal the sent pet a little so a loss isn't punishing beyond the Bitz hit
+    battle.team.forEach(p => {
+      if (p.hp <= 0) p.hp = Math.max(1, Math.floor(statsOf(p).mhp * 0.1));
+    });
+    if (win) grantLoot(loot);
+    const done = $('battle-done');
+    if (done) {
+      done.style.display = '';
+      done.onclick = () => {
+        done.style.display = 'none';
+        const b = battle; battle = null;
+        finishRaid(win, b.raid.loot);
+      };
+    }
+    save();
+    return;
+  }
+
+  let results = null;
   if (win) {
     G.wins++;
     G.bitz += battle.totalBitz;
     const share = Math.floor(battle.totalExp / Math.max(1, battle.team.length));
-    battle.team.forEach(p => {
+    // Snapshot each pet's exp before/after so the results panel can show
+    // an animated bar and how close each is to the next level.
+    results = battle.team.map(p => {
+      const beforeLv = p.level;
+      const beforeExp = p.exp;
+      const beforeNeed = p.expNeed;
+      const beforeLoyId = loyaltyTier(p.loyalty).id;
       const evs = grantExp(p, share);
+      const leveled = evs.filter(e => e.type === 'levelup').length;
+      const skills  = evs.filter(e => e.type === 'skill').map(e => e.name);
       evs.forEach(e => {
         if (e.type === 'levelup') blog(`⬆️ ${p.name} → Lv.${e.level} (+${e.pts} แต้ม)`, 'buff');
         if (e.type === 'skill')   blog(`✨ ${p.name} ปลดล็อก ${e.name}`, 'buff');
       });
-    });
-    // Fighting builds loyalty slowly — the patient path. Only VIRUZ
-    // that actually took the field earn it.
-    battle.team.forEach(p => {
-      const before = loyaltyTier(p.loyalty).id;
+      // loyalty from fighting
       p.loyalty = clamp((p.loyalty || 0) + LOYALTY_PER_WIN, 0, 100);
-      const after = loyaltyTier(p.loyalty).id;
-      if (after !== before) {
-        const t = loyaltyTier(p.loyalty);
-        blog(`${t.icon} ${p.name} → ${t.name}!`, 'buff');
-        toast(`${p.name} สนิทขึ้น!\n${t.icon} ${t.name}`);
-      }
+      const loyPromo = loyaltyTier(p.loyalty).id !== beforeLoyId ? loyaltyTier(p.loyalty) : null;
+      if (loyPromo) blog(`${loyPromo.icon} ${p.name} → ${loyPromo.name}!`, 'buff');
+      return {
+        pet: p, gained: share,
+        beforeLv, beforeExp, beforeNeed,
+        afterLv: p.level, afterExp: p.exp, afterNeed: p.expNeed,
+        maxed: p.level >= p.maxLv,
+        leveled, skills, loyPromo,
+      };
     });
     blog(`สำเร็จ! +${battle.totalExp} EXP · +${battle.totalBitz} Bitz`, 'win');
-    toast(`เจาะสำเร็จ!\n+${battle.totalBitz} Bitz`);
     log(`ชนะ ${battle.mode === 'hack' ? battle.target.name : 'Arena'} · +${battle.totalBitz} Bitz`, 'win');
   } else {
     battle.team.forEach(p => {
       if (p.hp <= 0) p.hp = Math.max(1, Math.floor(statsOf(p).mhp * TUNING.loseHpRestore));
     });
     blog('การเจาะล้มเหลว — ทีมถูกตรวจจับ', 'lose');
-    toast('ล้มเหลว\nทีมกลับมาพร้อม HP 10%');
     log(`แพ้ ${battle.mode === 'hack' ? battle.target.name : 'Arena'}`, 'lose');
   }
   save();
-  const done = $('battle-done');
-  done.style.display = '';
-  done.onclick = () => {
-    done.style.display = 'none';
+
+  // Where "done" should return to: zone fights go back to the world map,
+  // arena/other go to the city map. This is the fix for the "kicked to
+  // city hub, have to re-open the map" annoyance.
+  const returnTo = (battle.mode === 'hack' && battle.target && battle.target.map) ? 'world'
+                 : (battle.mode === 'hack') ? 'world'
+                 : 'map';
+
+  showBattleResults(win, battle.totalBitz, battle.totalExp, results, returnTo);
+}
+
+// ── BATTLE RESULTS PANEL ──
+// Overlay showing win/lose, Bitz, and per-pet EXP bars that animate from
+// their pre-fight fill to the new one so you can see progress to level-up.
+function showBattleResults(win, bitz, exp, results, returnTo) {
+  const panel = $('battle-results');
+  if (!panel) {
+    // Fallback: no panel in DOM, just leave via the done button.
+    const done = $('battle-done');
+    done.style.display = '';
+    done.onclick = () => { done.style.display='none'; battle=null; showScreen(returnTo); renderAll(); };
+    return;
+  }
+
+  const rows = (results || []).map(r => {
+    const pct0 = r.maxed ? 100 : Math.round(r.beforeExp / Math.max(1, r.beforeNeed) * 100);
+    const pct1 = r.maxed ? 100 : Math.round(r.afterExp  / Math.max(1, r.afterNeed)  * 100);
+    const lvUp = r.leveled > 0
+      ? `<span class="br-lvup">▲ Lv.${r.beforeLv} → ${r.afterLv}</span>` : '';
+    const extra = [
+      ...(r.skills || []).map(n => `<span class="br-skill">✨ ${n}</span>`),
+      r.loyPromo ? `<span class="br-loy">${r.loyPromo.icon} ${r.loyPromo.name}</span>` : '',
+    ].join('');
+    return `
+      <div class="br-row" data-pct0="${pct0}" data-pct1="${pct1}" data-leveled="${r.leveled}">
+        <div class="br-art">${creatureMarkup(r.pet,'br-sprite')}</div>
+        <div class="br-info">
+          <div class="br-name">${r.pet.name} ${lvUp}</div>
+          <div class="br-xpbar"><i style="width:${pct0}%"></i></div>
+          <div class="br-xptext">
+            ${r.maxed ? 'ระดับสูงสุด' : `EXP ${r.afterExp}/${r.afterNeed}`}
+            <span class="br-gain">+${r.gained}</span>
+          </div>
+          ${extra ? `<div class="br-extra">${extra}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div class="br-card ${win ? 'win' : 'lose'}">
+      <div class="br-title">${win ? '✅ ชนะ!' : '❌ พ่ายแพ้'}</div>
+      ${win ? `<div class="br-loot">💰 +${bitz} Bitz · ⚡ +${exp} EXP รวม</div>` : ''}
+      <div class="br-rows">${rows || '<div class="br-empty">ทีมกลับมาพร้อม HP บางส่วน</div>'}</div>
+      <button class="btn primary wide" id="br-continue">ต่อไป →</button>
+    </div>`;
+  panel.classList.add('on');
+
+  // Animate each xp bar from pre-fight to post-fight fill.
+  requestAnimationFrame(() => {
+    panel.querySelectorAll('.br-row').forEach(row => {
+      const bar = row.querySelector('.br-xpbar i');
+      const pct1 = +row.dataset.pct1, leveled = +row.dataset.leveled;
+      if (!bar) return;
+      // If they leveled, sweep to 100 first, then drop to the new fill.
+      setTimeout(() => {
+        if (leveled > 0) {
+          bar.style.width = '100%';
+          setTimeout(() => { bar.style.transition = 'none'; bar.style.width = '0%';
+            requestAnimationFrame(() => { bar.style.transition = ''; bar.style.width = pct1 + '%'; });
+          }, 420);
+        } else {
+          bar.style.width = pct1 + '%';
+        }
+      }, 260);
+    });
+  });
+
+  $('br-continue').onclick = () => {
+    panel.classList.remove('on');
+    panel.innerHTML = '';
     battle = null;
-    showScreen('map');
+    showScreen(returnTo);
     renderAll();
   };
 }
@@ -1564,47 +1797,260 @@ async function renderRaidList() {
   setText('raid-mypower', myPower.toLocaleString());
 }
 
-async function doRaid(rival) {
+// ── HACK STAGE 1: PASSWORD MINIGAME ──
+let hackState = null;
+
+function doRaid(rival) {
   const team = activeTeam();
   if (!teamAlive(team)) { toast('ทีมหมด HP'); return; }
-  const res = resolveRaid(team, { ...rival.defense, loot: rival.loot });
-  G.raids++;
-  if (res.win) G.bitz += res.loot;
-  // Attacking costs HP regardless of outcome
-  team.forEach(p => {
-    const m = statsOf(p).mhp;
-    const cost = Math.floor(m * (res.win ? 0.18 : 0.32));
-    p.hp = clamp(p.hp - cost, 1, m);
-  });
-  await NET.submitRaid(rival.uid, res);
-  await save();
+  const puzzle = buildHackPuzzle(rival.level);
+  hackState = { rival, puzzle, attempts: puzzle.attempts, guessed: [] };
+  showScreen('hack');
+  renderHackTerminal();
+}
 
-  modal(res.win ? '✅ เจาะฐานสำเร็จ' : '❌ การเจาะล้มเหลว', wrap => {
-    const box = el('div','raid-result');
-    box.innerHTML = `
-      <div class="rr-vs">
-        <span>คุณ ${res.atkPower.toLocaleString()}</span>
-        <span class="rr-x">VS</span>
-        <span>${rival.name} ${res.defPower.toLocaleString()}</span>
-      </div>
-      <div class="rr-log">${res.log.map(l =>
-        `<div class="rr-line ${l.t}">${l.m}</div>`).join('')}</div>`;
-    wrap.appendChild(box);
+function renderHackTerminal() {
+  const h = hackState;
+  if (!h) return;
+  setText('hack-target', h.rival.name);
+  setText('hack-attempts', h.attempts);
+
+  // attempts as blocks
+  const ab = $('hack-attempt-blocks');
+  if (ab) {
+    ab.innerHTML = '';
+    for (let i = 0; i < h.puzzle.attempts; i++) {
+      ab.appendChild(el('span','atk-block' + (i < h.attempts ? '' : ' spent')));
+    }
+  }
+
+  // Build the terminal grid. Words are clickable spans; junk is inert.
+  const grid = $('hack-grid');
+  const { stream, rows, cols, addrs, placements } = h.puzzle;
+  // map each cell index → word placement (if part of a word)
+  const cellWord = {};
+  placements.forEach((p, wi) => {
+    for (let k = 0; k < p.len; k++) cellWord[p.start + k] = wi;
   });
-  log(res.win ? `เจาะฐาน ${rival.name} สำเร็จ +${res.loot} Bitz`
-              : `เจาะฐาน ${rival.name} ล้มเหลว`, res.win ? 'win' : 'lose');
+
+  let html = '';
+  for (let r = 0; r < rows; r++) {
+    html += `<div class="hg-row"><span class="hg-addr">${addrs[r]}</span><span class="hg-cells">`;
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c;
+      const wi = cellWord[idx];
+      if (wi != null) {
+        const p = placements[wi];
+        const used = h.guessed.includes(p.word);
+        const first = idx === p.start;
+        html += `<span class="hg-ch word${used ? ' used' : ''}" data-wi="${wi}"${first ? '' : ''}>${stream[idx]}</span>`;
+      } else {
+        html += `<span class="hg-ch">${stream[idx]}</span>`;
+      }
+    }
+    html += `</span></div>`;
+  }
+  grid.innerHTML = html;
+
+  // hover + click by word
+  grid.querySelectorAll('.hg-ch.word').forEach(ch => {
+    const wi = ch.dataset.wi;
+    ch.onmouseenter = () => grid.querySelectorAll(`.hg-ch.word[data-wi="${wi}"]`).forEach(x => x.classList.add('hot'));
+    ch.onmouseleave = () => grid.querySelectorAll(`.hg-ch.word[data-wi="${wi}"]`).forEach(x => x.classList.remove('hot'));
+    ch.onclick = () => guessHackWord(h.puzzle.placements[wi].word);
+  });
+
+  // clear the readout
+  const out = $('hack-readout');
+  if (out) out.innerHTML = '<div class="hr-line">&gt; เลือกคำเพื่อลองรหัส</div>';
+}
+
+function pushReadout(text, cls='') {
+  const out = $('hack-readout');
+  if (!out) return;
+  const line = el('div','hr-line ' + cls, '> ' + text);
+  out.appendChild(line);
+  out.scrollTop = out.scrollHeight;
+}
+
+function guessHackWord(word) {
+  const h = hackState;
+  if (!h || h.done) return;
+  if (h.guessed.includes(word)) return;
+  h.guessed.push(word);
+
+  const res = checkHackGuess(h.puzzle, word);
+  pushReadout(word);
+  if (res.correct) {
+    h.done = true;
+    pushReadout('เข้าถึงระบบสำเร็จ!', 'ok');
+    setTimeout(() => enterStealStage(), 900);
+    return;
+  }
+  h.attempts--;
+  pushReadout(`ตรงกัน ${res.likeness}/${h.puzzle.len}`, 'warn');
+  setText('hack-attempts', h.attempts);
+  renderHackTerminal._refreshBlocks && renderHackTerminal._refreshBlocks();
+  // grey the guessed word + update attempt blocks
+  const grid = $('hack-grid');
+  if (grid) grid.querySelectorAll('.hg-ch.word').forEach(ch => {
+    const w = h.puzzle.placements[ch.dataset.wi].word;
+    if (w === word) ch.classList.add('used');
+  });
+  const ab = $('hack-attempt-blocks');
+  if (ab && ab.children[h.attempts]) ab.children[h.attempts].classList.add('spent');
+
+  if (h.attempts <= 0) {
+    h.done = true;
+    pushReadout('ล็อกเอาต์ — การเจาะล้มเหลว', 'bad');
+    log(`เจาะบ้าน ${h.rival.name} ล้มเหลว (รหัสผิด)`, 'lose');
+    setTimeout(() => { toast('เจาะไม่สำเร็จ\nระบบล็อก'); showScreen('raid'); }, 1400);
+  }
+}
+
+// ── HACK STAGE 2: STEAL MENU ──
+function enterStealStage() {
+  const h = hackState;
+  if (!h) return;
+  showScreen('steal');
+  const myLv = Math.max(1, ...activeTeam().map(p => p.level));
+  const menu = buildLootMenu(h.rival.level, myLv);
+  h.loot = menu;
+
+  setText('steal-target', h.rival.name);
+
+  // pick which single pet to send
+  const petRow = $('steal-pets');
+  petRow.innerHTML = '<div class="steal-lab">เลือก VIRUZ 1 ตัวไปเจาะ:</div>';
+  const row = el('div','steal-petrow');
+  h.sendPet = null;
+  activeTeam().filter(p => p.hp > 0).forEach(p => {
+    const card = el('button','steal-pet');
+    card.innerHTML = `${creatureMarkup(p,'sp-art')}<span>${p.name}</span><i>Lv.${p.level}</i>`;
+    card.onclick = () => {
+      h.sendPet = p;
+      row.querySelectorAll('.steal-pet').forEach(x => x.classList.remove('on'));
+      card.classList.add('on');
+      renderLootMenu();
+    };
+    row.appendChild(card);
+  });
+  petRow.appendChild(row);
+  renderLootMenu();
+}
+
+function renderLootMenu() {
+  const h = hackState;
+  const box = $('steal-loot');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!h.sendPet) {
+    box.innerHTML = '<div class="muted" style="padding:10px">เลือก VIRUZ ก่อน</div>';
+    return;
+  }
+  h.loot.forEach(l => {
+    const label = l.kind === 'bitz' ? `${l.amount} Bitz`
+      : l.kind === 'exp' ? `EXP Booster +${l.amount}`
+      : POTIONS.find(p => p.id === l.potId)?.name || 'Potion';
+    const card = el('button','loot-card');
+    const autoWin = l.chance >= 100;
+    card.innerHTML = `
+      <div class="lc-icon">${l.icon}</div>
+      <div class="lc-name">${label}</div>
+      <div class="lc-chance ${autoWin ? 'auto' : ''}">${autoWin ? 'สำเร็จอัตโนมัติ' : l.chance + '% สำเร็จ'}</div>
+      ${autoWin ? '' : `<div class="lc-warn">ศัตรู ×${chanceToEnemyMult(l.chance).toFixed(2)}</div>`}`;
+    card.onclick = () => commitSteal(l);
+    box.appendChild(card);
+  });
+}
+
+function commitSteal(loot) {
+  const h = hackState;
+  if (!h || !h.sendPet) { toast('เลือก VIRUZ ก่อน'); return; }
+  const mult = chanceToEnemyMult(loot.chance);
+
+  if (mult === 0) {
+    // auto-win
+    grantLoot(loot);
+    finishRaid(true, loot);
+    return;
+  }
+  // Build a defense fight scaled by the multiplier, using the chosen pet.
+  startRaidFight(h.rival, h.sendPet, loot, mult);
+}
+
+function grantLoot(loot) {
+  if (loot.kind === 'bitz') G.bitz += loot.amount;
+  else if (loot.kind === 'exp') { grantExp(hackState.sendPet, loot.amount); }
+  else if (loot.kind === 'potion') {
+    G.potions = G.potions || {};
+    G.potions[loot.potId] = (G.potions[loot.potId] || 0) + loot.amount;
+  }
+}
+
+async function finishRaid(win, loot) {
+  const h = hackState;
+  G.raids++;
+  if (win) {
+    const label = loot.kind === 'bitz' ? `${loot.amount} Bitz`
+      : loot.kind === 'exp' ? 'EXP Booster' : 'Potion';
+    log(`💀 เจาะบ้าน ${h.rival.name} สำเร็จ — ขโมย ${label}`, 'win');
+    toast(`เจาะสำเร็จ!\nขโมย ${label}`);
+  } else {
+    G.bitz = Math.max(0, G.bitz - RAID_LOSS_BITZ);
+    log(`เจาะบ้าน ${h.rival.name} ล้มเหลว — เสีย ${RAID_LOSS_BITZ} Bitz`, 'lose');
+    toast(`ป้องกันไว้ได้!\nเสีย ${RAID_LOSS_BITZ} Bitz`);
+  }
   renderHUD();
+  await save();                       // persist bitz/loot BEFORE submitRaid
+  await NET.submitRaid(h.rival.uid, { win, loot: win ? loot : null });
+  hackState = null;
+  showScreen('raid');
   renderRaidList();
 }
 
 // ═══════════════ LOG / TOAST / MODAL ═══════════════
 function log(msg, cls = 'info') {
   const box = $('log-box');
+  if (box) {
+    const line = el('div', 'log-line ' + cls, msg);
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+    while (box.children.length > 60) box.removeChild(box.firstChild);
+  }
+  // Also record to the persistent PROCESS feed
+  feed(msg, cls);
+}
+
+// ── PROCESS ACTIVITY FEED ──
+// A persistent, timestamped event log shown on the city hub. Built to
+// become a chat box later (multiplayer), so it's stored as records.
+function feed(msg, cls = 'info') {
+  G.feed = G.feed || [];
+  G.feed.unshift({ t: Date.now(), msg, cls });
+  if (G.feed.length > 40) G.feed.length = 40;
+  renderFeed();
+}
+
+function feedTime(ts) {
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function renderFeed() {
+  const box = $('process-feed');
   if (!box) return;
-  const line = el('div', 'log-line ' + cls, msg);
-  box.appendChild(line);
-  box.scrollTop = box.scrollHeight;
-  while (box.children.length > 60) box.removeChild(box.firstChild);
+  const items = G.feed || [];
+  if (!items.length) {
+    box.innerHTML = `<div class="pf-empty">ยังไม่มีความเคลื่อนไหว</div>`;
+    return;
+  }
+  box.innerHTML = items.map(it =>
+    `<div class="pf-line ${it.cls}">
+       <span class="pf-time">${feedTime(it.t)}</span>
+       <span class="pf-msg">${it.msg}</span>
+     </div>`).join('');
 }
 function blog(msg, cls = 'info') {
   const box = $('battle-log');
@@ -1647,6 +2093,8 @@ window.VIRUZ = {
     localStorage.clear();
     location.reload();
   },
+  // test/debug hook — current hack puzzle answer, if any
+  _hackAnswer: () => hackState && hackState.puzzle && hackState.puzzle.answer,
 };
 
 boot();

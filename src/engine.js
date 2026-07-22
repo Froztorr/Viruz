@@ -7,7 +7,8 @@
 
 import {
   ATTR, ATTR_KEYS, WHITE_TRAIT_ROLL, SUPPORT, SYNERGY,
-  RARITY, RARITY_KEYS, SPECIES, ANTIVIRUZ, TUNING, loyaltyTier, SIGNATURE_SKILLS, LOYALTY_TIERS } from './data.js';
+  RARITY, RARITY_KEYS, SPECIES, ANTIVIRUZ, TUNING, loyaltyTier, SIGNATURE_SKILLS, LOYALTY_TIERS,
+  HACK_WORDS, HACK_JUNK, hackDifficulty, wordLikeness } from './data.js';
 
 // ── Helpers ──
 export function uid() {
@@ -394,4 +395,58 @@ export function teamAlive(team) {
 }
 export function firstAlive(team) {
   return team.find(p => p && p.hp > 0) || null;
+}
+
+
+// ── HACK: PASSWORD PUZZLE ──
+// Builds a Fallout-style terminal: a grid of hex addresses, each row
+// padded with junk characters, with `wordCount` real words hidden in
+// the stream. One of them is the password.
+export function buildHackPuzzle(targetLevel) {
+  const diff = hackDifficulty(targetLevel);
+  const pool = HACK_WORDS[diff.len].slice();
+  // pick unique words
+  const words = [];
+  while (words.length < diff.words && pool.length) {
+    const i = Math.floor(Math.random() * pool.length);
+    words.push(pool.splice(i, 1)[0]);
+  }
+  const answer = words[Math.floor(Math.random() * words.length)];
+
+  // Build a character stream: junk with words embedded at random slots.
+  const rows = 16, cols = diff.len + 6;
+  const totalCells = rows * cols;
+  const stream = [];
+  for (let i = 0; i < totalCells; i++) {
+    stream.push(HACK_JUNK[Math.floor(Math.random() * HACK_JUNK.length)]);
+  }
+  // Place each word so it doesn't overlap another
+  const placements = [];
+  const slots = [];
+  for (const w of words) {
+    let tries = 0, pos;
+    do {
+      pos = Math.floor(Math.random() * (totalCells - w.length));
+      tries++;
+    } while (tries < 60 && slots.some(s => pos < s.end + 1 && pos + w.length + 1 > s.start));
+    slots.push({ start: pos, end: pos + w.length });
+    for (let k = 0; k < w.length; k++) stream[pos + k] = w[k];
+    placements.push({ word: w, start: pos, len: w.length });
+  }
+
+  // Hex address per row (cosmetic, Fallout-style)
+  const baseAddr = 0x5B00 + Math.floor(Math.random() * 0x200);
+  const addrs = [];
+  for (let r = 0; r < rows; r++) addrs.push('0x' + (baseAddr + r * cols).toString(16).toUpperCase());
+
+  return {
+    answer, words, stream, rows, cols, addrs, placements,
+    attempts: diff.attempts, len: diff.len,
+  };
+}
+
+// Given a guessed word, return likeness + whether it's correct.
+export function checkHackGuess(puzzle, word) {
+  const correct = word === puzzle.answer;
+  return { correct, likeness: wordLikeness(word, puzzle.answer) };
 }

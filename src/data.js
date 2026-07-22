@@ -547,6 +547,80 @@ export const CARE_CLEAN = { id:'clean', name:'Clean', icon:'🧼', loyalty:4,
 // are the fast path and fighting is the passive one.
 export const LOYALTY_PER_WIN = 1;
 
+
+// ── HACK MINIGAME ──
+// Two stages: a Fallout-style password crack, then a loot-and-raid.
+
+// Tech-themed word bank for the password screen. Same-length words only
+// (the game picks a length, then draws words of that length).
+export const HACK_WORDS = {
+  4: ['PORK','PINE','BYTE','CORE','DATA','ROOT','HACK','WORM','LOAD','PING',
+      'GRID','NODE','LINK','CODE','DISK','BOOT','FORK','HASH','LOOP','VOID'],
+  5: ['VIRUZ','LOGIN','CACHE','PROXY','SHELL','STACK','TRACE','DEBUG','CRASH',
+      'PATCH','QUERY','TOKEN','FLASH','DRIVE','FROST','EMBER','GHOST','PIXEL'],
+  6: ['PACKET','KERNEL','CIPHER','DAEMON','BUFFER','SOCKET','SCRIPT','BINARY',
+      'MEMORY','THREAD','ROOTKT','MALWRE','FIREWL','SERVER','DECODE','ENCODE'],
+};
+
+// ASCII "junk" that fills the terminal between words.
+export const HACK_JUNK = "!@#$%^&*()_+-={}[]|:;<>,.?/~`\\'\"";
+
+// Difficulty scales the word count and word length with the target level.
+export function hackDifficulty(targetLevel) {
+  if (targetLevel >= 60) return { len: 6, words: 12, attempts: 4 };
+  if (targetLevel >= 30) return { len: 5, words: 10, attempts: 4 };
+  return { len: 4, words: 8, attempts: 4 };
+}
+
+// Likeness = number of positions where two equal-length words share the
+// same letter. This is the Fallout hint mechanic.
+export function wordLikeness(guess, answer) {
+  let n = 0;
+  for (let i = 0; i < answer.length; i++) if (guess[i] === answer[i]) n++;
+  return n;
+}
+
+// ── LOOT + SUCCESS % ──
+// Each lootable's success % becomes the combat outcome:
+//   100% → auto-win (no fight)
+//   below 100% → enemy stats ×(1 + (100-pct)/100 * 1.0) up to ~×1.9
+// The % is driven by: base value of the loot (pricier = lower %),
+// plus the level gap (you higher than target = easier).
+export const HACK_LOOT_KINDS = [
+  { id:'bitz_s', kind:'bitz', icon:'💰', baseAmt:400,  baseChance:70 },
+  { id:'bitz_l', kind:'bitz', icon:'💰', baseAmt:1200, baseChance:45 },
+  { id:'pot_hp', kind:'potion', potId:'pot_m', icon:'⚗️', baseAmt:1, baseChance:55 },
+  { id:'pot_full', kind:'potion', potId:'pot_f', icon:'🍶', baseAmt:1, baseChance:35 },
+  { id:'exp_boost', kind:'exp', icon:'⚡', baseAmt:600, baseChance:40 },
+];
+
+// Compute the actual steal menu for a given target, factoring level gap.
+// hackerLv > targetLv raises %, the reverse lowers it. Never returns 0%.
+export function buildLootMenu(targetLevel, hackerLevel) {
+  const gap = hackerLevel - targetLevel;         // + = advantage
+  const gapMod = Math.max(-30, Math.min(30, gap * 2));  // ±30 points
+  // richer targets carry more, scaled by their level
+  const wealth = 1 + targetLevel / 40;
+  return HACK_LOOT_KINDS.map(l => {
+    let chance = l.baseChance + gapMod;
+    chance = Math.max(5, Math.min(100, Math.round(chance)));  // never 0
+    const amount = l.kind === 'bitz' || l.kind === 'exp'
+      ? Math.floor(l.baseAmt * wealth)
+      : l.baseAmt;
+    return { ...l, chance, amount, targetLevel };
+  });
+}
+
+// Success % → enemy stat multiplier for the raid fight.
+//   100% → 0 (auto-win, no fight)   |   5% → ~1.9
+export function chanceToEnemyMult(chance) {
+  if (chance >= 100) return 0;               // auto-win
+  return 1 + ((100 - chance) / 100) * 1.0;   // 1.0 .. ~1.95
+}
+
+// Penalty when you LOSE a raid you committed to.
+export const RAID_LOSS_BITZ = 300;
+
 // ── SHOP ──
 export const EGGS = [
   { id:'egg_n', name:'Normal Egg', icon:'🥚', cost:500,

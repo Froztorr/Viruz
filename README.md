@@ -200,3 +200,36 @@ but each is individually on cooldown after use.
 - `TUNING.turnBaseMs` is the gap between exchanges.
 - Crits trigger an enlarged attacker animation, a red damage number,
   and a comic POW! starburst.
+
+
+## Hub UI
+
+- **Quick-access bar** (`#quickbar`) — jump buttons to every main screen,
+  highlights the current one.
+- **Team strip** (`#teamstrip`) — one active-team pet at a time with HP/XP
+  bars and loyalty; arrows, dots, or swipe to cycle. Driven by `renderTeamStrip()`.
+- **PROCESS feed** (`#process-panel`) — persistent timestamped event log on
+  the city map. Records live in `G.feed` (capped at 40) via `feed()`. Built
+  as records so it can become a chat box when multiplayer lands.
+
+## Hack minigame (raid rework)
+
+Raiding another player is now two stages:
+
+**1. Password terminal** (`buildHackPuzzle` in engine.js) — a Fallout-style
+green screen with tech words hidden in junk characters. Clicking a word
+reveals its likeness to the password (shared letters in the same position).
+Four attempts; running out locks you out. Word length scales with target
+level (4/5/6 letters).
+
+**2. Steal menu** — pick one pet, then choose loot. Each item shows a
+success %:
+- **100%** → auto-win, no fight
+- **below 100%** → enemy stats ×`chanceToEnemyMult(chance)` (up to ~×1.9),
+  fought as a single-pet raid battle
+
+The % is set by `buildLootMenu(targetLevel, hackerLevel)`: pricier loot =
+lower %, and the level gap shifts it (you higher than target = easier).
+Never 0%. Losing a committed raid costs `RAID_LOSS_BITZ` (300).
+
+Everything routes through the existing battle system with `mode:'raid'`.
