@@ -949,7 +949,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 /* ── GIANT DAMAGE NUMBERS ── */
 .dmg-big{position:absolute;z-index:12;transform:translate(-50%,-50%);
   display:flex;flex-direction:column;align-items:center;pointer-events:none;
-  animation:dmgPunch 1.35s cubic-bezier(.2,1.5,.35,1) forwards}
+  animation:dmgPunch 1s cubic-bezier(.25,1.3,.4,1) forwards}
 .dmg-num{font-family:var(--pixel);font-size:52px;line-height:1;
   color:#f0442c;
   -webkit-text-stroke:6px #14100c;paint-order:stroke fill;
@@ -963,12 +963,14 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   text-shadow:0 0 22px rgba(255,40,40,.7),0 8px 0 rgba(0,0,0,.4)}
 /* Punch in, then drift upward while fading out — the number should
    travel, not sit in place waiting to disappear. */
+/* Appears at full opacity and immediately begins rising AND fading, so
+   it's already on its way out the moment you register it. */
 @keyframes dmgPunch{
-  0%   {opacity:0; transform:translate(-50%,-40%) scale(.35)}
-  14%  {opacity:1; transform:translate(-50%,-58%) scale(1.28)}
-  26%  {opacity:1; transform:translate(-50%,-52%) scale(1)}
-  55%  {opacity:.95;transform:translate(-50%,-95%) scale(1)}
-  100% {opacity:0; transform:translate(-50%,-165%) scale(.86)}}
+  0%   {opacity:1; transform:translate(-50%,-45%) scale(.5)}
+  12%  {opacity:1; transform:translate(-50%,-62%) scale(1.22)}
+  24%  {opacity:.9; transform:translate(-50%,-72%) scale(1)}
+  55%  {opacity:.5; transform:translate(-50%,-108%) scale(.97)}
+  100% {opacity:0; transform:translate(-50%,-160%) scale(.88)}}
 
 /* ── SCREEN SHAKE + HIT-STOP ── */
 #battle-stage.shake{animation:stageShake .26s ease}

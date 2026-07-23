@@ -94,7 +94,12 @@ const HP_SCALE = 4;
 // enough that the attack animation stays watchable instead of the
 // battle dragging for dozens of turns.
 const DMG_SCALE = 1.55;
-const HP_LEVEL_GROWTH = 2.6;   // flat HP gained per level, before rarity/attr mult
+const HP_LEVEL_GROWTH = 7.5;   // flat HP gained per level, before rarity/attr mult
+// HP_SCALE compresses the HP pool by 4x but attack was never scaled to
+// match, so one hit landed ~80% of a health bar and every fight was
+// decided by who swung first. DMG_DIVISOR reins the output back in so a
+// normal exchange takes several turns and specials feel like a spike.
+const DMG_DIVISOR = 1.15;
 
 export function statsOf(pet) {
   const lv = pet.level - 1;
@@ -304,7 +309,7 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   // against a 55 ATK pet and every hit did 1). A ratio can never go
   // negative and keeps tanks tanky without making them immortal.
   const mitigation = effDef / (effDef + 140);          // 0..~0.8
-  let base = (a.atk * pw * specialMult) * (1 - mitigation) / (DMG_SCALE * 0.35);
+  let base = (a.atk * pw * specialMult) * (1 - mitigation) / (DMG_SCALE * DMG_DIVISOR);
   base = Math.max(1, base * variance);
 
   // ── CRIT ── now driven by the crit STAT (a percentage), x2 damage
@@ -448,7 +453,12 @@ export function spawnAntiviruz(defId, level) {
   const def = ANTIVIRUZ[defId];
   if (!def) return null;
   const attr = def.attr || randAttr();
-  const scale = 0.85 + level * 0.16;
+  // Monster `base` values are already tuned as raw stat lines. statsOf()
+  // then adds its own per-level growth, so multiplying here by a
+  // level-scaled factor double-counted level and left enemies with ~7.5x
+  // the player's attack at every level. Keep this modest — it now only
+  // expresses "this monster is a bit tougher than its base suggests".
+  const scale = 0.9 + level * 0.012;
   const pet = {
     uid: uid(),
     speciesId: defId,

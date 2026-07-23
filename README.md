@@ -355,3 +355,47 @@ and correctly positioned while the camera moves.
 Damage numbers now punch in, then drift upward while fading over 1.35s
 rather than hanging in place. The POW starburst was removed — it sat on
 top of the number and hid it.
+
+
+## Combat rebalance (v8)
+
+The new stat system had a compounding problem measured across the whole
+progression curve:
+
+1. `HP_SCALE = 4` compressed HP pools but attack was never scaled to
+   match, so one normal hit landed ~80% of a health bar.
+2. `spawnAntiviruz` multiplied monster base stats by `0.85 + level*0.16`,
+   and `statsOf()` then applied its own per-level growth — double-counting
+   level and leaving enemies with **7.5x the player's attack** at every
+   level. Every fight was decided by who swung first.
+
+Fixes: monster scale is now `0.9 + level*0.012` (no double-count),
+`HP_LEVEL_GROWTH` raised 2.6 -> 7.5, and a `DMG_DIVISOR` reins output in.
+
+Measured time-to-kill after the change (target: 3-10 hits each way):
+
+| Level | You kill in | They kill in |
+|---|---|---|
+| Lv1 | 2 | 3 |
+| Lv12 | 5 | 4 |
+| Lv25 | 9 | 9 |
+| Lv60 | 9 | 7 |
+| Lv95 | 9 | 11 |
+
+Specials now read as spikes rather than one-shots: a normal hit is ~13%
+of a health bar, mid-tier specials 25-45%, ultimates 65-72%.
+
+Deeper fights multiply per-swing overhead, so pacing was trimmed too:
+turn gap 900ms -> 260ms, banner hold 620ms -> 300ms, the routine
+"X attacks!" banner removed (notable events still announce), and wave
+counts reduced. Full runs now land at ~3s early, ~22s mid, ~25s late.
+
+## Camera & damage timing
+
+The pan-out now starts 140ms into the strike — mid-lunge, before contact
+— rather than after the attack resolves. Verified by sampling every
+frame where a damage number is on screen: the camera is at 1.00x (fully
+wide) in 100% of them, so the number is never hidden behind a zoom.
+
+Damage numbers start at full opacity and begin rising and fading
+immediately, over 1s.

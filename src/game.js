@@ -1402,15 +1402,22 @@ function setTimeScale(v) {
 
 // Full dramatic beat: pan to attacker, slow down, hold for the skill
 // animation, then pan out to reveal the damage on the target.
+// Timing matters here. The pan-out must be UNDERWAY before the hit
+// lands, otherwise the damage number appears while the camera is still
+// framing the attacker and the player never sees it. So: short pan in,
+// brief slow-mo on the wind-up, then start pulling back to a wide shot
+// concurrently with the strike rather than after it.
 async function cinematicStrike(attackerEl, targetEl, playFn) {
-  cameraTo(attackerEl, { zoom: 1.55, ms: 300 });
-  setTimeScale(0.55);
-  await wait(300);
-  await playFn();                 // the attack/skill animation itself
-  setTimeScale(1);
-  cameraTo(targetEl, { zoom: 1.25, ms: 260 });
-  await wait(240);
-  cameraReset(420);
+  cameraTo(attackerEl, { zoom: 1.4, ms: 190 });
+  setTimeScale(0.6);
+  await wait(190);
+
+  // Kick off the attack, and 140ms later (mid-lunge, before contact)
+  // start easing out to a wide framing that shows BOTH fighters.
+  const strike = playFn();
+  setTimeout(() => { setTimeScale(1); cameraReset(300); }, 140);
+  await strike;
+  cameraReset(260);
 }
 
 function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -1618,10 +1625,10 @@ function showBanner(text, kind = '') {
     if (!host) { resolve(); return; }
     const b = el('div', 'turn-banner ' + kind, text);
     host.appendChild(b);
-    const hold = 620 / battleSpeed;
+    const hold = 300 / battleSpeed;
     setTimeout(() => {
       b.classList.add('out');
-      setTimeout(() => { b.remove(); resolve(); }, 220 / battleSpeed);
+      setTimeout(() => { b.remove(); resolve(); }, 150 / battleSpeed);
     }, hold);
   });
 }
@@ -1681,7 +1688,7 @@ function floatDamage(anchor, res) {
     <span class="dmg-num">${res.dmg}${res.crit ? '!' : ''}</span>
     ${res.hits > 1 ? `<span class="dmg-mult">× ${res.hits}</span>` : ''}`;
   layer.appendChild(wrap);
-  setTimeout(() => wrap.remove(), 1400);
+  setTimeout(() => wrap.remove(), 1050);
 }
 
 function scheduleTurn(delay) {
@@ -1851,13 +1858,17 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
   const cEl0 = document.querySelector(`.bunit[data-uid="${caster.uid}"]`);
   const tEl0 = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
   if (cEl0) {
-    cameraTo(cEl0, { zoom: 1.5, ms: 300 });
-    setTimeScale(0.55);
-    await wait(320);
+    cameraTo(cEl0, { zoom: 1.4, ms: 200 });
+    setTimeScale(0.6);
+    await wait(200);
   }
   playSpellVFX(sp.vfx, caster, target, side);
-  await wait(420);            // let the spell animation play in slow-mo
+  await wait(260);            // let the spell animation read in slow-mo
   setTimeScale(1);
+  // Pull back to a wide shot BEFORE the damage resolves so the number
+  // is visible when it pops.
+  cameraReset(280);
+  await wait(120);
 
   // ── HEAL / SUPPORT ──
   if (sp.heal) {
@@ -1907,7 +1918,6 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
       blog(`${target.name} หลบ ${sp.name} ได้!`, side);
     } else {
       if (res.crit) await showBanner('CRITICAL!!', 'crit');
-      if (tEl0) cameraTo(tEl0, { zoom: 1.25, ms: 260 });
       await playAttack(caster, target, res, side);
       target.hp = Math.max(0, target.hp - res.dmg);
       let line = `✦ ${caster.name} → ${sp.name}`;

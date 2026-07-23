@@ -374,19 +374,19 @@ export const ZONES = [
 
   { id:'f_desert',   map:'forest', kind:'battle', order:5,
     name:'The Desert', thai:'ทะเลทราย', x:48.76, y:68.18,
-    lv:[25,32], waves:[3,3], pool:['sand_worm','sand_turtle'],
+    lv:[25,32], waves:[2,3], pool:['sand_worm','sand_turtle'],
     reward:{ bitzMult:2.2, expMult:2.1 },
     desc:'ผืนทรายร้อนระอุ ไร้ที่กำบัง' },
 
   { id:'f_oasis',    map:'forest', kind:'battle', order:6,
     name:'The Oasis', thai:'โอเอซิส', x:24.59, y:69.05,
-    lv:[33,41], waves:[3,4], pool:['oasis_otter','rainbow_frog'],
+    lv:[33,41], waves:[2,3], pool:['oasis_otter','rainbow_frog'],
     reward:{ bitzMult:2.6, expMult:2.4 },
     desc:'บ่อน้ำกลางทะเลทราย — ดูสงบเกินจริง' },
 
   { id:'f_island',   map:'forest', kind:'battle', order:7,
     name:'The Island', thai:'เกาะร้าง', x:26.43, y:91.04,
-    lv:[42,50], waves:[3,4], pool:['flying_fish','island_monkey'],
+    lv:[42,50], waves:[3,3], pool:['flying_fish','island_monkey'],
     reward:{ bitzMult:3.0, expMult:2.8 },
     desc:'เกาะโดดเดี่ยวกลางทะเล บทสุดท้ายของดินแดนนี้' },
 
@@ -409,25 +409,25 @@ export const ZONES = [
 
   { id:'h_beastden', map:'hell', kind:'battle', order:3,
     name:'Demonbeast Den', thai:'รังอสูรสัตว์', x:83.36, y:63.15,
-    lv:[67,74], waves:[3,4], pool:['black_beast','rock_golem'],
+    lv:[67,74], waves:[2,3], pool:['black_beast','rock_golem'],
     reward:{ bitzMult:4.3, expMult:4.0 },
     desc:'ฝูงอสูรสัตว์รวมตัวกันอยู่' },
 
   { id:'h_quarter',  map:'hell', kind:'battle', order:4,
     name:'Servant Demon Quarter', thai:'เขตปีศาจรับใช้', x:49.93, y:51.65,
-    lv:[75,82], waves:[3,4], pool:['hobgoblin','fire_golem'],
+    lv:[75,82], waves:[3,3], pool:['hobgoblin','fire_golem'],
     reward:{ bitzMult:4.8, expMult:4.5 },
     desc:'หอคอยกลางทะเลลาวา ที่พำนักของปีศาจรับใช้' },
 
   { id:'h_manor',    map:'hell', kind:'battle', order:5,
     name:'Vice Manor Castle', thai:'ปราสาทอุปราช', x:81.82, y:34.54,
-    lv:[83,90], waves:[4,4], pool:['butler_vamp','vampire_lady'],
+    lv:[83,90], waves:[3,3], pool:['butler_vamp','vampire_lady'],
     reward:{ bitzMult:5.4, expMult:5.0 },
     desc:'ปราสาทของรองจอมมาร' },
 
   { id:'h_castle',   map:'hell', kind:'battle', order:6,
     name:'Demon Lord Castle', thai:'ปราสาทจอมมาร', x:34.70, y:14.82,
-    lv:[91,100], waves:[4,5], pool:['vampire_lord','vampire_lady','butler_vamp'],
+    lv:[91,100], waves:[3,4], pool:['vampire_lord','vampire_lady','butler_vamp'],
     reward:{ bitzMult:6.5, expMult:6.0 },
     desc:'ที่สุดของดินแดนนรก — จอมมารรออยู่' },
 
@@ -898,7 +898,7 @@ export const TUNING = {
   // 1-2 fights, then ramping steadily so progression still has weight.
   expCurve: (lv) => Math.floor(28 * Math.pow(lv, 1.55) + lv * 12),
   statPerPoint: 3,
-  turnBaseMs: 900,   // gap BETWEEN exchanges; the attack sequence itself
+  turnBaseMs: 260,   // gap BETWEEN exchanges; the attack sequence itself
                      // (banner + wind-up + lunge + hit-stop + return) adds ~1.5s,
                      // so this stays short or the fight drags
   fleePenalty: 0.0,
