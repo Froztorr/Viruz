@@ -94,7 +94,7 @@ const HP_SCALE = 4;
 // enough that the attack animation stays watchable instead of the
 // battle dragging for dozens of turns.
 const DMG_SCALE = 1.55;
-const HP_LEVEL_GROWTH = 7.5;   // flat HP gained per level, before rarity/attr mult
+const HP_LEVEL_GROWTH = 4.2;   // flat HP gained per level, before rarity/attr mult
 // HP_SCALE compresses the HP pool by 4x but attack was never scaled to
 // match, so one hit landed ~80% of a health bar and every fight was
 // decided by who swung first. DMG_DIVISOR reins the output back in so a
@@ -109,15 +109,24 @@ export function statsOf(pet) {
   const growth = 1 + rar.statPL * 0.18;
   const loyMult = loyaltyTier(pet.loyalty).mult;
 
-  const hpBase = pet.base.mhp / HP_SCALE;
+  // HP_SCALE compresses base HP, which is fine at high level but leaves
+  // Lv1-3 creatures with 8-23 HP — less than a single normal hit, so
+  // early fights were decided by one swing (39% one-shot rate at Lv1).
+  // Blend toward the uncompressed base at low level so early pools are
+  // survivable, converging on the compressed value as level climbs.
+  const lowLvGuard = Math.max(0, 1 - (pet.level - 1) / 12);   // 1 -> 0 by Lv13
+  const hpBase = (pet.base.mhp / HP_SCALE) * (1 + lowLvGuard * 1.9);
   const raw = {
     atk: pet.base.atk + lv * 1.2 * growth,
     def: pet.base.def + lv * 0.9 * growth,
     spd: pet.base.spd + lv * 0.8 * growth,
     vit: hpBase + lv * HP_LEVEL_GROWTH * (1 + rar.statPL * 0.14),
-    // New stats. crit/eva are PERCENTAGES; int is the MP pool.
-    crit: 5 + rar.statPL * 1.5,
-    eva:  3 + rar.statPL * 1.0,
+    // CRIT and EVA are POINT values, not percentages. They only become a
+    // chance when weighed against the opponent's opposing stat in
+    // computeDamage(), so a big number is only big *relative* to who you
+    // are fighting. They scale with level like every other stat.
+    crit: 8 + lv * 0.85 * growth + rar.statPL * 3,
+    eva:  6 + lv * 0.70 * growth + rar.statPL * 2,
     int:  20 + lv * 1.6 * growth,
   };
 
@@ -129,8 +138,8 @@ export function statsOf(pet) {
     def: Math.max(1, Math.floor(raw.def * am.def * stageMult * loyMult) + tb.def),
     spd: Math.max(1, Math.floor(raw.spd * am.spd * stageMult * loyMult) + tb.spd),
     vit: Math.max(8, Math.floor(raw.vit * am.mhp * stageMult * loyMult) + tb.vit),
-    crit: Math.min(75, Math.round(raw.crit + tb.crit)),
-    eva:  Math.min(60, Math.round(raw.eva  + tb.eva)),
+    crit: Math.max(1, Math.round(raw.crit + tb.crit)),
+    eva:  Math.max(1, Math.round(raw.eva  + tb.eva)),
     int:  Math.max(10, Math.floor(raw.int * loyMult) + tb.int),
   };
   // `mhp` kept as an alias so older call sites keep working.
@@ -286,12 +295,37 @@ export function combatStats(pet, team) {
 }
 
 // ── DAMAGE ──
+// Opposed-stat contest. Returns a 0..1 chance from two stat POINT
+// values. Equal points => `floor` (near zero), a large edge trends
+// toward `cap`. This is the same idea as atk-vs-def mitigation, applied
+// to crit and evasion so those stats are always RELATIVE.
+//
+// Previously crit/eva were absolute percentages baked into the unit, so
+// a Lv100 monster evaded a Lv1 and a Lv25 pet at exactly the same 22% —
+// the defender's number never looked at who was attacking.
+function opposedChance(mine, theirs, { cap = 0.55, k = 1.0, floor = 0.02 } = {}) {
+  const m = Math.max(1, mine), t = Math.max(1, theirs);
+  if (m <= t) {
+    // Behind or level: a small residual chance that shrinks as the gap
+    // widens against you.
+    return Math.max(0, floor * (m / t));
+  }
+  // Ahead: ratio of the surplus over the opponent's stat, curved so it
+  // saturates instead of running away.
+  const edge = (m - t) / t;               // 0 = equal, 1 = double
+  return Math.min(cap, floor + cap * (1 - Math.exp(-k * edge)));
+}
+
 export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpecial) {
   const a = combatStats(attacker, atkTeam);
   const d = combatStats(defender, defTeam);
 
-  // ── EVASION ── checked before anything else
-  if (Math.random() * 100 < d.eva) {
+  // ── EVASION: defender's EVA points vs attacker's accuracy ──
+  // Accuracy is derived from SPD + a share of CRIT (precision), so a
+  // fast/precise attacker naturally lands more hits on an evasive foe.
+  const accuracy = a.spd * 0.55 + a.crit * 0.25;
+  const evaChance = opposedChance(d.eva, accuracy, { cap: 0.45, k: 1.1, floor: 0.05 });
+  if (Math.random() < evaChance) {
     return { dmg: 0, hits: 0, crit: false, evaded: true };
   }
 
@@ -299,21 +333,23 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   const specialMult = isSpecial ? 1.35 : 1.0;
   const variance = 0.9 + Math.random() * 0.2;
 
-  // Skills may ignore a fraction of DEF.
+  // ── MITIGATION: attacker ATK vs defender DEF, already relative ──
   const defFactor = 1 - (skill.ignoreDef || 0);
   const effDef = d.def * defFactor;
+  // Scale the softening constant with the defender's own DEF so the
+  // curve stays meaningful at every level instead of a fixed 140.
+  const soften = 60 + effDef * 0.75;
+  const mitigation = Math.min(0.85, effDef / (effDef + soften));
 
-  // RATIO-based mitigation instead of flat subtraction. The old
-  // `atk - def*0.5` model floored to 1 damage whenever DEF outgrew ATK
-  // (monsters double-scale their base DEF, so a Lv30 tank hit 224 DEF
-  // against a 55 ATK pet and every hit did 1). A ratio can never go
-  // negative and keeps tanks tanky without making them immortal.
-  const mitigation = effDef / (effDef + 140);          // 0..~0.8
   let base = (a.atk * pw * specialMult) * (1 - mitigation) / (DMG_SCALE * DMG_DIVISOR);
   base = Math.max(1, base * variance);
 
-  // ── CRIT ── now driven by the crit STAT (a percentage), x2 damage
-  const crit = Math.random() * 100 < a.crit;
+  // ── CRIT: attacker's CRIT points vs defender's composure ──
+  // Composure resists crits, built from DEF + a share of EVA, so a
+  // sturdy defender is critically hit less often by a weak attacker.
+  const composure = d.def * 0.62 + d.eva * 0.85;
+  const critChance = opposedChance(a.crit, composure, { cap: 0.42, k: 0.55, floor: 0.06 });
+  const crit = Math.random() < critChance;
   if (crit) base *= 2;
 
   // Multi-hit skills strike `hits` times; each hit rolls its own value.
@@ -324,6 +360,17 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   }
 
   return { dmg: total, hits, crit, evaded: false };
+}
+
+// Exposed so the UI can show a pet's EFFECTIVE crit/eva against a
+// specific opponent rather than a meaningless absolute number.
+export function critChanceVs(attacker, atkTeam, defender, defTeam) {
+  const a = combatStats(attacker, atkTeam), d = combatStats(defender, defTeam);
+  return opposedChance(a.crit, d.def * 0.35 + d.eva * 0.45, { cap: 0.42, k: 0.55, floor: 0.06 });
+}
+export function evaChanceVs(defender, defTeam, attacker, atkTeam) {
+  const a = combatStats(attacker, atkTeam), d = combatStats(defender, defTeam);
+  return opposedChance(d.eva, a.spd * 0.55 + a.crit * 0.25, { cap: 0.45, k: 1.1, floor: 0.05 });
 }
 
 // ── AILMENTS ──
