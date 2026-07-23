@@ -233,3 +233,125 @@ lower %, and the level gap shifts it (you higher than target = easier).
 Never 0%. Losing a committed raid costs `RAID_LOSS_BITZ` (300).
 
 Everything routes through the existing battle system with `mode:'raid'`.
+
+
+## Stats (v6)
+
+Seven stats replace the old four:
+
+| Stat | Meaning |
+|---|---|
+| ATK | attack power |
+| DEF | damage reduction (ratio-based, see below) |
+| CRIT | critical CHANCE %, crits deal x2 |
+| EVA | evasion chance % — a dodge deals 0 |
+| SPD | drives the speed counter |
+| INT | max MP (skill fuel) |
+| VIT | max HP |
+
+**Speed counter** — each turn a unit accrues `(mySpd - foeSpd) / 45`
+points. Equal speed accrues 0 even when both are high. At >= 1 the unit
+acts TWICE that turn and the counter resets.
+
+**Damage** uses ratio mitigation: `atk * pw * (1 - def/(def+140))`.
+The old `atk - def*0.5` model floored to 1 damage whenever DEF outgrew
+ATK (monsters double-scale their base DEF, so a Lv30 tank reached 224
+DEF against a 55 ATK pet). The ratio can't go negative.
+
+## Skill trees
+
+One fixed tree per attribute (`SKILL_TREES` in data.js), 16 nodes each,
+drawn as connected circles. Pets earn **1 growth point per level**.
+
+- **stat nodes** — +n to a stat, up to 5 ranks
+- **skill nodes** — unlock an active special
+
+A node needs its parents MAXED plus a minimum level. Trees follow the
+attribute: red = ATK/CRIT + heavy damage, green = SPD/EVA + multi-hit,
+yellow = DEF/VIT + control, white = INT/VIT + healing and team buffs.
+
+32 specials total across the four trees, weakest at the root and
+strongest at the tips.
+
+## Ailments
+
+| Ailment | Effect |
+|---|---|
+| ☠️ Poison | loses HP each turn for N turns |
+| ❄️ Freeze | cannot act for N turns |
+| 🔥 Frenzy | +ATK/+SPD, -DEF (can be self-applied) |
+| 💗 Charmed | attacks itself instead of the enemy |
+
+Applied by specials, shown as badges over the unit, ticked at end of turn.
+
+## MP and auto-cast
+
+Each pet has MP equal to its INT, refilled at the start of a run and
+regenerating +2 per turn. Unlocked specials appear as toggle buttons in
+battle; when a toggle is ON the pet casts it automatically whenever it
+can afford it. The selector skips re-casting active self-buffs, heals at
+high HP, and cleanses with no ailments — otherwise a buff loops forever
+and the pet never attacks.
+
+
+## Visual design (v7)
+
+**Font** — ByteBounce (`assets/fonts/`), a pixel display face, served as
+WOFF2 (3.3KB, down from 17.5KB TTF) with the TTF as fallback. It renders
+about 2.4x smaller than Press Start 2P at the same px size, so every
+`--pixel` size was rescaled. Licensed free for personal use only; the
+EULA ships alongside it. Commercial release needs a licence from the
+author.
+
+**Palette** — deep indigo-violet base (`#0a0716`) with layered radial
+glow pools and a faint scanline grid on `body::before/::after`, so empty
+space has depth instead of reading as a blank div. Accents are more
+saturated: cyan `#3df0ff`, magenta `#ff5ce0`, violet `#a56bff`,
+gold `#ffcf3f`.
+
+**Depth** — every panel and card carries a bright top rim
+(`inset 0 1px 0`), a dark bottom shade, and a drop shadow, so surfaces
+read as lit physical plates. Buttons have a 3px bottom lip and physically
+sink on `:active`. Pet cards gained a rarity ribbon across the top edge.
+
+**Creature art** — the SVG renderer now injects per-creature defs: a
+radial body gradient (light → body → dark), a screen-blended rim light
+along the top edge, a dilate-based ink outline, and a soft contact
+shadow. Previously they were flat single-fill vectors with no volume.
+
+
+## Enemy sizing & facing
+
+Each monster in `ANTIVIRUZ` carries two presentation fields:
+
+- `faces` — which way the art was DRAWN (`'left'` or `'right'`)
+- `scale` — size relative to a baseline creature
+
+The battle renderer flips a sprite only when its drawn facing disagrees
+with the side it's on (player looks right, enemy looks left), so sprites
+never end up facing away from the fight. Facing was determined by
+measuring head-mass skew in the top third of each sprite rather than by
+eye.
+
+Sizes follow the fiction: goblins 0.80, hobgoblin 1.10, black beast
+1.15, vampires 1.00–1.18 (human height), golems 1.42–1.48 (towering).
+Sprites scale from `transform-origin:50% 100%` so they grow upward from
+the platform instead of floating.
+
+**Gotcha:** the idle-bob keyframes set `transform` directly, which
+silently wiped `--cr-scale` and made every enemy render at 1x. The bob
+keyframes now compose the scale themselves.
+
+## Battle camera
+
+Crits and special skills trigger `cinematicStrike()`:
+pan+zoom to the attacker → slow time to 0.55x → play the skill animation
+→ pan to the target as the damage lands → ease back out.
+
+`#stage-cam` wraps only the scene (sky, ground, fighters, FX). Name
+plates, banners and the swap menu sit outside it so they stay readable
+and correctly positioned while the camera moves.
+
+Damage numbers now punch in, then drift upward while fading over 1.35s
+rather than hanging in place. The POW starburst was removed — it sat on
+top of the number and hid it.

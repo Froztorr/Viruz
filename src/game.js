@@ -9,12 +9,16 @@ import {
   SYNERGY, WHITE_TRAITS,
   LOYALTY_TIERS, loyaltyTier, loyaltyProgress, SIGNATURE_SKILLS,
   FOODS, TOYS, CARE_CLEAN, CARE_COOLDOWN_MS, LOYALTY_PER_WIN,
-  buildLootMenu, chanceToEnemyMult, RAID_LOSS_BITZ } from './data.js';
+  buildLootMenu, chanceToEnemyMult, RAID_LOSS_BITZ,
+  SKILL_TREES, SPECIALS, AILMENTS, STAT_KEYS, STAT_META, treeFor } from './data.js';
 import {
   createPet, rollEgg, statsOf, combatStats, powerOf, teamPower, spawnAntiviruz,
   synergyOf, supportOf, computeDamage, turnOrder, grantExp,
   canEvolve, evolve, buildHackRun, resolveRaid, healTeam,
-  teamAlive, availableSkills, clamp, loyaltyBuffs, signatureSkillOf, buildHackPuzzle, checkHackGuess } from './engine.js';
+  teamAlive, availableSkills, clamp, loyaltyBuffs, signatureSkillOf, buildHackPuzzle, checkHackGuess,
+  unlockedSpecials, canTakeNode, takeNode, treeBonuses,
+  addAilment, hasAilment, clearAilments, tickAilments,
+  advanceSpeedCounter, maxMP, canCast, spendMP, restoreMP } from './engine.js';
 import { NET } from './net.js';
 import { creatureMarkupFor, gifURL } from './sprites.js';
 
@@ -25,7 +29,8 @@ function creatureMarkup(pet, cls, anim = 'still') {
   // the spawned unit. Must include ext/palette or PNG art resolves to
   // a .gif path and 404s.
   const sp = SPECIES[pet.speciesId] ||
-    { shape: pet.shape, palette: pet.palette, gif: pet.gif, ext: pet.ext, name: pet.name };
+    { shape: pet.shape, palette: pet.palette, gif: pet.gif, ext: pet.ext,
+      faces: pet.faces, scale: pet.scale, name: pet.name };
   const attr = ATTR[pet.attr] || ATTR.red;
   return creatureMarkupFor(sp, attr, cls, anim);
 }
@@ -109,6 +114,17 @@ async function boot() {
       // either procedural SVG (`shape`) or real art (`gif`), and can
       // switch between them in a later build without breaking saves.
       if (typeof p.loyalty !== 'number') p.loyalty = 0;
+      // New stat/skill system fields
+      p.tree      = p.tree      || {};
+      p.autoCast  = p.autoCast  || {};
+      p.ailments  = [];
+      p.spdCounter = 0;
+      if (typeof p.growthPts !== 'number') {
+        // Retro-grant one point per level already earned so existing
+        // pets aren't stuck with an empty tree.
+        p.growthPts = Math.max(0, (p.level || 1) - 1);
+      }
+      if (typeof p.mp !== 'number') p.mp = 0;
       p.shape = sp.shape || null;
       p.gif   = sp.gif   || null;
       if (!p.name) p.name = sp.name;
@@ -190,7 +206,7 @@ async function claimStarter() {
 }
 
 // ═══════════════ SCREENS ═══════════════
-const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care','hack','steal'];
+const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care','hack','steal','tree'];
 function showScreen(id) {
   SCREENS.forEach(s => {
     const e = $('screen-' + s);
@@ -209,6 +225,7 @@ function showScreen(id) {
   if (id === 'world')  renderWorld();
   if (id === 'safe')   renderSafeSpot();
   if (id === 'care')   renderCare();
+  if (id === 'tree')   renderTree();
   if (id === 'raid')   renderRaidList();
   if (id === 'map')    renderFeed();
 }
@@ -797,6 +814,104 @@ function openZone(z) {
   });
 }
 
+// ── SKILL TREE SCREEN ──
+// Circular nodes connected by branches, coloured by attribute.
+// Taking a node costs 1 growth point and requires its parents maxed.
+let treePetId = null;
+
+function renderTree() {
+  const pet = G.roster.find(p => p.uid === treePetId) || activeTeam()[0] || G.roster[0];
+  if (!pet) return;
+  treePetId = pet.uid;
+  const tree = treeFor(pet.attr);
+  const spent = pet.tree || {};
+
+  // pet picker
+  const picker = $('tree-picker');
+  if (picker) {
+    picker.innerHTML = '';
+    G.roster.forEach(p => {
+      const chip = el('button','care-chip' + (p.uid === treePetId ? ' on' : ''));
+      chip.innerHTML = `${creatureMarkup(p,'care-chip-sprite')}<span>${p.name}</span>`;
+      chip.onclick = () => { treePetId = p.uid; renderTree(); };
+      picker.appendChild(chip);
+    });
+  }
+
+  setText('tree-name', tree.name);
+  setText('tree-thai', tree.thai);
+  setText('tree-pts', pet.growthPts || 0);
+
+  // current stats readout
+  const st = statsOf(pet);
+  const sb = $('tree-stats');
+  if (sb) {
+    sb.innerHTML = STAT_KEYS.map(k => {
+      const meta = STAT_META[k];
+      const val = k === 'crit' || k === 'eva' ? st[k] + '%' : st[k];
+      return `<span class="ts-stat"><i>${meta.icon}</i>${meta.name} <b>${val}</b></span>`;
+    }).join('');
+  }
+
+  // canvas
+  const host = $('tree-canvas');
+  if (!host) return;
+  host.style.setProperty('--tree-color', tree.color);
+
+  // branches first (SVG under the nodes)
+  const lines = tree.nodes.flatMap(n =>
+    n.req.map(r => {
+      const p = tree.nodes.find(x => x.id === r);
+      if (!p) return '';
+      const taken = (spent[n.id] || 0) > 0;
+      return `<line x1="${p.x}" y1="${p.y}" x2="${n.x}" y2="${n.y}"
+                class="tree-line${taken ? ' on' : ''}" />`;
+    })
+  ).join('');
+
+  const nodesHtml = tree.nodes.map(n => {
+    const rank = spent[n.id] || 0;
+    const maxed = rank >= n.max;
+    const chk = canTakeNode(pet, n.id);
+    const state = maxed ? 'maxed' : rank > 0 ? 'part' : chk.ok ? 'open' : 'locked';
+    const label = n.kind === 'stat'
+      ? `${STAT_META[n.stat].icon}`
+      : '✦';
+    const sub = n.kind === 'stat'
+      ? `+${n.per} ${STAT_META[n.stat].name}`
+      : SPECIALS[n.skill].name;
+    return `
+      <button class="tree-node ${state} ${n.kind}" data-node="${n.id}"
+              style="left:${n.x}%;top:${n.y}%">
+        <span class="tn-icon">${label}</span>
+        <span class="tn-rank">${rank}/${n.max}</span>
+        <span class="tn-tip">${sub}<br><i>Lv.${n.reqLv}+</i></span>
+      </button>`;
+  }).join('');
+
+  host.innerHTML = `
+    <svg class="tree-lines" viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>
+    ${nodesHtml}`;
+
+  host.querySelectorAll('.tree-node').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.node;
+      const node = tree.nodes.find(n => n.id === id);
+      const res = canTakeNode(pet, id);
+      if (!res.ok) { toast(res.why); return; }
+      takeNode(pet, id);
+      if (node.kind === 'skill') {
+        const sp = SPECIALS[node.skill];
+        pet.autoCast = pet.autoCast || {};
+        pet.autoCast[sp.id] = true;      // on by default when unlocked
+        toast(`ปลดล็อก ${sp.name}!\n${sp.desc}`);
+        log(`✦ ${pet.name} ปลดล็อก ${sp.name}`, 'win');
+      }
+      save(); renderTree(); renderHUD();
+    };
+  });
+}
+
 // ── CARE (TAMAGOTCHI MINIGAME) ──
 // Each activity is on its own 1-hour cooldown, tracked per pet in
 // G.care[petUid][activityId] = timestamp. Foods deplete when used;
@@ -1061,6 +1176,13 @@ function startZone(target) {
     totalExp: 0,
     totalBitz: 0,
   };
+  // Fresh MP, cleared ailments and speed counters at the start of a run
+  battle.team.forEach(p => {
+    p.mp = statsOf(p).int;
+    p.spdCounter = 0;
+    p.ailments = [];
+    p._shield = 0;
+  });
   showScreen('battle');
   setText('battle-title', target.name);
   setText('battle-wave', `คลื่น 1 / ${run.waveCount}`);
@@ -1127,25 +1249,79 @@ function renderBattle() {
     unit.dataset.side = isEnemy ? 'foe' : 'ally';
     unit.style.setProperty('--float-delay', (Math.random() * 1.6).toFixed(2) + 's');
     if (pet.hp <= 0) unit.classList.add('dead');
+    const badges = (pet.ailments || []).map(a => {
+      const A = AILMENTS[a.id];
+      return A ? `<span class="ail-badge" title="${A.thai} (${a.turns})">${A.icon}</span>` : '';
+    }).join('');
+    // FACING: sprites are authored facing either way. The player's side
+    // must look right, the enemy side must look left. `faces` says how the
+    // art was drawn, so we only flip when it disagrees with the side.
+    const drawnFaces = pet.faces || (pet.gif ? 'right' : 'right');
+    const wantFaces  = isEnemy ? 'left' : 'right';
+    const needFlip   = drawnFaces !== wantFaces;
+
+    // SIZE: scale by the creature's expected physical size.
+    const sc = pet.scale || 1;
+
+    unit.style.setProperty('--cr-scale', sc);
     unit.innerHTML = `
+      ${badges ? `<div class="ail-badges">${badges}</div>` : ''}
       <div class="bu-sprite-wrap">
-        ${creatureMarkup(pet, 'bu-sprite float' + (isEnemy ? ' flip' : ''))}
+        ${creatureMarkup(pet, 'bu-sprite float' + (needFlip ? ' flip' : ''))}
       </div>`;
     wrap.appendChild(unit);
 
     // Name plate lives outside the sprite so it never moves with a lunge
     const plate = $(isEnemy ? 'plate-foe' : 'plate-ally');
     if (plate) {
+      const mpMax = statsOf(pet).int;
+      const mpPct = Math.round((pet.mp || 0) / Math.max(1, mpMax) * 100);
+      const spdPct = Math.round(Math.min(1, pet.spdCounter || 0) * 100);
       plate.innerHTML = `
         <div class="np-name">${pet.name}</div>
         <div class="np-lv">Lv.${pet.level}</div>
-        <div class="np-hp"><span class="np-heart">♥</span><b>${Math.max(0,pet.hp)}</b></div>`;
+        <div class="np-hp"><span class="np-heart">♥</span><b>${Math.max(0,pet.hp)}</b></div>
+        ${!isEnemy ? `<div class="np-mp">MP<span class="mp-bar"><i style="width:${mpPct}%"></i></span>${pet.mp||0}</div>` : ''}
+        ${spdPct > 0 ? `<div class="spd-pip">⚡ ${spdPct}%</div>` : ''}`;
     }
   };
   side(activeAlly(), 'battle-allies', false);
   side(activeFoe(),  'battle-enemies', true);
   renderBench();
   renderPotionBar();
+  renderSkillBar();
+}
+
+// ── SPECIAL SKILL BAR ──
+// Unlocked specials for the ACTIVE fighter. Tapping toggles auto-cast:
+// when on, the pet uses it automatically each turn until MP runs out.
+function renderSkillBar() {
+  const bar = $('skill-bar');
+  if (!bar || !battle) return;
+  const pet = activeAlly();
+  bar.innerHTML = '';
+  if (!pet) return;
+  const list = unlockedSpecials(pet);
+  if (!list.length) {
+    bar.innerHTML = `<div class="sk-empty">ยังไม่มีสกิลพิเศษ — ปลดล็อกในผังสกิล</div>`;
+    return;
+  }
+  pet.autoCast = pet.autoCast || {};
+  list.forEach(sp => {
+    const on = !!pet.autoCast[sp.id];
+    const afford = (pet.mp || 0) >= sp.mp;
+    const b = el('button','sk-btn' + (on ? ' on' : '') + (afford ? '' : ' poor'));
+    b.innerHTML = `
+      <span class="sk-name">${sp.name}</span>
+      <span class="sk-mp">MP ${sp.mp}</span>
+      <span class="sk-auto">${on ? '● AUTO' : '○ ปิด'}</span>`;
+    b.title = `${sp.thai} — ${sp.desc}`;
+    b.onclick = () => {
+      pet.autoCast[sp.id] = !pet.autoCast[sp.id];
+      save(); renderSkillBar();
+    };
+    bar.appendChild(b);
+  });
 }
 
 // ── COMBAT POTIONS ──
@@ -1194,6 +1370,181 @@ function usePotion(pt) {
   refreshBattleUnits();
   renderPotionBar();
   save();
+}
+
+// ── CAMERA ──
+// Pans/zooms the stage toward a unit for dramatic moments (crits and
+// special skills), then eases back out. Purely visual — it transforms a
+// wrapper, so hit detection and layout are untouched.
+function cameraTo(unitEl, { zoom = 1.5, ms = 320 } = {}) {
+  const cam = $('stage-cam');
+  const stage = $('battle-stage');
+  if (!cam || !stage || !unitEl) return;
+  const host = stage.getBoundingClientRect();
+  const r = unitEl.getBoundingClientRect();
+  // offset needed to bring the unit to stage centre, pre-zoom
+  const dx = (host.width / 2) - (r.left - host.left + r.width / 2);
+  const dy = (host.height / 2) - (r.top - host.top + r.height / 2);
+  cam.style.transition = `transform ${ms}ms cubic-bezier(.3,.9,.3,1)`;
+  cam.style.transform = `scale(${zoom}) translate(${dx / zoom}px, ${dy / zoom}px)`;
+}
+function cameraReset(ms = 380) {
+  const cam = $('stage-cam');
+  if (!cam) return;
+  cam.style.transition = `transform ${ms}ms cubic-bezier(.3,.9,.3,1)`;
+  cam.style.transform = 'scale(1) translate(0,0)';
+}
+// Slow-motion: scales every running animation on the stage.
+function setTimeScale(v) {
+  const stage = $('battle-stage');
+  if (stage) stage.style.setProperty('--time-scale', v);
+}
+
+// Full dramatic beat: pan to attacker, slow down, hold for the skill
+// animation, then pan out to reveal the damage on the target.
+async function cinematicStrike(attackerEl, targetEl, playFn) {
+  cameraTo(attackerEl, { zoom: 1.55, ms: 300 });
+  setTimeScale(0.55);
+  await wait(300);
+  await playFn();                 // the attack/skill animation itself
+  setTimeScale(1);
+  cameraTo(targetEl, { zoom: 1.25, ms: 260 });
+  await wait(240);
+  cameraReset(420);
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── SPELL VFX ──
+// Each special names a vfx key; this draws it over the stage.
+function playSpellVFX(kind, caster, target, side) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  if (!layer || !stage || !kind) return;
+  const host = stage.getBoundingClientRect();
+  const cEl = document.querySelector(`.bunit[data-uid="${caster.uid}"]`);
+  const tEl = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
+  const at = (elm, yFactor = 0.5) => {
+    if (!elm) return { x: host.width/2, y: host.height/2 };
+    const r = elm.getBoundingClientRect();
+    return { x: r.left - host.left + r.width/2, y: r.top - host.top + r.height*yFactor };
+  };
+
+  const mk = (cls, pos, inner='') => {
+    const d = el('div', 'vfx ' + cls, '');
+    d.style.left = pos.x + 'px';
+    d.style.top  = pos.y + 'px';
+    if (inner) d.innerHTML = inner;
+    layer.appendChild(d);
+    setTimeout(() => d.remove(), 1400);
+    return d;
+  };
+
+  switch (kind) {
+    case 'fire': {
+      const p = at(tEl, .55);
+      let inner = '';
+      for (let i = 0; i < 10; i++) {
+        inner += `<i class="flame" style="--fx:${(Math.random()*70-35).toFixed(0)}px;--fd:${(i*0.05).toFixed(2)}s"></i>`;
+      }
+      mk('vfx-fire', p, inner);
+      break;
+    }
+    case 'ice': {
+      const p = at(tEl, .5);
+      let inner = '';
+      for (let i = 0; i < 7; i++) {
+        inner += `<i class="shard" style="--sa:${(360/7*i).toFixed(0)}deg;--sd:${(i*0.04).toFixed(2)}s"></i>`;
+      }
+      mk('vfx-ice', p, inner + '<b class="frost-ring"></b>');
+      break;
+    }
+    case 'heal': {
+      const p = at(cEl, .55);
+      let inner = '<b class="heal-ring"></b>';
+      for (let i = 0; i < 8; i++) {
+        inner += `<i class="sparkle" style="--sx:${(Math.random()*60-30).toFixed(0)}px;--sd:${(i*0.07).toFixed(2)}s"></i>`;
+      }
+      mk('vfx-heal', p, inner);
+      break;
+    }
+    case 'bless': case 'holy': {
+      const p = at(kind === 'holy' ? tEl : cEl, .5);
+      mk('vfx-holy', p, '<b class="holy-beam"></b><b class="holy-ring"></b>');
+      break;
+    }
+    case 'shield': {
+      const p = at(cEl, .5);
+      mk('vfx-shield', p, '<b class="shield-hex"></b>');
+      break;
+    }
+    case 'poison': {
+      const p = at(tEl, .55);
+      let inner = '';
+      for (let i = 0; i < 9; i++) {
+        inner += `<i class="bubble" style="--bx:${(Math.random()*60-30).toFixed(0)}px;--bd:${(i*0.06).toFixed(2)}s"></i>`;
+      }
+      mk('vfx-poison', p, inner);
+      break;
+    }
+    case 'charm': {
+      const p = at(tEl, .45);
+      let inner = '';
+      for (let i = 0; i < 7; i++) {
+        inner += `<i class="heartp" style="--hx:${(Math.random()*70-35).toFixed(0)}px;--hd:${(i*0.08).toFixed(2)}s">♥</i>`;
+      }
+      mk('vfx-charm', p, inner);
+      break;
+    }
+    case 'wind': {
+      const p = at(tEl, .5);
+      let inner = '';
+      for (let i = 0; i < 6; i++) {
+        inner += `<i class="gust" style="--gy:${(i*11-30)}px;--gd:${(i*0.05).toFixed(2)}s"></i>`;
+      }
+      mk('vfx-wind', p, inner);
+      break;
+    }
+    case 'meteor': {
+      const p = at(tEl, .5);
+      mk('vfx-meteor', p, '<b class="rock"></b><b class="boom"></b>');
+      break;
+    }
+    case 'phoenix': {
+      const p = at(tEl, .5);
+      mk('vfx-phoenix', p, '<b class="wing left"></b><b class="wing right"></b><b class="boom"></b>');
+      break;
+    }
+    case 'pierce': {
+      const p = at(tEl, .5);
+      mk('vfx-pierce', p, '<b class="lance"></b>');
+      break;
+    }
+    case 'aura': {
+      const p = at(cEl, .55);
+      mk('vfx-aura', p, '<b class="aura-ring"></b><b class="aura-ring d2"></b>');
+      break;
+    }
+    default: {
+      const p = at(tEl, .5);
+      mk('vfx-impact', p, '<b class="boom"></b>');
+    }
+  }
+}
+
+// Purple rising number for poison ticks
+function poisonPop(pet, amount) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  const unit = document.querySelector(`.bunit[data-uid="${pet.uid}"]`);
+  if (!layer || !stage || !unit) return;
+  const host = stage.getBoundingClientRect();
+  const r = unit.getBoundingClientRect();
+  const d = el('div','poison-pop', `-${amount}`);
+  d.style.left = (r.left - host.left + r.width/2) + 'px';
+  d.style.top  = (r.top - host.top + r.height*0.3) + 'px';
+  layer.appendChild(d);
+  setTimeout(() => d.remove(), 1000);
 }
 
 // Green rising number for heals, mirroring the damage number style
@@ -1312,23 +1663,6 @@ function impactBurst(targetEl, crit) {
   setTimeout(() => burst.remove(), 620);
 }
 
-// ── CRIT "POW!" ──
-// Comic-style starburst with POW! text, fired only on crits.
-function powEffect(targetEl) {
-  const layer = $('fx-layer');
-  const stage = $('battle-stage');
-  if (!layer || !stage || !targetEl) return;
-  const host = stage.getBoundingClientRect();
-  const r = targetEl.getBoundingClientRect();
-  const pow = el('div','pow-burst');
-  pow.style.left = (r.left - host.left + r.width/2) + 'px';
-  pow.style.top  = (r.top - host.top + r.height*0.42) + 'px';
-  pow.style.setProperty('--spin', (Math.random()*20-10).toFixed(1) + 'deg');
-  pow.innerHTML = `<span class="pow-star"></span><b class="pow-text">POW!</b>`;
-  layer.appendChild(pow);
-  setTimeout(() => pow.remove(), 780);
-}
-
 // ── VR2 DAMAGE NUMBER ──
 // Huge, red-orange, thick black stroke, tilted, scale-punch on entry.
 // Multi-hits stack a "× N" underneath. Crits append "!".
@@ -1347,7 +1681,7 @@ function floatDamage(anchor, res) {
     <span class="dmg-num">${res.dmg}${res.crit ? '!' : ''}</span>
     ${res.hits > 1 ? `<span class="dmg-mult">× ${res.hits}</span>` : ''}`;
   layer.appendChild(wrap);
-  setTimeout(() => wrap.remove(), 1100);
+  setTimeout(() => wrap.remove(), 1400);
 }
 
 function scheduleTurn(delay) {
@@ -1367,47 +1701,54 @@ async function runTurn() {
 
   const ally = activeAlly();
   const foe  = activeFoe();
-
   if (!ally) { promptSwap(); return; }
   if (!foe)  { checkBattleEnd(); return; }
 
-  // Alternate: ally strikes, then foe strikes back.
-  const allyFirst = combatStats(ally, battle.team).spd >= combatStats(foe, battle.enemies).spd;
-  const seq = battle.phase === 'foe' ? [[foe, ally, 'foe']] : [[ally, foe, 'ally']];
-  battle.phase = battle.phase === 'foe' ? 'ally' : 'foe';
+  const isAllyPhase = battle.phase !== 'foe';
+  let attacker = isAllyPhase ? ally : foe;
+  let target   = isAllyPhase ? foe  : ally;
+  const side   = isAllyPhase ? 'ally' : 'foe';
+  battle.phase = isAllyPhase ? 'foe' : 'ally';
 
-  for (const [attacker, target, side] of seq) {
-    if (attacker.hp <= 0 || target.hp <= 0) continue;
+  if (attacker.hp <= 0 || target.hp <= 0) { checkBattleEnd(); return; }
 
-    await showBanner(side === 'ally' ? `${attacker.name} โจมตี!` : `${attacker.name} ตอบโต้!`,
-                     side === 'ally' ? 'ally' : 'foe');
+  // ── FREEZE: skip the turn entirely ──
+  if (hasAilment(attacker, 'freeze')) {
+    await showBanner(`${attacker.name} ถูกแช่แข็ง!`, 'ail');
+    blog(`❄️ ${attacker.name} ขยับไม่ได้`, side);
+    await endOfTurnTicks(attacker, side);
+    if (checkBattleEnd()) return;
+    renderBattle(); scheduleTurn(); return;
+  }
+
+  // ── CHARM: attacker turns on its own side ──
+  let charmed = false;
+  if (hasAilment(attacker, 'charm')) {
+    charmed = true;
+    target = attacker;      // hits itself (single-fighter stage)
+    await showBanner(`${attacker.name} ถูกสะกด!`, 'ail');
+  }
+
+  const atkTeam = side === 'ally' ? battle.team : battle.enemies;
+  const defTeam = side === 'ally' ? battle.enemies : battle.team;
+
+  // ── SPEED COUNTER: how many actions this turn ──
+  const aStats = combatStats(attacker, atkTeam);
+  const tStats = combatStats(target, defTeam);
+  const actions = advanceSpeedCounter(attacker, aStats.spd, tStats.spd);
+  if (actions > 1) await showBanner(`⚡ ${attacker.name} เร็วกว่า — โจมตี 2 ครั้ง!`, 'speed');
+
+  for (let act = 0; act < actions; act++) {
     if (!battle || battle.over) return;
+    if (attacker.hp <= 0 || target.hp <= 0) break;
 
-    // Signature moves are powerful, so they fire only ~25% of the time
-    // rather than competing equally in the random pick.
-    const all = availableSkills(attacker);
-    const sig = all.find(sk => sk.sig);
-    const normal = all.filter(sk => !sk.sig);
-    let skill;
-    if (sig && Math.random() < 0.25) skill = sig;
-    else skill = normal[Math.floor(Math.random() * normal.length)] || { n:'Strike', pw:35 };
-    const res = computeDamage(attacker, side==='ally'?battle.team:battle.enemies,
-                              target, side==='ally'?battle.enemies:battle.team,
-                              skill, !!skill.special);
-
-    if (skill.sig) await showBanner(`✦ ${skill.n} ✦`, 'sig');
-    if (res.crit) await showBanner('CRITICAL!!', 'crit');
-    if (!battle || battle.over) return;
-
-    await playAttack(attacker, target, res, side);
-    target.hp = Math.max(0, target.hp - res.dmg);
-    refreshBattleUnits();
-
-    let line = `${attacker.name} → ${skill.n}`;
-    if (res.hits > 1) line += ` ×${res.hits}`;
-    if (res.crit) line += ' CRIT';
-    line += ` · -${res.dmg}`;
-    blog(line, side);
+    // ── PICK ACTION: auto-cast special if toggled and MP allows ──
+    const special = pickAutoSpecial(attacker, side);
+    if (special) {
+      await castSpecial(attacker, target, special, side, atkTeam, defTeam);
+    } else {
+      await basicAttack(attacker, target, side, atkTeam, defTeam, charmed);
+    }
 
     if (target.hp <= 0) {
       await showBanner(`${target.name} ถูกกำจัด`, 'ko');
@@ -1417,15 +1758,199 @@ async function runTurn() {
     }
   }
 
+  await endOfTurnTicks(attacker, side);
   if (checkBattleEnd()) return;
-
-  // If our fighter fell, let the player pick the next one.
   if (!activeAlly() && battle.team.some(p => p.hp > 0)) { promptSwap(); return; }
-  // If the foe fell but more remain, refresh onto the next one.
   if (!activeFoe()) { checkBattleEnd(); return; }
 
   renderBattle();
   scheduleTurn();
+}
+
+// Choose an auto-cast special the attacker can afford right now.
+function pickAutoSpecial(pet, side) {
+  if (side !== 'ally') {
+    // enemies occasionally use their own signature
+    const sig = signatureSkillOf(pet);
+    if (sig && Math.random() < 0.2) return null;
+    return null;
+  }
+  const auto = pet.autoCast || {};
+  let list = unlockedSpecials(pet).filter(sp => auto[sp.id] && canCast(pet, sp));
+
+  // Don't re-cast a self-buff that's already running, and don't cast a
+  // heal at full HP — otherwise the pet loops on it and never attacks.
+  list = list.filter(sp => {
+    if (sp.buffSelf && hasAilment(pet, sp.buffSelf.id)) return false;
+    if (sp.shieldSelf && pet._shield) return false;
+    if ((sp.heal || sp.healTeam) && !sp.pw) {
+      const mx = statsOf(pet).vit;
+      if (pet.hp >= mx * 0.85) return false;      // only heal when hurt
+    }
+    if (sp.cleanse && !(pet.ailments || []).length) return false;
+    if (sp.reviveTeam && !battle.team.some(p => p.hp <= 0)) return false;
+    return true;
+  });
+  if (!list.length) return null;
+
+  // Damage skills take priority; utility only when nothing to hit with.
+  const dmg = list.filter(sp => sp.pw > 0);
+  const util = list.filter(sp => !sp.pw);
+  if (util.length && Math.random() < 0.45) return util.sort((a,b)=>b.mp-a.mp)[0];
+  if (dmg.length) return dmg.sort((a, b) => b.mp - a.mp)[0];
+  return list.sort((a, b) => b.mp - a.mp)[0];
+}
+
+// Normal attack using the pet's basic skills.
+async function basicAttack(attacker, target, side, atkTeam, defTeam, charmed) {
+  const all = availableSkills(attacker);
+  const sig = all.find(sk => sk.sig);
+  const normal = all.filter(sk => !sk.sig);
+  let skill;
+  if (sig && Math.random() < 0.25) skill = sig;
+  else skill = normal[Math.floor(Math.random() * normal.length)] || { n:'Strike', pw:1 };
+
+  // legacy skills use pw as 0-120 "power"; normalize to a multiplier
+  const norm = { ...skill, pw: skill.pw > 5 ? skill.pw / 50 : skill.pw };
+
+  const res = computeDamage(attacker, atkTeam, target, defTeam, norm, !!skill.special);
+  if (skill.sig) await showBanner(`✦ ${skill.n} ✦`, 'sig');
+  if (res.evaded) {
+    await showBanner('MISS!', 'miss');
+    blog(`${target.name} หลบได้!`, side);
+    await playAttack(attacker, target, res, side);
+    return;
+  }
+  if (res.crit) await showBanner('CRITICAL!!', 'crit');
+  const aEl0 = document.querySelector(`.bunit[data-uid="${attacker.uid}"]`);
+  const tEl0 = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
+  if (res.crit && aEl0 && tEl0) {
+    // Crits get the camera treatment: pan in on the attacker, slow the
+    // wind-up, then pan to the target as the number lands.
+    await cinematicStrike(aEl0, tEl0, () => playAttack(attacker, target, res, side));
+  } else {
+    await playAttack(attacker, target, res, side);
+  }
+  target.hp = Math.max(0, target.hp - res.dmg);
+  refreshBattleUnits();
+
+  let line = charmed ? `💗 ${attacker.name} โจมตีตัวเอง` : `${attacker.name} → ${skill.n}`;
+  if (res.hits > 1) line += ` ×${res.hits}`;
+  if (res.crit) line += ' CRIT';
+  line += ` · -${res.dmg}`;
+  blog(line, side);
+}
+
+// Cast a special: spends MP, plays its VFX, applies its payload.
+async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
+  spendMP(caster, sp);
+  await showBanner(`✦ ${sp.name} ✦`, 'sig');
+
+  // Specials always get the cinematic: pan to the caster, slow time so
+  // the spell animation reads, then pan out to the target.
+  const cEl0 = document.querySelector(`.bunit[data-uid="${caster.uid}"]`);
+  const tEl0 = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
+  if (cEl0) {
+    cameraTo(cEl0, { zoom: 1.5, ms: 300 });
+    setTimeScale(0.55);
+    await wait(320);
+  }
+  playSpellVFX(sp.vfx, caster, target, side);
+  await wait(420);            // let the spell animation play in slow-mo
+  setTimeScale(1);
+
+  // ── HEAL / SUPPORT ──
+  if (sp.heal) {
+    const mx = statsOf(caster).vit;
+    const amt = Math.floor(mx * sp.heal);
+    caster.hp = Math.min(mx, caster.hp + amt);
+    healPop(caster, amt);
+    blog(`💚 ${caster.name} ใช้ ${sp.name} · +${amt} HP`, 'buff');
+  }
+  if (sp.healTeam) {
+    atkTeam.forEach(p => {
+      if (p.hp <= 0) return;
+      const mx = statsOf(p).vit;
+      const amt = Math.floor(mx * sp.healTeam);
+      p.hp = Math.min(mx, p.hp + amt);
+    });
+    blog(`💚 ${caster.name} ใช้ ${sp.name} · ฟื้นทั้งทีม`, 'buff');
+  }
+  if (sp.reviveTeam) {
+    let n = 0;
+    atkTeam.forEach(p => {
+      if (p.hp > 0) return;
+      p.hp = Math.floor(statsOf(p).vit * sp.reviveTeam); n++;
+    });
+    blog(`✨ ${caster.name} กู้ระบบ · ชุบชีวิต ${n} ตัว`, 'buff');
+  }
+  if (sp.cleanse) { clearAilments(caster); blog(`🧼 ${caster.name} ล้างสถานะ`, 'buff'); }
+  if (sp.shieldSelf) {
+    caster._shield = sp.shieldSelf;
+    caster._shieldTurns = 3;
+    blog(`🛡 ${caster.name} ตั้งเกราะ ${Math.round(sp.shieldSelf*100)}%`, 'buff');
+  }
+  if (sp.buffSelf) {
+    addAilment(caster, { ...sp.buffSelf });
+    blog(`🔥 ${caster.name} เข้าสู่สภาวะ ${sp.buffSelf.id}`, 'buff');
+  }
+  if (sp.buffTeam) {
+    atkTeam.forEach(p => { if (p.hp > 0) addAilment(p, { id:'frenzy', ...sp.buffTeam }); });
+    blog(`✨ ${caster.name} เสริมพลังทั้งทีม`, 'buff');
+  }
+
+  // ── DAMAGE ──
+  if (sp.pw > 0 && sp.hits > 0) {
+    const res = computeDamage(caster, atkTeam, target, defTeam, sp, true);
+    if (res.evaded) {
+      await showBanner('MISS!', 'miss');
+      blog(`${target.name} หลบ ${sp.name} ได้!`, side);
+    } else {
+      if (res.crit) await showBanner('CRITICAL!!', 'crit');
+      if (tEl0) cameraTo(tEl0, { zoom: 1.25, ms: 260 });
+      await playAttack(caster, target, res, side);
+      target.hp = Math.max(0, target.hp - res.dmg);
+      let line = `✦ ${caster.name} → ${sp.name}`;
+      if (res.hits > 1) line += ` ×${res.hits}`;
+      if (res.crit) line += ' CRIT';
+      line += ` · -${res.dmg}`;
+      blog(line, side);
+    }
+  }
+
+  // ── AILMENT ON TARGET ──
+  if (sp.ailment && target.hp > 0) {
+    addAilment(target, { ...sp.ailment });
+    const A = AILMENTS[sp.ailment.id];
+    blog(`${A.icon} ${target.name} ติด${A.thai}`, side);
+    await showBanner(`${A.icon} ${A.name}!`, 'ail');
+  }
+
+  cameraReset(400);
+  refreshBattleUnits();
+  renderPotionBar();
+}
+
+// Poison damage, buff expiry, shield countdown — run at the end of a turn.
+async function endOfTurnTicks(unit, side) {
+  const evs = tickAilments(unit);
+  evs.forEach(e => {
+    if (e.type === 'poison') {
+      blog(`☠️ ${unit.name} เสีย ${e.dmg} HP จากพิษ`, side);
+      poisonPop(unit, e.dmg);
+    }
+    if (e.type === 'expire') {
+      const A = AILMENTS[e.id];
+      if (A) blog(`${unit.name} หาย${A.thai}แล้ว`, 'sys');
+    }
+  });
+  if (unit._shieldTurns) {
+    unit._shieldTurns--;
+    if (unit._shieldTurns <= 0) { unit._shield = 0; delete unit._shieldTurns; }
+  }
+  // small MP regen each turn
+  if (unit.uid && battle && battle.team.includes(unit)) restoreMP(unit, 2);
+  refreshBattleUnits();
 }
 
 // Attack sequence with hit-stop. Fighters barely travel — VR2 sells
@@ -1477,7 +2002,6 @@ function playAttack(attacker, target, res, side) {
       setTimeout(() => {
         // ── CONTACT ──
         impactBurst(tEl, res.crit);
-        if (res.crit) powEffect(tEl);
         floatDamage(tEl, res);
         tEl.classList.add('hit');
         stage.classList.add('shake' + (res.crit ? '-hard' : ''));
@@ -1601,6 +2125,7 @@ function endBattle(win) {
   battle.over = true;
   clearTimeout(battleTimer);
   clearInterval(regenTimer);
+  cameraReset(300); setTimeScale(1);
 
   // Raid fights resolve through the hack flow, not the normal reward path.
   if (battle.mode === 'raid') {
@@ -1755,6 +2280,7 @@ function fleeBattle() {
   battle.over = true;
   clearTimeout(battleTimer);
   clearInterval(regenTimer);
+  cameraReset(300); setTimeScale(1);
   blog('ถอนตัวออกจากระบบ', 'sys');
   save();
   battle = null;

@@ -452,30 +452,30 @@ export const ANTIVIRUZ = {
   // Placement follows habitat: bugs in the woods, a kappa at the
   // waterfall, reptiles in the sand, otter/frog at the water, and
   // island wildlife out at sea.
-  greenworm:    { id:'greenworm',    name:'GreenWorm',   gif:'greenworm',     ext:'png', base:{atk:15,def:7, spd:10, mhp:38}, attr:'green'  },
-  beetle:       { id:'beetle',       name:'JadeBeetle',  gif:'beetle',        ext:'png', base:{atk:18,def:12,spd:9,  mhp:48}, attr:'yellow' },
+  greenworm:    { id:'greenworm',    name:'GreenWorm',   gif:'greenworm',     ext:'png', faces:'left', scale:0.72, base:{atk:15,def:7, spd:10, mhp:38}, attr:'green'  },
+  beetle:       { id:'beetle',       name:'JadeBeetle',  gif:'beetle',        ext:'png', faces:'right', scale:0.66, base:{atk:18,def:12,spd:9,  mhp:48}, attr:'yellow' },
   stone_imp:    { id:'stone_imp',    name:'StoneImp',    shape:'steelcrab',   palette:'steel_crab',   base:{atk:19,def:14,spd:8,  mhp:58}, attr:'yellow' },
-  kappa:        { id:'kappa',        name:'Kappa',       gif:'kappa',         ext:'png', base:{atk:23,def:13,spd:14, mhp:60}, attr:null     },
+  kappa:        { id:'kappa',        name:'Kappa',       gif:'kappa',         ext:'png', faces:'right', scale:0.92, base:{atk:23,def:13,spd:14, mhp:60}, attr:null     },
   fang_stalker: { id:'fang_stalker', name:'FangStalker', shape:'shadowbat',   palette:'shadow_bat',   base:{atk:26,def:10,spd:17, mhp:54}, attr:'red'    },
-  sand_worm:    { id:'sand_worm',    name:'SandWorm',    gif:'sand_worm',     ext:'png', base:{atk:30,def:12,spd:13, mhp:68}, attr:'yellow' },
-  sand_turtle:  { id:'sand_turtle',  name:'SandTurtle',  gif:'sand_turtle',   ext:'png', base:{atk:26,def:22,spd:7,  mhp:88}, attr:'yellow' },
-  oasis_otter:  { id:'oasis_otter',  name:'OasisOtter',  gif:'oasis_otter',   ext:'png', base:{atk:33,def:14,spd:19, mhp:70}, attr:'green'  },
-  rainbow_frog: { id:'rainbow_frog', name:'RainbowFrog', gif:'rainbow_frog',  ext:'png', base:{atk:35,def:15,spd:16, mhp:74}, attr:null     },
-  flying_fish:  { id:'flying_fish',  name:'FlyingFish',  gif:'flying_fish',   ext:'png', base:{atk:36,def:14,spd:21, mhp:72}, attr:'green'  },
-  island_monkey:{ id:'island_monkey',name:'IslandMonkey',gif:'island_monkey', ext:'png', base:{atk:40,def:18,spd:18, mhp:84}, attr:'red'    },
+  sand_worm:    { id:'sand_worm',    name:'SandWorm',    gif:'sand_worm',     ext:'png', faces:'right', scale:1.05, base:{atk:30,def:12,spd:13, mhp:68}, attr:'yellow' },
+  sand_turtle:  { id:'sand_turtle',  name:'SandTurtle',  gif:'sand_turtle',   ext:'png', faces:'left', scale:0.98, base:{atk:26,def:22,spd:7,  mhp:88}, attr:'yellow' },
+  oasis_otter:  { id:'oasis_otter',  name:'OasisOtter',  gif:'oasis_otter',   ext:'png', faces:'right', scale:0.82, base:{atk:33,def:14,spd:19, mhp:70}, attr:'green'  },
+  rainbow_frog: { id:'rainbow_frog', name:'RainbowFrog', gif:'rainbow_frog',  ext:'png', faces:'right', scale:0.74, base:{atk:35,def:15,spd:16, mhp:74}, attr:null     },
+  flying_fish:  { id:'flying_fish',  name:'FlyingFish',  gif:'flying_fish',   ext:'png', faces:'left', scale:0.78, base:{atk:36,def:14,spd:21, mhp:72}, attr:'green'  },
+  island_monkey:{ id:'island_monkey',name:'IslandMonkey',gif:'island_monkey', ext:'png', faces:'right', scale:0.88, base:{atk:40,def:18,spd:18, mhp:84}, attr:'red'    },
 
   // ══ HELL ══
   // These use real art (assets/sprites/<gif>/still.png + attack.png).
   // `ext:'png'` tells the renderer which extension to load.
-  goblin_grunt: { id:'goblin_grunt', name:'Goblin',        gif:'goblin',       ext:'png', base:{atk:38,def:14,spd:15, mhp:70},  attr:'green'  },
-  goblin_miner: { id:'goblin_miner', name:'MinerGoblin',   gif:'miner_goblin', ext:'png', base:{atk:43,def:17,spd:13, mhp:80},  attr:'yellow' },
-  black_beast:  { id:'black_beast',  name:'BlackBeast',    gif:'black_beast',  ext:'png', base:{atk:50,def:16,spd:20, mhp:86},  attr:'red'    },
-  rock_golem:   { id:'rock_golem',   name:'RockGolem',     gif:'rock_golem',   ext:'png', base:{atk:46,def:28,spd:8,  mhp:118}, attr:'yellow' },
-  hobgoblin:    { id:'hobgoblin',    name:'RedHobgoblin',  gif:'hobgoblin',    ext:'png', base:{atk:56,def:20,spd:16, mhp:98},  attr:'red'    },
-  fire_golem:   { id:'fire_golem',   name:'FireGolem',     gif:'fire_golem',   ext:'png', base:{atk:60,def:26,spd:11, mhp:126}, attr:'red'    },
-  butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', base:{atk:64,def:22,spd:19, mhp:110}, attr:null     },
-  vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', base:{atk:72,def:24,spd:22, mhp:130}, attr:null     },
-  vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    },
+  goblin_grunt: { id:'goblin_grunt', name:'Goblin',        gif:'goblin',       ext:'png', faces:'left', scale:0.8, base:{atk:38,def:14,spd:15, mhp:70},  attr:'green'  },
+  goblin_miner: { id:'goblin_miner', name:'MinerGoblin',   gif:'miner_goblin', ext:'png', faces:'left', scale:0.84, base:{atk:43,def:17,spd:13, mhp:80},  attr:'yellow' },
+  black_beast:  { id:'black_beast',  name:'BlackBeast',    gif:'black_beast',  ext:'png', faces:'right', scale:1.15, base:{atk:50,def:16,spd:20, mhp:86},  attr:'red'    },
+  rock_golem:   { id:'rock_golem',   name:'RockGolem',     gif:'rock_golem',   ext:'png', faces:'right', scale:1.42, base:{atk:46,def:28,spd:8,  mhp:118}, attr:'yellow' },
+  hobgoblin:    { id:'hobgoblin',    name:'RedHobgoblin',  gif:'hobgoblin',    ext:'png', faces:'right', scale:1.1, base:{atk:56,def:20,spd:16, mhp:98},  attr:'red'    },
+  fire_golem:   { id:'fire_golem',   name:'FireGolem',     gif:'fire_golem',   ext:'png', faces:'right', scale:1.48, base:{atk:60,def:26,spd:11, mhp:126}, attr:'red'    },
+  butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'left', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     },
+  vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', faces:'right', scale:1.06, base:{atk:72,def:24,spd:22, mhp:130}, attr:null     },
+  vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'left', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    },
 };
 
 
@@ -620,6 +620,228 @@ export function chanceToEnemyMult(chance) {
 
 // Penalty when you LOSE a raid you committed to.
 export const RAID_LOSS_BITZ = 300;
+
+
+// ── AILMENTS ──
+// Applied by special skills. Each is stored on a unit as
+// { id, turns, ...params } in unit.ailments[].
+export const AILMENTS = {
+  poison: {
+    id:'poison', name:'Poison', thai:'พิษ', icon:'☠️', color:'#7ddc4a',
+    desc:'เสีย HP ทุกเทิร์น',
+  },
+  freeze: {
+    id:'freeze', name:'Freeze', thai:'แช่แข็ง', icon:'❄️', color:'#7fd6ff',
+    desc:'โจมตีหรือใช้สกิลไม่ได้',
+  },
+  frenzy: {
+    id:'frenzy', name:'Frenzy', thai:'คลั่ง', icon:'🔥', color:'#ff6a2b',
+    desc:'ATK/SPD เพิ่ม แต่ DEF ลด',
+  },
+  charm: {
+    id:'charm', name:'Charmed', thai:'เสน่ห์', icon:'💗', color:'#ff6ab0',
+    desc:'หันไปโจมตีพวกเดียวกัน',
+  },
+};
+
+// ── STAT KEYS ──
+// atk  — attack power
+// def  — damage reduction
+// crit — critical CHANCE (%); crits deal 2x
+// eva  — evasion chance (%)
+// spd  — drives the speed counter (extra actions)
+// int  — max MP (skill fuel)
+// vit  — max HP
+export const STAT_KEYS = ['atk','def','crit','eva','spd','int','vit'];
+export const STAT_META = {
+  atk:  { name:'ATK',  icon:'⚔️', thai:'พลังโจมตี' },
+  def:  { name:'DEF',  icon:'🛡️', thai:'พลังป้องกัน' },
+  crit: { name:'CRIT', icon:'💥', thai:'โอกาสคริติคอล (x2)' },
+  eva:  { name:'EVA',  icon:'💨', thai:'โอกาสหลบ' },
+  spd:  { name:'SPD',  icon:'⚡', thai:'ความเร็ว (ตัวนับโจมตีซ้ำ)' },
+  int:  { name:'INT',  icon:'🔮', thai:'พลังเวท (MP สูงสุด)' },
+  vit:  { name:'VIT',  icon:'❤️', thai:'พลังชีวิต (HP สูงสุด)' },
+};
+
+// ── SPEED COUNTER ──
+// Each turn a unit accrues speed points based on the SPD gap with its
+// opponent. Equal speed (even if both high) accrues 0. When the counter
+// reaches >= 1 the unit acts TWICE that turn, then the counter resets.
+export const SPEED_GAP_DIVISOR = 45;   // larger = slower accrual
+export function speedGain(mySpd, foeSpd) {
+  const gap = mySpd - foeSpd;
+  if (gap <= 0) return 0;
+  return gap / SPEED_GAP_DIVISOR;
+}
+
+
+// ── SKILL TREES ──
+// One fixed tree per attribute. Each node is either a STAT node (+n to a
+// stat, up to `max` ranks) or a SKILL node (unlocks an active special).
+// `req` lists node ids that must be maxed/unlocked first — you cannot
+// take a node until its parents are done.
+//
+// Layout: x/y are polar-ish coordinates in a 0-100 box used by the UI
+// to draw the tree with connecting branches.
+//
+// Skills unlock from level 5 upward; the deeper the node, the stronger.
+// Rarer pets get better skills via SKILL_TIER_BONUS below.
+
+function statNode(id, stat, per, max, x, y, req, lv) {
+  return { id, kind:'stat', stat, per, max, x, y, req: req||[], reqLv: lv||1 };
+}
+function skillNode(id, skill, x, y, req, lv) {
+  return { id, kind:'skill', skill, max:1, x, y, req: req||[], reqLv: lv||5 };
+}
+
+// ══ SPECIAL SKILLS ══
+// mp   — cost
+// pw   — damage multiplier vs a normal hit (1 = normal)
+// hits — number of strikes
+// vfx  — which effect to play
+// heal / shield / ailment / buff — non-damage payloads
+export const SPECIALS = {
+  // ── RED: raw damage ──
+  r_slash:    { id:'r_slash',    name:'Ember Slash',    thai:'ฟันเพลิง',     mp:6,  pw:1.4, hits:1, vfx:'fire',   desc:'ฟันไฟ x1.4' },
+  r_double:   { id:'r_double',   name:'Twin Fang',      thai:'เขี้ยวคู่',     mp:9,  pw:0.9, hits:2, vfx:'slash',  desc:'โจมตี 2 ครั้ง' },
+  r_burn:     { id:'r_burn',     name:'Cinder Touch',   thai:'สัมผัสเถ้า',   mp:10, pw:1.1, hits:1, vfx:'fire',   ailment:{ id:'poison', turns:3, val:0.05 }, desc:'ติดพิษไฟ 3 เทิร์น' },
+  r_frenzy:   { id:'r_frenzy',   name:'Blood Rage',     thai:'คลั่งเลือด',   mp:12, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', turns:4, atk:0.35, spd:0.25, def:-0.20 }, desc:'ATK+35% SPD+25% DEF-20%' },
+  r_pierce:   { id:'r_pierce',   name:'Kernel Pierce',  thai:'เจาะเคอร์เนล', mp:14, pw:1.8, hits:1, vfx:'pierce', ignoreDef:0.5, desc:'เจาะเกราะ 50% x1.8' },
+  r_triple:   { id:'r_triple',   name:'Triple Fang',    thai:'สามเขี้ยว',    mp:16, pw:0.85,hits:3, vfx:'slash',  desc:'โจมตี 3 ครั้ง' },
+  r_meteor:   { id:'r_meteor',   name:'Meteor Byte',    thai:'อุกกาบาต',     mp:20, pw:2.4, hits:1, vfx:'meteor', desc:'ระเบิดใหญ่ x2.4' },
+  r_phoenix:  { id:'r_phoenix',  name:'Phoenix Dance',  thai:'ระบำหงส์ไฟ',   mp:24, pw:2.0, hits:2, vfx:'phoenix',desc:'ท่าไม้ตาย x2 สองครั้ง' },
+  r_ragnarok: { id:'r_ragnarok', name:'Ragnarok Core',  thai:'แกนรักนาร็อค', mp:32, pw:3.2, hits:1, vfx:'meteor', ignoreDef:0.35, desc:'ทำลายล้าง x3.2' },
+
+  // ── GREEN: speed, evasion, multi-hit ──
+  g_dash:     { id:'g_dash',     name:'Static Dash',    thai:'พุ่งไฟฟ้า',    mp:6,  pw:1.3, hits:1, vfx:'wind',   desc:'พุ่งเร็ว x1.3' },
+  g_gust:     { id:'g_gust',     name:'Gust Cutter',    thai:'ใบมีดลม',      mp:8,  pw:0.8, hits:2, vfx:'wind',   desc:'ลมคม 2 ครั้ง' },
+  g_blur:     { id:'g_blur',     name:'Blur Step',      thai:'ก้าวเลือน',    mp:10, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', turns:3, spd:0.5, atk:0.1, def:0 }, desc:'SPD+50% 3 เทิร์น' },
+  g_venom:    { id:'g_venom',    name:'Venom Spray',    thai:'พ่นพิษ',       mp:11, pw:1.0, hits:1, vfx:'poison', ailment:{ id:'poison', turns:4, val:0.06 }, desc:'พิษแรง 4 เทิร์น' },
+  g_flurry:   { id:'g_flurry',   name:'Wind Flurry',    thai:'พายุหมุน',     mp:14, pw:0.75,hits:3, vfx:'wind',   desc:'โจมตี 3 ครั้ง' },
+  g_cyclone:  { id:'g_cyclone',  name:'Cyclone Rip',    thai:'ไซโคลน',       mp:18, pw:0.8, hits:4, vfx:'wind',   desc:'โจมตี 4 ครั้ง' },
+  g_charm:    { id:'g_charm',    name:'Siren Pulse',    thai:'คลื่นเสน่ห์',  mp:20, pw:0,   hits:0, vfx:'charm',  ailment:{ id:'charm', turns:2 }, desc:'สะกดศัตรู 2 เทิร์น' },
+  g_tempest:  { id:'g_tempest',  name:'Tempest Storm',  thai:'พายุคลั่ง',    mp:26, pw:0.9, hits:5, vfx:'wind',   desc:'โจมตี 5 ครั้ง' },
+
+  // ── YELLOW: defense, control ──
+  y_bash:     { id:'y_bash',     name:'Bulwark Bash',   thai:'ทุบโล่',       mp:7,  pw:1.35,hits:1, vfx:'impact', desc:'ทุบหนัก x1.35' },
+  y_guard:    { id:'y_guard',    name:'Iron Guard',     thai:'เกราะเหล็ก',   mp:8,  pw:0,   hits:0, vfx:'shield', shieldSelf:0.35, desc:'ลดดาเมจ 35% 3 เทิร์น' },
+  y_frost:    { id:'y_frost',    name:'Frost Lock',     thai:'ล็อคน้ำแข็ง',  mp:13, pw:0.9, hits:1, vfx:'ice',    ailment:{ id:'freeze', turns:1 }, desc:'แช่แข็ง 1 เทิร์น' },
+  y_quake:    { id:'y_quake',    name:'Fault Quake',    thai:'แผ่นดินไหว',   mp:15, pw:1.7, hits:1, vfx:'impact', desc:'สั่นสะเทือน x1.7' },
+  y_fortress: { id:'y_fortress', name:'Fortress Mode',  thai:'โหมดป้อม',     mp:18, pw:0,   hits:0, vfx:'shield', shieldSelf:0.55, desc:'ลดดาเมจ 55% 3 เทิร์น' },
+  y_glacier:  { id:'y_glacier',  name:'Glacier Prison', thai:'คุกน้ำแข็ง',   mp:22, pw:1.2, hits:1, vfx:'ice',    ailment:{ id:'freeze', turns:2 }, desc:'แช่แข็ง 2 เทิร์น' },
+  y_bastion:  { id:'y_bastion',  name:'Bastion Crush',  thai:'ป้อมบดขยี้',   mp:28, pw:2.6, hits:1, vfx:'impact', ignoreDef:0.3, desc:'บดขยี้ x2.6' },
+
+  // ── WHITE: support / heal ──
+  w_mend:     { id:'w_mend',     name:'Patch Mend',     thai:'ปะแผล',        mp:7,  pw:0, hits:0, vfx:'heal',  heal:0.25, desc:'ฟื้น HP 25% ตัวเอง' },
+  w_cleanse:  { id:'w_cleanse',  name:'Purge Protocol', thai:'ล้างสถานะ',    mp:9,  pw:0, hits:0, vfx:'heal',  cleanse:true, desc:'ล้างสถานะผิดปกติ' },
+  w_ward:     { id:'w_ward',     name:'Aegis Ward',     thai:'พรเกราะ',      mp:11, pw:0, hits:0, vfx:'shield',shieldSelf:0.3, desc:'ลดดาเมจ 30% 3 เทิร์น' },
+  w_bless:    { id:'w_bless',    name:'Data Bless',     thai:'พรข้อมูล',     mp:13, pw:0, hits:0, vfx:'bless', buffTeam:{ turns:4, atk:0.2, def:0.2 }, desc:'ทีม ATK/DEF +20%' },
+  w_healall:  { id:'w_healall',  name:'Radiant Cascade',thai:'สายธารแสง',    mp:18, pw:0, hits:0, vfx:'heal',  healTeam:0.35, desc:'ฟื้น HP 35% ทั้งทีม' },
+  w_smite:    { id:'w_smite',    name:'Judgment Ray',   thai:'ลำแสงตัดสิน',  mp:16, pw:1.9, hits:1, vfx:'holy', desc:'ลำแสงศักดิ์สิทธิ์ x1.9' },
+  w_revive:   { id:'w_revive',   name:'System Restore', thai:'กู้ระบบ',      mp:30, pw:0, hits:0, vfx:'bless', reviveTeam:0.5, desc:'ชุบชีวิตเพื่อนที่ล้ม 50% HP' },
+  w_sanctuary:{ id:'w_sanctuary',name:'Sanctuary',      thai:'วิหารศักดิ์สิทธิ์',mp:26,pw:0,hits:0,vfx:'bless', healTeam:0.5, buffTeam:{ turns:3, def:0.3 }, desc:'ฟื้น 50% + DEF+30%' },
+};
+
+// Rarer pets unlock a bonus tier of skills at the deep nodes.
+export const SKILL_TIER_BONUS = {
+  normal:    0,
+  rare:      1,
+  epic:      2,
+  legendary: 3,
+  mythic:    4,
+};
+
+export const SKILL_TREES = {
+  red: {
+    name:'Inferno Path', thai:'สายเพลิง', color:'#ff6a2b',
+    nodes: [
+      statNode ('r1', 'atk',  2, 5, 50, 88, [],            1),
+      statNode ('r2', 'crit', 2, 5, 34, 74, ['r1'],        2),
+      skillNode('r3', 'r_slash',       66, 74, ['r1'],     5),
+      statNode ('r4', 'atk',  3, 5, 22, 60, ['r2'],        6),
+      skillNode('r5', 'r_double',      50, 60, ['r2','r3'],8),
+      statNode ('r6', 'crit', 3, 5, 78, 60, ['r3'],        8),
+      skillNode('r7', 'r_burn',        14, 46, ['r4'],    12),
+      statNode ('r8', 'atk',  4, 5, 36, 44, ['r5'],       14),
+      skillNode('r9', 'r_frenzy',      64, 44, ['r5','r6'],16),
+      statNode ('r10','vit',  4, 5, 86, 46, ['r6'],       16),
+      skillNode('r11','r_pierce',      22, 30, ['r7','r8'],20),
+      skillNode('r12','r_triple',      50, 28, ['r8','r9'],24),
+      statNode ('r13','crit', 4, 5, 78, 30, ['r9','r10'], 24),
+      skillNode('r14','r_meteor',      34, 16, ['r11','r12'],30),
+      skillNode('r15','r_phoenix',     66, 16, ['r12','r13'],36),
+      skillNode('r16','r_ragnarok',    50,  4, ['r14','r15'],45),
+    ],
+  },
+  green: {
+    name:'Gale Path', thai:'สายพายุ', color:'#3ddc84',
+    nodes: [
+      statNode ('g1', 'spd',  2, 5, 50, 88, [],            1),
+      statNode ('g2', 'eva',  2, 5, 34, 74, ['g1'],        2),
+      skillNode('g3', 'g_dash',        66, 74, ['g1'],     5),
+      statNode ('g4', 'spd',  3, 5, 22, 60, ['g2'],        6),
+      skillNode('g5', 'g_gust',        50, 60, ['g2','g3'],8),
+      statNode ('g6', 'eva',  3, 5, 78, 60, ['g3'],        8),
+      skillNode('g7', 'g_blur',        14, 46, ['g4'],    12),
+      statNode ('g8', 'spd',  4, 5, 36, 44, ['g5'],       14),
+      skillNode('g9', 'g_venom',       64, 44, ['g5','g6'],16),
+      statNode ('g10','crit', 3, 5, 86, 46, ['g6'],       16),
+      skillNode('g11','g_flurry',      22, 30, ['g7','g8'],20),
+      statNode ('g12','eva',  4, 5, 50, 28, ['g8','g9'],  24),
+      skillNode('g13','g_cyclone',     78, 30, ['g9','g10'],24),
+      skillNode('g14','g_charm',       34, 16, ['g11','g12'],30),
+      skillNode('g15','g_tempest',     66, 16, ['g12','g13'],38),
+      statNode ('g16','spd',  6, 5, 50,  4, ['g14','g15'],45),
+    ],
+  },
+  yellow: {
+    name:'Bastion Path', thai:'สายป้อมปราการ', color:'#c98f1e',
+    nodes: [
+      statNode ('y1', 'def',  2, 5, 50, 88, [],            1),
+      statNode ('y2', 'vit',  3, 5, 34, 74, ['y1'],        2),
+      skillNode('y3', 'y_bash',        66, 74, ['y1'],     5),
+      statNode ('y4', 'def',  3, 5, 22, 60, ['y2'],        6),
+      skillNode('y5', 'y_guard',       50, 60, ['y2','y3'],8),
+      statNode ('y6', 'vit',  4, 5, 78, 60, ['y3'],        8),
+      skillNode('y7', 'y_frost',       14, 46, ['y4'],    12),
+      statNode ('y8', 'def',  4, 5, 36, 44, ['y5'],       14),
+      skillNode('y9', 'y_quake',       64, 44, ['y5','y6'],16),
+      statNode ('y10','vit',  5, 5, 86, 46, ['y6'],       16),
+      skillNode('y11','y_fortress',    22, 30, ['y7','y8'],20),
+      statNode ('y12','def',  5, 5, 50, 28, ['y8','y9'],  24),
+      skillNode('y13','y_glacier',     78, 30, ['y9','y10'],26),
+      statNode ('y14','vit',  6, 5, 34, 16, ['y11','y12'],32),
+      skillNode('y15','y_bastion',     66, 16, ['y12','y13'],40),
+      statNode ('y16','def',  6, 5, 50,  4, ['y14','y15'],45),
+    ],
+  },
+  white: {
+    name:'Radiance Path', thai:'สายแสง', color:'#f6ecd8',
+    nodes: [
+      statNode ('w1', 'int',  3, 5, 50, 88, [],            1),
+      statNode ('w2', 'vit',  2, 5, 34, 74, ['w1'],        2),
+      skillNode('w3', 'w_mend',        66, 74, ['w1'],     5),
+      statNode ('w4', 'int',  4, 5, 22, 60, ['w2'],        6),
+      skillNode('w5', 'w_cleanse',     50, 60, ['w2','w3'],8),
+      statNode ('w6', 'def',  3, 5, 78, 60, ['w3'],        8),
+      skillNode('w7', 'w_ward',        14, 46, ['w4'],    12),
+      statNode ('w8', 'vit',  4, 5, 36, 44, ['w5'],       14),
+      skillNode('w9', 'w_bless',       64, 44, ['w5','w6'],16),
+      statNode ('w10','int',  5, 5, 86, 46, ['w6'],       16),
+      skillNode('w11','w_healall',     22, 30, ['w7','w8'],20),
+      statNode ('w12','def',  4, 5, 50, 28, ['w8','w9'],  24),
+      skillNode('w13','w_smite',       78, 30, ['w9','w10'],24),
+      skillNode('w14','w_revive',      34, 16, ['w11','w12'],34),
+      skillNode('w15','w_sanctuary',   66, 16, ['w12','w13'],40),
+      statNode ('w16','int',  6, 5, 50,  4, ['w14','w15'],45),
+    ],
+  },
+};
+
+export function treeFor(attr) { return SKILL_TREES[attr] || SKILL_TREES.red; }
+export function nodeById(attr, id) {
+  return treeFor(attr).nodes.find(n => n.id === id) || null;
+}
 
 // ── SHOP ──
 export const EGGS = [

@@ -8,7 +8,9 @@
 import {
   ATTR, ATTR_KEYS, WHITE_TRAIT_ROLL, SUPPORT, SYNERGY,
   RARITY, RARITY_KEYS, SPECIES, ANTIVIRUZ, TUNING, loyaltyTier, SIGNATURE_SKILLS, LOYALTY_TIERS,
-  HACK_WORDS, HACK_JUNK, hackDifficulty, wordLikeness } from './data.js';
+  HACK_WORDS, HACK_JUNK, hackDifficulty, wordLikeness,
+  SKILL_TREES, SPECIALS, AILMENTS, STAT_KEYS, treeFor, nodeById,
+  speedGain, SKILL_TIER_BONUS } from './data.js';
 
 // ── Helpers ──
 export function uid() {
@@ -44,6 +46,12 @@ export function createPet(speciesId, rarity, forcedAttr = null) {
     exp: 0,
     expNeed: TUNING.expCurve(1),
     loyalty: 0,            // 0-100, drives LOYALTY_TIERS
+    tree: {},              // { nodeId: rank } — skill tree spend
+    growthPts: 0,          // unspent growth points (1 per level)
+    autoCast: {},          // { specialId: true } — auto-use in battle
+    mp: 0,                 // current MP (max = int stat)
+    spdCounter: 0,         // speed accrual toward a double action
+    ailments: [],
     statPts: 0,
     base: { ...sp.base },
     skills: sp.skills.map(s => ({ ...s })),
@@ -94,8 +102,6 @@ export function statsOf(pet) {
   const am = ATTR[pet.attr].mult;
   const stageMult = [1, 1.5, 2.0][pet.stage] || 1;
   const growth = 1 + rar.statPL * 0.18;
-  // Loyalty scales the whole stat line — 1.0x at Stranger up to 1.5x
-  // at Loyal Buddy. This is the headline reward for caring for a pet.
   const loyMult = loyaltyTier(pet.loyalty).mult;
 
   const hpBase = pet.base.mhp / HP_SCALE;
@@ -103,14 +109,85 @@ export function statsOf(pet) {
     atk: pet.base.atk + lv * 1.2 * growth,
     def: pet.base.def + lv * 0.9 * growth,
     spd: pet.base.spd + lv * 0.8 * growth,
-    mhp: hpBase + lv * HP_LEVEL_GROWTH * (1 + rar.statPL * 0.14),
+    vit: hpBase + lv * HP_LEVEL_GROWTH * (1 + rar.statPL * 0.14),
+    // New stats. crit/eva are PERCENTAGES; int is the MP pool.
+    crit: 5 + rar.statPL * 1.5,
+    eva:  3 + rar.statPL * 1.0,
+    int:  20 + lv * 1.6 * growth,
   };
-  return {
-    atk: Math.max(1, Math.floor(raw.atk * am.atk * stageMult * loyMult)),
-    def: Math.max(1, Math.floor(raw.def * am.def * stageMult * loyMult)),
-    spd: Math.max(1, Math.floor(raw.spd * am.spd * stageMult * loyMult)),
-    mhp: Math.max(8, Math.floor(raw.mhp * am.mhp * stageMult * loyMult)),
+
+  // Points spent in the skill tree add flat bonuses on top.
+  const tb = treeBonuses(pet);
+
+  const out = {
+    atk: Math.max(1, Math.floor(raw.atk * am.atk * stageMult * loyMult) + tb.atk),
+    def: Math.max(1, Math.floor(raw.def * am.def * stageMult * loyMult) + tb.def),
+    spd: Math.max(1, Math.floor(raw.spd * am.spd * stageMult * loyMult) + tb.spd),
+    vit: Math.max(8, Math.floor(raw.vit * am.mhp * stageMult * loyMult) + tb.vit),
+    crit: Math.min(75, Math.round(raw.crit + tb.crit)),
+    eva:  Math.min(60, Math.round(raw.eva  + tb.eva)),
+    int:  Math.max(10, Math.floor(raw.int * loyMult) + tb.int),
   };
+  // `mhp` kept as an alias so older call sites keep working.
+  out.mhp = out.vit;
+  return out;
+}
+
+// Sum the flat stat bonuses a pet has bought in its skill tree.
+export function treeBonuses(pet) {
+  const z = { atk:0, def:0, spd:0, vit:0, crit:0, eva:0, int:0 };
+  const spent = pet.tree || {};
+  const tree = treeFor(pet.attr);
+  for (const nid in spent) {
+    const rank = spent[nid];
+    if (!rank) continue;
+    const node = tree.nodes.find(n => n.id === nid);
+    if (!node || node.kind !== 'stat') continue;
+    z[node.stat] = (z[node.stat] || 0) + node.per * rank;
+  }
+  return z;
+}
+
+// Which specials a pet has unlocked (skill-node ids taken).
+export function unlockedSpecials(pet) {
+  const spent = pet.tree || {};
+  const tree = treeFor(pet.attr);
+  const out = [];
+  tree.nodes.forEach(n => {
+    if (n.kind === 'skill' && spent[n.id]) {
+      const sp = SPECIALS[n.skill];
+      if (sp) out.push(sp);
+    }
+  });
+  return out;
+}
+
+// Can this node be taken right now?
+export function canTakeNode(pet, nodeId) {
+  const tree = treeFor(pet.attr);
+  const node = tree.nodes.find(n => n.id === nodeId);
+  if (!node) return { ok:false, why:'ไม่พบโหนด' };
+  const spent = pet.tree || {};
+  const rank = spent[nodeId] || 0;
+  if (rank >= node.max) return { ok:false, why:'สูงสุดแล้ว' };
+  if (pet.level < node.reqLv) return { ok:false, why:`ต้องเลเวล ${node.reqLv}` };
+  if ((pet.growthPts || 0) < 1) return { ok:false, why:'ไม่มีแต้ม' };
+  for (const r of node.req) {
+    const parent = tree.nodes.find(n => n.id === r);
+    const pr = spent[r] || 0;
+    if (!parent) continue;
+    if (pr < parent.max) return { ok:false, why:`ต้องปลดล็อก ${r} ให้เต็มก่อน` };
+  }
+  return { ok:true };
+}
+
+export function takeNode(pet, nodeId) {
+  const chk = canTakeNode(pet, nodeId);
+  if (!chk.ok) return chk;
+  pet.tree = pet.tree || {};
+  pet.tree[nodeId] = (pet.tree[nodeId] || 0) + 1;
+  pet.growthPts = (pet.growthPts || 0) - 1;
+  return { ok:true };
 }
 
 // Single number used for matchmaking and power comparisons.
@@ -189,14 +266,17 @@ export function combatStats(pet, team) {
   const syn = synergyOf(team).mult;
   const sup = supportOf(team);
   const m = syn * (1 + sup.auraPct);
-  // Loyalty battle-start buffs (DEF/SPD) apply on top of team synergy.
-  // statsOf() already applied the loyalty STAT multiplier separately.
   const lb = loyaltyBuffs(pet);
+  const ail = ailmentMods(pet);
   return {
-    atk: Math.floor(s.atk * m),
-    def: Math.floor(s.def * m * lb.def),
-    spd: Math.floor(s.spd * m * lb.spd),
-    mhp: s.mhp,          // max HP is not buffed, only offense/defense/speed
+    atk:  Math.floor(s.atk * m * ail.atk),
+    def:  Math.floor(s.def * m * lb.def * ail.def),
+    spd:  Math.floor(s.spd * m * lb.spd * ail.spd),
+    crit: s.crit,
+    eva:  s.eva,
+    int:  s.int,
+    vit:  s.vit,
+    mhp:  s.vit,
   };
 }
 
@@ -204,37 +284,109 @@ export function combatStats(pet, team) {
 export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpecial) {
   const a = combatStats(attacker, atkTeam);
   const d = combatStats(defender, defTeam);
-  const specialMult = isSpecial ? 1.5 : 1.0;
+
+  // ── EVASION ── checked before anything else
+  if (Math.random() * 100 < d.eva) {
+    return { dmg: 0, hits: 0, crit: false, evaded: true };
+  }
+
+  const pw = skill.pw != null ? skill.pw : 1;
+  const specialMult = isSpecial ? 1.35 : 1.0;
   const variance = 0.9 + Math.random() * 0.2;
 
-  // HP was compressed by HP_SCALE (see statsOf) so pets start at
-  // ~10-20 HP instead of ~100. Dividing the whole damage expression
-  // by the same constant keeps the atk-vs-def trade ratio exactly
-  // as it was before the HP change (mathematically: (x-y)/k is the
-  // same shape as x/k - y/k) — only the final number is smaller, so
-  // low-level fights resolve in a similar number of turns as before.
-  //
-  // Note: high-level/high-DEF matchups (e.g. Lv30 epic vs a tanky
-  // yellow defender) were already slow to resolve in the ORIGINAL
-  // formula — 20+ hits to kill — this is a pre-existing balance
-  // characteristic of the def*0.5 constant, not something this
-  // change introduced. Worth tuning separately if it feels bad in
-  // actual play; out of scope for the "start at low HP" request.
-  let dmg = ((a.atk * (skill.pw / 50) * specialMult) - (d.def * 0.5)) / DMG_SCALE;
-  dmg = Math.max(1, Math.floor(dmg * variance));
+  // Skills may ignore a fraction of DEF.
+  const defFactor = 1 - (skill.ignoreDef || 0);
+  const effDef = d.def * defFactor;
 
-  // Green attribute: chance to strike twice
-  let hits = 1;
-  const cfg = ATTR[attacker.attr];
-  if (cfg.doubleHit && Math.random() < cfg.doubleHit) hits = 2;
+  // RATIO-based mitigation instead of flat subtraction. The old
+  // `atk - def*0.5` model floored to 1 damage whenever DEF outgrew ATK
+  // (monsters double-scale their base DEF, so a Lv30 tank hit 224 DEF
+  // against a 55 ATK pet and every hit did 1). A ratio can never go
+  // negative and keeps tanks tanky without making them immortal.
+  const mitigation = effDef / (effDef + 140);          // 0..~0.8
+  let base = (a.atk * pw * specialMult) * (1 - mitigation) / (DMG_SCALE * 0.35);
+  base = Math.max(1, base * variance);
 
-  // Crit based on speed difference
-  const spdGap = a.spd - d.spd;
-  const critChance = clamp(0.05 + spdGap * 0.006, 0.02, 0.35);
-  const crit = Math.random() < critChance;
-  if (crit) dmg = Math.floor(dmg * 1.6);
+  // ── CRIT ── now driven by the crit STAT (a percentage), x2 damage
+  const crit = Math.random() * 100 < a.crit;
+  if (crit) base *= 2;
 
-  return { dmg: dmg * hits, hits, crit };
+  // Multi-hit skills strike `hits` times; each hit rolls its own value.
+  const hits = Math.max(1, skill.hits || 1);
+  let total = 0;
+  for (let i = 0; i < hits; i++) {
+    total += Math.max(1, Math.floor(base * (0.94 + Math.random() * 0.12)));
+  }
+
+  return { dmg: total, hits, crit, evaded: false };
+}
+
+// ── AILMENTS ──
+export function addAilment(unit, spec) {
+  if (!spec || !spec.id) return null;
+  unit.ailments = unit.ailments || [];
+  // refresh if already present
+  const found = unit.ailments.find(x => x.id === spec.id);
+  if (found) { found.turns = Math.max(found.turns, spec.turns); return found; }
+  const inst = { ...spec };
+  unit.ailments.push(inst);
+  return inst;
+}
+export function hasAilment(unit, id) {
+  return !!(unit.ailments || []).find(a => a.id === id);
+}
+export function clearAilments(unit) { unit.ailments = []; }
+
+// Tick every ailment down one turn; returns events for the UI/log.
+export function tickAilments(unit) {
+  const events = [];
+  if (!unit.ailments || !unit.ailments.length) return events;
+  const stats = statsOf(unit);
+  unit.ailments = unit.ailments.filter(a => {
+    if (a.id === 'poison') {
+      const dmg = Math.max(1, Math.floor(stats.vit * (a.val || 0.05)));
+      unit.hp = Math.max(0, unit.hp - dmg);
+      events.push({ type:'poison', dmg });
+    }
+    a.turns -= 1;
+    if (a.turns <= 0) { events.push({ type:'expire', id:a.id }); return false; }
+    return true;
+  });
+  return events;
+}
+
+// Ailment/buff modifiers folded into combat stats.
+export function ailmentMods(unit) {
+  const m = { atk:1, def:1, spd:1 };
+  (unit.ailments || []).forEach(a => {
+    if (a.id === 'frenzy') {
+      m.atk *= 1 + (a.atk || 0);
+      m.spd *= 1 + (a.spd || 0);
+      m.def *= 1 + (a.def || 0);   // def is negative for frenzy
+    }
+  });
+  if (unit._shield) m.def *= 1 + unit._shield;
+  return m;
+}
+
+// ── SPEED COUNTER ──
+// Called once per turn for a unit. Accrues based on the SPD gap with its
+// current opponent; at >= 1 the unit acts twice and the counter resets.
+export function advanceSpeedCounter(unit, mySpd, foeSpd) {
+  unit.spdCounter = (unit.spdCounter || 0) + speedGain(mySpd, foeSpd);
+  if (unit.spdCounter >= 1) {
+    unit.spdCounter -= 1;
+    return 2;      // double action this turn
+  }
+  return 1;
+}
+
+// ── MP ──
+export function maxMP(pet) { return statsOf(pet).int; }
+export function canCast(pet, sp) { return (pet.mp || 0) >= sp.mp; }
+export function spendMP(pet, sp) { pet.mp = Math.max(0, (pet.mp || 0) - sp.mp); }
+export function restoreMP(pet, amount) {
+  pet.mp = Math.min(maxMP(pet), (pet.mp || 0) + amount);
 }
 
 // Turn order: fastest first, ties broken randomly.
@@ -255,7 +407,9 @@ export function grantExp(pet, amount) {
     pet.level++;
     pet.expNeed = TUNING.expCurve(pet.level);
     pet.statPts += RARITY[pet.rarity].statPL;
-    events.push({ type: 'levelup', level: pet.level, pts: RARITY[pet.rarity].statPL });
+    // One growth point per level, spent in the skill tree.
+    pet.growthPts = (pet.growthPts || 0) + 1;
+    events.push({ type: 'levelup', level: pet.level, pts: RARITY[pet.rarity].statPL, growth: 1 });
     pet.skills.forEach(sk => {
       if (sk.reqLv === pet.level) events.push({ type: 'skill', name: sk.n });
     });
@@ -303,6 +457,8 @@ export function spawnAntiviruz(defId, level) {
     palette: def.palette,
     gif: def.gif || null,
     ext: def.ext || null,
+    faces: def.faces || 'right',
+    scale: def.scale || 1,
     rarity: 'normal',
     attr,
     stage: 0,
