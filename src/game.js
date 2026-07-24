@@ -1392,6 +1392,746 @@ function dustPuff(unitEl) {
   setTimeout(() => puff.remove(), 500);
 }
 
+// ═══════════════ LOG / TOAST / MODAL ═══════════════
+function log(msg, cls = 'info') {
+  const box = $('log-box');
+  if (box) {
+    const line = el('div', 'log-line ' + cls, msg);
+    box.appendChild(line);
+    box.scrollTop = box.scrollHeight;
+    while (box.children.length > 60) box.removeChild(box.firstChild);
+  }
+  feed(msg, cls);
+}
+function blog(msg, cls = 'info') {
+  const box = $('battle-log');
+  if (!box) return;
+  const line = el('div', 'blog-line ' + cls, msg);
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+  while (box.children.length > 80) box.removeChild(box.firstChild);
+}
+function clearBattleLog() { const b = $('battle-log'); if (b) b.innerHTML = ''; }
+
+// ── PROCESS ACTIVITY FEED ──
+function feed(msg, cls = 'info') {
+  G.feed = G.feed || [];
+  G.feed.unshift({ t: Date.now(), msg, cls });
+  if (G.feed.length > 40) G.feed.length = 40;
+  renderFeed();
+}
+function feedTime(ts) {
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function renderFeed() {
+  const box = $('process-feed');
+  if (!box) return;
+  const items = G.feed || [];
+  if (!items.length) { box.innerHTML = `<div class="pf-empty">ยังไม่มีความเคลื่อนไหว</div>`; return; }
+  box.innerHTML = items.map(it =>
+    `<div class="pf-line ${it.cls}"><span class="pf-time">${feedTime(it.t)}</span><span class="pf-msg">${it.msg}</span></div>`).join('');
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), 2200);
+}
+
+function modal(title, buildFn) {
+  const back = $('modal-back');
+  const body = $('modal-body');
+  if (!back || !body) return;
+  setText('modal-title', title);
+  body.innerHTML = '';
+  buildFn(body);
+  back.classList.add('on');
+  $('modal-close').onclick = closeModal;
+}
+function closeModal() {
+  const back = $('modal-back');
+  if (back) back.classList.remove('on');
+}
+
+// ═══════════════ BATTLE TURN LOOP ═══════════════
+function activeAlly() {
+  if (!battle) return null;
+  const p = battle.team[battle.activeIdx];
+  return p && p.hp > 0 ? p : null;
+}
+function activeFoe() {
+  if (!battle) return null;
+  return battle.enemies.find(e => e.hp > 0) || null;
+}
+
+function startRegen() {
+  clearInterval(regenTimer);
+  regenTimer = setInterval(() => {
+    if (!battle || battle.over) { clearInterval(regenTimer); return; }
+  }, 1000);
+}
+
+function scheduleTurn(delayMs) {
+  clearTimeout(battleTimer);
+  if (!battle || battle.over) return;
+  const ms = delayMs != null ? delayMs : TUNING.turnBaseMs / battleSpeed;
+  battleTimer = setTimeout(runTurn, ms);
+}
+
+async function runTurn() {
+  if (!battle || battle.over) return;
+  const ally = activeAlly();
+  const foe = activeFoe();
+  if (!ally) { promptSwap(); return; }
+  if (!foe) { checkBattleEnd(); return; }
+
+  const goesFirst = battle.phase === 'ally' ? ally : foe;
+  const other = battle.phase === 'ally' ? foe : ally;
+  const side = battle.phase === 'ally' ? 'ally' : 'foe';
+  battle.phase = battle.phase === 'ally' ? 'foe' : 'ally';
+
+  if (hasAilment(goesFirst, 'freeze')) {
+    blog(`❄️ ${goesFirst.name} ถูกแช่แข็ง ขยับไม่ได้`, side);
+    await endOfTurnTicks(goesFirst);
+    if (checkBattleEnd()) return;
+    scheduleTurn();
+    return;
+  }
+
+  let target = other;
+  let attacker = goesFirst;
+  if (hasAilment(attacker, 'charm')) {
+    target = attacker;
+    blog(`💗 ${attacker.name} ถูกมนต์เสน่ห์ หันมาโจมตีตัวเอง`, side);
+  }
+
+  const atkTeam = side === 'ally' ? battle.team : battle.enemies;
+  const defTeam = side === 'ally' ? battle.enemies : battle.team;
+
+  const specials = unlockedSpecials(attacker).filter(sp => attacker.autoCast?.[sp.id] && canCast(attacker, sp));
+  const sig = signatureSkillOf(attacker);
+  let usedSpecial = null;
+
+  if (specials.length && Math.random() < 0.55) {
+    usedSpecial = specials[Math.floor(Math.random() * specials.length)];
+    await castSpecial(attacker, target, usedSpecial, side, atkTeam, defTeam);
+  } else if (sig && Math.random() < 0.3) {
+    await castSpecial(attacker, target, sig, side, atkTeam, defTeam);
+  } else {
+    await basicAttack(attacker, target, side, atkTeam, defTeam);
+  }
+
+  await endOfTurnTicks(attacker);
+  await endOfTurnTicks(target);
+
+  if (checkBattleEnd()) return;
+  scheduleTurn();
+}
+
+async function basicAttack(attacker, target, side, atkTeam, defTeam) {
+  const skills = availableSkills(attacker);
+  const skill = skills[Math.floor(Math.random() * skills.length)] || { n: 'Strike', pw: 40 };
+  const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false);
+  await playAttack(attacker, target, res, side);
+
+  if (res.evaded) {
+    blog(`${target.name} หลบ ${attacker.name} ได้!`, side);
+    return;
+  }
+  target.hp = Math.max(0, target.hp - res.dmg);
+  refreshBattleUnits();
+  let line = `${attacker.name} → ${skill.n}`;
+  if (res.hits > 1) line += ` ×${res.hits}`;
+  if (res.crit) line += ' CRIT';
+  line += ` · -${res.dmg}`;
+  blog(line, side);
+}
+
+// Casts a special: self-effect plays FIRST (per spec — self-buffs,
+// shields, heals, and the visual "wind-up" for an attack skill all
+// read on the caster), then after a short delay the enemy-facing
+// effect and damage/ailment resolve. This matches "apply self effect
+// first then for a small delay apply attack skill to enemy."
+async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
+  spendMP(caster, sp);
+  await showBanner(`✦ ${sp.name} ✦`, 'sig');
+
+  // ── SELF-SIDE FIRST ──
+  const selfVfxMs = playSpellVFX(sp.vfx, caster, target, side);
+  if (sp.heal) {
+    const mx = statsOf(caster).vit;
+    const amt = Math.floor(mx * sp.heal);
+    caster.hp = Math.min(mx, caster.hp + amt);
+    healPop(caster, amt);
+    blog(`💚 ${caster.name} ใช้ ${sp.name} · +${amt} HP`, 'buff');
+  }
+  if (sp.healTeam) {
+    atkTeam.forEach(p => {
+      if (p.hp <= 0) return;
+      const mx = statsOf(p).vit;
+      const amt = Math.floor(mx * sp.healTeam);
+      p.hp = Math.min(mx, p.hp + amt);
+    });
+    blog(`💚 ${caster.name} ใช้ ${sp.name} · ฟื้นทั้งทีม`, 'buff');
+  }
+  if (sp.reviveTeam) {
+    let n = 0;
+    atkTeam.forEach(p => {
+      if (p.hp > 0) return;
+      p.hp = Math.floor(statsOf(p).vit * sp.reviveTeam); n++;
+    });
+    blog(`✨ ${caster.name} กู้ระบบ · ชุบชีวิต ${n} ตัว`, 'buff');
+  }
+  if (sp.cleanse) { clearAilments(caster); blog(`🧼 ${caster.name} ล้างสถานะ`, 'buff'); }
+  if (sp.shieldSelf) {
+    caster._shield = sp.shieldSelf;
+    caster._shieldTurns = 3;
+    blog(`🛡 ${caster.name} ตั้งเกราะ ${Math.round(sp.shieldSelf * 100)}%`, 'buff');
+  }
+  if (sp.buffSelf) {
+    addAilment(caster, { ...sp.buffSelf });
+    blog(`🔥 ${caster.name} เข้าสู่สภาวะ ${sp.buffSelf.id}`, 'buff');
+  }
+  if (sp.buffTeam) {
+    atkTeam.forEach(p => { if (p.hp > 0) addAilment(p, { id: 'frenzy', ...sp.buffTeam }); });
+    blog(`✨ ${caster.name} เสริมพลังทั้งทีม`, 'buff');
+  }
+  refreshBattleUnits();
+
+  // ── SMALL DELAY, THEN ENEMY-FACING RESOLUTION ──
+  const hasEnemyEffect = (sp.pw > 0 && sp.hits > 0) || sp.ailment;
+  if (hasEnemyEffect) {
+    await wait(Math.max(160, Math.min(selfVfxMs || 0, 500) * 0.4));
+  }
+
+  if (sp.pw > 0 && sp.hits > 0) {
+    const res = computeDamage(caster, atkTeam, target, defTeam, sp, true);
+    if (res.evaded) {
+      await showBanner('MISS!', 'miss');
+      blog(`${target.name} หลบ ${sp.name} ได้!`, side);
+    } else {
+      if (res.crit) {
+        playSpellVFX('crit_self', caster, target, side);
+        await showBanner('CRITICAL!!', 'crit');
+      }
+      await playAttack(caster, target, res, side);
+      target.hp = Math.max(0, target.hp - res.dmg);
+      let line = `✦ ${caster.name} → ${sp.name}`;
+      if (res.hits > 1) line += ` ×${res.hits}`;
+      if (res.crit) line += ' CRIT';
+      line += ` · -${res.dmg}`;
+      blog(line, side);
+    }
+  }
+  if (sp.ailment && target.hp > 0) {
+    addAilment(target, { ...sp.ailment });
+    const A = AILMENTS[sp.ailment.id];
+    if (A) blog(`${A.icon} ${target.name} ติด${A.thai}`, side);
+  }
+  refreshBattleUnits();
+}
+
+// Poison tick, shield countdown, frenzy/charm/freeze duration — run at
+// the end of a unit's turn for BOTH participants.
+async function endOfTurnTicks(unit) {
+  if (!unit || unit.hp <= 0) return;
+  const events = tickAilments(unit);
+  events.forEach(ev => {
+    if (ev.type === 'poison') {
+      poisonPop(unit, ev.dmg);
+      blog(`☠️ ${unit.name} เสีย ${ev.dmg} HP จากพิษ`, 'sys');
+    }
+  });
+  if (unit._shieldTurns > 0) {
+    unit._shieldTurns--;
+    if (unit._shieldTurns <= 0) unit._shield = 0;
+  }
+  refreshBattleUnits();
+}
+
+function checkBattleEnd() {
+  if (!battle) return true;
+  const alliesAlive = battle.team.some(p => p.hp > 0);
+  const enemiesAlive = battle.enemies.some(e => e.hp > 0);
+
+  if (!alliesAlive) { endBattle(false); return true; }
+
+  if (!enemiesAlive) {
+    // Wave clear — advance to the next wave, or finish the run.
+    if (battle.mode === 'hack' && battle.wave + 1 < battle.run.waveCount) {
+      battle.wave++;
+      battle.enemies = battle.run.waves[battle.wave];
+      battle.phase = 'ally';
+      setText('battle-wave', `คลื่น ${battle.wave + 1} / ${battle.run.waveCount}`);
+      renderBattle();
+      return false;
+    }
+    endBattle(true);
+    return true;
+  }
+  return false;
+}
+
+function promptSwap() {
+  if (!battle) return;
+  const alive = battle.team.filter(p => p.hp > 0);
+  if (!alive.length) { checkBattleEnd(); return; }
+  const menu = $('swap-menu');
+  if (!menu) { battle.activeIdx = battle.team.indexOf(alive[0]); scheduleTurn(); return; }
+  menu.innerHTML = '';
+  menu.classList.add('on');
+  alive.forEach(p => {
+    const card = el('div', 'swap-card');
+    card.innerHTML = `${creatureMarkup(p, 'swap-sprite')}<div class="swap-name">${p.name}</div><div class="swap-hp">♥ ${p.hp}</div>`;
+    card.onclick = () => {
+      battle.activeIdx = battle.team.indexOf(p);
+      menu.classList.remove('on');
+      renderBattle();
+      scheduleTurn(500);
+    };
+    menu.appendChild(card);
+  });
+}
+
+function endBattle(win) {
+  if (!battle) return;
+  battle.over = true;
+  clearTimeout(battleTimer);
+  clearInterval(regenTimer);
+  cameraReset(300);
+  setTimeScale(1);
+
+  if (battle.mode === 'raid') {
+    const { rival, loot } = battle.raid;
+    battle.team.forEach(p => { if (p.hp <= 0) p.hp = Math.max(1, Math.floor(statsOf(p).mhp * 0.1)); });
+    const done = $('battle-done');
+    if (done) {
+      done.style.display = '';
+      done.onclick = () => {
+        done.style.display = 'none';
+        battle = null;
+        finishRaid(win, win ? loot : null);
+      };
+    }
+    save();
+    return;
+  }
+
+  let results = null;
+  if (win) {
+    G.wins++;
+    const gap = Math.abs((battle.enemies[0]?.level || 1) - (activeTeam()[0]?.level || 1));
+    const expEligible = gap <= 5;
+    battle.totalBitz = battle.totalBitz || Math.round((battle.target?.reward?.bitzMult || 1) * 40 * (activeTeam()[0]?.level || 1));
+    if (expEligible) {
+      battle.totalExp = battle.totalExp || Math.round((battle.target?.reward?.expMult || 1) * 30 * (battle.enemies[0]?.level || 1));
+    } else {
+      battle.totalExp = 0;
+    }
+    G.bitz += battle.totalBitz;
+    const share = Math.floor(battle.totalExp / Math.max(1, battle.team.length));
+    results = battle.team.map(p => {
+      const beforeLv = p.level, beforeExp = p.exp, beforeNeed = p.expNeed;
+      const beforeLoyId = loyaltyTier(p.loyalty).id;
+      const evs = expEligible ? grantExp(p, share) : [];
+      const leveled = evs.filter(e => e.type === 'levelup').length;
+      const skills = evs.filter(e => e.type === 'skill').map(e => e.name);
+      evs.forEach(e => {
+        if (e.type === 'levelup') blog(`⬆️ ${p.name} → Lv.${e.level} (+${e.pts} แต้ม)`, 'buff');
+        if (e.type === 'skill') blog(`✨ ${p.name} ปลดล็อก ${e.name}`, 'buff');
+      });
+      p.loyalty = clamp((p.loyalty || 0) + LOYALTY_PER_WIN, 0, 100);
+      const loyPromo = loyaltyTier(p.loyalty).id !== beforeLoyId ? loyaltyTier(p.loyalty) : null;
+      if (loyPromo) blog(`${loyPromo.icon} ${p.name} → ${loyPromo.name}!`, 'buff');
+      return {
+        pet: p, gained: share, beforeLv, beforeExp, beforeNeed,
+        afterLv: p.level, afterExp: p.exp, afterNeed: p.expNeed,
+        maxed: p.level >= p.maxLv, leveled, skills, loyPromo,
+      };
+    });
+    if (!expEligible) blog(`ระดับต่างกันเกิน 5 — ไม่ได้รับ EXP`, 'sys');
+    blog(`สำเร็จ! +${battle.totalExp} EXP · +${battle.totalBitz} Bitz`, 'win');
+    log(`ชนะ ${battle.mode === 'hack' ? battle.target.name : 'Arena'} · +${battle.totalBitz} Bitz`, 'win');
+  } else {
+    battle.team.forEach(p => {
+      if (p.hp <= 0) p.hp = Math.max(1, Math.floor(statsOf(p).mhp * (TUNING.loseHpRestore || 0.1)));
+    });
+    blog('การเจาะล้มเหลว — ทีมถูกตรวจจับ', 'lose');
+    log(`แพ้ ${battle.mode === 'hack' ? battle.target.name : 'Arena'}`, 'lose');
+  }
+  save();
+
+  const returnTo = (battle.mode === 'hack') ? 'world' : 'map';
+  showBattleResults(win, battle.totalBitz || 0, battle.totalExp || 0, results, returnTo);
+}
+
+function showBattleResults(win, bitz, exp, results, returnTo) {
+  const panel = $('battle-results');
+  if (!panel) {
+    const done = $('battle-done');
+    if (done) {
+      done.style.display = '';
+      done.onclick = () => { done.style.display = 'none'; battle = null; showScreen(returnTo); renderAll(); };
+    }
+    return;
+  }
+  const rows = (results || []).map(r => {
+    const pct0 = r.maxed ? 100 : Math.round(r.beforeExp / Math.max(1, r.beforeNeed) * 100);
+    const pct1 = r.maxed ? 100 : Math.round(r.afterExp / Math.max(1, r.afterNeed) * 100);
+    const lvUp = r.leveled > 0 ? `<span class="br-lvup">▲ Lv.${r.beforeLv} → ${r.afterLv}</span>` : '';
+    const extra = [
+      ...(r.skills || []).map(n => `<span class="br-skill">✨ ${n}</span>`),
+      r.loyPromo ? `<span class="br-loy">${r.loyPromo.icon} ${r.loyPromo.name}</span>` : '',
+    ].join('');
+    return `<div class="br-row" data-pct0="${pct0}" data-pct1="${pct1}" data-leveled="${r.leveled}">
+      <div class="br-art">${creatureMarkup(r.pet, 'br-sprite')}</div>
+      <div class="br-info">
+        <div class="br-name">${r.pet.name} ${lvUp}</div>
+        <div class="br-xpbar"><i style="width:${pct0}%"></i></div>
+        <div class="br-xptext">${r.maxed ? 'ระดับสูงสุด' : `EXP ${r.afterExp}/${r.afterNeed}`}<span class="br-gain">+${r.gained}</span></div>
+        ${extra ? `<div class="br-extra">${extra}</div>` : ''}
+      </div></div>`;
+  }).join('');
+  panel.innerHTML = `<div class="br-card ${win ? 'win' : 'lose'}">
+    <div class="br-title">${win ? '✅ ชนะ!' : '❌ พ่ายแพ้'}</div>
+    ${win ? `<div class="br-loot">💰 +${bitz} Bitz · ⚡ +${exp} EXP รวม</div>` : ''}
+    <div class="br-rows">${rows || '<div class="br-empty">ทีมกลับมาพร้อม HP บางส่วน</div>'}</div>
+    <button class="btn primary wide" id="br-continue">ต่อไป →</button>
+  </div>`;
+  panel.classList.add('on');
+  requestAnimationFrame(() => {
+    panel.querySelectorAll('.br-row').forEach(row => {
+      const bar = row.querySelector('.br-xpbar i');
+      const pct1 = +row.dataset.pct1, leveled = +row.dataset.leveled;
+      if (!bar) return;
+      setTimeout(() => {
+        if (leveled > 0) {
+          bar.style.width = '100%';
+          setTimeout(() => { bar.style.transition = 'none'; bar.style.width = '0%';
+            requestAnimationFrame(() => { bar.style.transition = ''; bar.style.width = pct1 + '%'; });
+          }, 420);
+        } else {
+          bar.style.width = pct1 + '%';
+        }
+      }, 260);
+    });
+  });
+  $('br-continue').onclick = () => {
+    panel.classList.remove('on');
+    panel.innerHTML = '';
+    battle = null;
+    showScreen(returnTo);
+    renderAll();
+  };
+}
+
+function fleeBattle() {
+  if (!battle || battle.over) return;
+  battle.over = true;
+  clearTimeout(battleTimer);
+  clearInterval(regenTimer);
+  cameraReset(300); setTimeScale(1);
+  blog('ถอนตัวออกจากระบบ', 'sys');
+  save();
+  battle = null;
+  showScreen('map');
+  renderAll();
+}
+
+// ── DAMAGE/IMPACT PRESENTATION ──
+function showBanner(text, cls = '') {
+  const layer = $('banner-layer') || $('fx-layer');
+  if (!layer) return Promise.resolve();
+  const b = el('div', 'turn-banner ' + cls, text);
+  layer.appendChild(b);
+  return new Promise(resolve => {
+    setTimeout(() => {
+      b.classList.add('out');
+      setTimeout(() => { b.remove(); resolve(); }, 150 / battleSpeed);
+    }, 150 / battleSpeed);
+  });
+}
+
+function impactBurst(unitEl, crit) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  if (!layer || !stage || !unitEl) return;
+  const host = stage.getBoundingClientRect();
+  const r = unitEl.getBoundingClientRect();
+  const b = el('div', 'impact-burst' + (crit ? ' crit' : ''));
+  b.style.left = (r.left - host.left + r.width / 2) + 'px';
+  b.style.top = (r.top - host.top + r.height * 0.5) + 'px';
+  layer.appendChild(b);
+  setTimeout(() => b.remove(), 500);
+}
+
+function floatDamage(anchorEl, res) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  if (!layer || !stage || !anchorEl) return;
+  const host = stage.getBoundingClientRect();
+  const r = anchorEl.getBoundingClientRect();
+  const wrap = el('div', 'dmg-big' + (res.crit ? ' crit' : ''));
+  wrap.style.left = (r.left - host.left + r.width / 2) + 'px';
+  wrap.style.top = (r.top - host.top + r.height * 0.2) + 'px';
+  wrap.style.setProperty('--tilt', (Math.random() * 14 - 7).toFixed(1) + 'deg');
+  wrap.innerHTML = `<span class="dmg-num">${res.dmg}${res.crit ? '!' : ''}</span>${res.hits > 1 ? `<span class="dmg-mult">× ${res.hits}</span>` : ''}`;
+  layer.appendChild(wrap);
+  setTimeout(() => wrap.remove(), 1050);
+}
+
+function healPop(pet, amount) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  const unitEl = document.querySelector(`.bunit[data-uid="${pet.uid}"]`);
+  if (!layer || !stage || !unitEl) return;
+  const host = stage.getBoundingClientRect();
+  const r = unitEl.getBoundingClientRect();
+  const d = el('div', 'heal-pop', `+${amount}`);
+  d.style.left = (r.left - host.left + r.width / 2) + 'px';
+  d.style.top = (r.top - host.top + r.height * 0.2) + 'px';
+  layer.appendChild(d);
+  setTimeout(() => d.remove(), 1000);
+}
+
+function poisonPop(pet, amount) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  const unitEl = document.querySelector(`.bunit[data-uid="${pet.uid}"]`);
+  if (!layer || !stage || !unitEl) return;
+  const host = stage.getBoundingClientRect();
+  const r = unitEl.getBoundingClientRect();
+  const d = el('div', 'poison-pop', `-${amount}`);
+  d.style.left = (r.left - host.left + r.width / 2) + 'px';
+  d.style.top = (r.top - host.top + r.height * 0.3) + 'px';
+  layer.appendChild(d);
+  setTimeout(() => d.remove(), 1000);
+}
+
+async function playAttack(attacker, target, res, side) {
+  const aEl = document.querySelector(`.bunit[data-uid="${attacker.uid}"]`);
+  const tEl = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
+  if (!aEl || !tEl) return;
+  aEl.classList.add('lunge-out');
+  await wait(120 / battleSpeed);
+  aEl.classList.remove('lunge-out');
+  aEl.classList.add('lunge-back');
+  impactBurst(tEl, res.crit);
+  if (!res.evaded) floatDamage(tEl, res);
+  tEl.classList.add('hit');
+  await wait(130 / battleSpeed);
+  tEl.classList.remove('hit');
+  aEl.classList.remove('lunge-back');
+}
+
+function refreshBattleUnits() {
+  if (!battle) return;
+  ['ally', 'foe'].forEach(which => {
+    const pet = which === 'ally' ? activeAlly() : activeFoe();
+    const plate = $(`plate-${which === 'ally' ? 'ally' : 'foe'}`);
+    if (!pet || !plate) return;
+    const hpEl = plate.querySelector('.np-hp b');
+    if (hpEl) hpEl.textContent = Math.max(0, pet.hp);
+  });
+  renderBench();
+}
+
+function renderBench() {
+  const bench = $('battle-bench');
+  if (!bench || !battle) return;
+  bench.innerHTML = '';
+  battle.team.forEach((p, i) => {
+    const chip = el('div', 'bench-chip' + (i === battle.activeIdx ? ' active' : '') + (p.hp <= 0 ? ' down' : ''));
+    chip.innerHTML = creatureMarkup(p, 'bench-sprite');
+    bench.appendChild(chip);
+  });
+}
+
+let hackState = null;
+
+function doRaid(rival) {
+  const team = activeTeam();
+  if (!teamAlive(team)) { toast('ทีมหมด HP'); return; }
+  const puzzle = buildHackPuzzle(rival.level);
+  hackState = { rival, puzzle, attempts: puzzle.attempts, guessed: [] };
+  showScreen('hack');
+  renderHackTerminal();
+}
+
+function renderHackTerminal() {
+  const h = hackState;
+  if (!h) return;
+  setText('hack-target', h.rival.name);
+  const ab = $('hack-attempt-blocks');
+  if (ab) {
+    ab.innerHTML = '';
+    for (let i = 0; i < h.puzzle.attempts; i++) ab.appendChild(el('span', 'atk-block' + (i < h.attempts ? '' : ' spent')));
+  }
+  const grid = $('hack-grid');
+  const { stream, rows, cols, addrs, placements } = h.puzzle;
+  const cellWord = {};
+  placements.forEach((p, wi) => { for (let k = 0; k < p.len; k++) cellWord[p.start + k] = wi; });
+  let html = '';
+  for (let r = 0; r < rows; r++) {
+    html += `<div class="hg-row"><span class="hg-addr">${addrs[r]}</span><span class="hg-cells">`;
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c;
+      const wi = cellWord[idx];
+      if (wi != null) {
+        const p = placements[wi];
+        const used = h.guessed.includes(p.word);
+        html += `<span class="hg-ch word${used ? ' used' : ''}" data-wi="${wi}">${stream[idx]}</span>`;
+      } else {
+        html += `<span class="hg-ch">${stream[idx]}</span>`;
+      }
+    }
+    html += `</span></div>`;
+  }
+  grid.innerHTML = html;
+  grid.querySelectorAll('.hg-ch.word').forEach(ch => {
+    const wi = ch.dataset.wi;
+    ch.onclick = () => guessHackWord(h.puzzle.placements[wi].word);
+  });
+  const out = $('hack-readout');
+  if (out) out.innerHTML = '<div class="hr-line">&gt; เลือกคำเพื่อลองรหัส</div>';
+}
+
+function pushReadout(text, cls = '') {
+  const out = $('hack-readout');
+  if (!out) return;
+  out.appendChild(el('div', 'hr-line ' + cls, '> ' + text));
+  out.scrollTop = out.scrollHeight;
+}
+
+function guessHackWord(word) {
+  const h = hackState;
+  if (!h || h.done || h.guessed.includes(word)) return;
+  h.guessed.push(word);
+  const res = checkHackGuess(h.puzzle, word);
+  pushReadout(word);
+  if (res.correct) {
+    h.done = true;
+    pushReadout('เข้าถึงระบบสำเร็จ!', 'ok');
+    setTimeout(() => enterStealStage(), 700);
+    return;
+  }
+  h.attempts--;
+  pushReadout(`ตรงกัน ${res.likeness}/${h.puzzle.len}`, 'warn');
+  const grid = $('hack-grid');
+  if (grid) grid.querySelectorAll('.hg-ch.word').forEach(ch => {
+    if (h.puzzle.placements[ch.dataset.wi].word === word) ch.classList.add('used');
+  });
+  const ab = $('hack-attempt-blocks');
+  if (ab && ab.children[h.attempts]) ab.children[h.attempts].classList.add('spent');
+  if (h.attempts <= 0) {
+    h.done = true;
+    pushReadout('ล็อกเอาต์ — การเจาะล้มเหลว', 'bad');
+    log(`เจาะบ้าน ${h.rival.name} ล้มเหลว (รหัสผิด)`, 'lose');
+    setTimeout(() => { toast('เจาะไม่สำเร็จ\nระบบล็อก'); showScreen('raid'); }, 1200);
+  }
+}
+
+function enterStealStage() {
+  const h = hackState;
+  if (!h) return;
+  showScreen('steal');
+  const myLv = Math.max(1, ...activeTeam().map(p => p.level));
+  h.loot = buildLootMenu(h.rival.level, myLv);
+  setText('steal-target', h.rival.name);
+  const petRow = $('steal-pets');
+  petRow.innerHTML = '<div class="steal-lab">เลือก VIRUZ 1 ตัวไปเจาะ:</div>';
+  const row = el('div', 'steal-petrow');
+  h.sendPet = null;
+  activeTeam().filter(p => p.hp > 0).forEach(p => {
+    const card = el('button', 'steal-pet');
+    card.innerHTML = `${creatureMarkup(p, 'sp-art')}<span>${p.name}</span><i>Lv.${p.level}</i>`;
+    card.onclick = () => {
+      h.sendPet = p;
+      row.querySelectorAll('.steal-pet').forEach(x => x.classList.remove('on'));
+      card.classList.add('on');
+      renderLootMenu();
+    };
+    row.appendChild(card);
+  });
+  petRow.appendChild(row);
+  renderLootMenu();
+}
+
+function renderLootMenu() {
+  const h = hackState;
+  const box = $('steal-loot');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!h.sendPet) { box.innerHTML = '<div class="muted" style="padding:10px">เลือก VIRUZ ก่อน</div>'; return; }
+  h.loot.forEach(l => {
+    const label = l.kind === 'bitz' ? `${l.amount} Bitz` : l.kind === 'exp' ? `EXP Booster +${l.amount}` : (POTIONS.find(p => p.id === l.potId)?.name || 'Potion');
+    const autoWin = l.chance >= 100;
+    const card = el('button', 'loot-card');
+    card.innerHTML = `<div class="lc-icon">${l.icon}</div><div class="lc-name">${label}</div>
+      <div class="lc-chance ${autoWin ? 'auto' : ''}">${autoWin ? 'สำเร็จอัตโนมัติ' : l.chance + '% สำเร็จ'}</div>
+      ${autoWin ? '' : `<div class="lc-warn">ศัตรู ×${chanceToEnemyMult(l.chance).toFixed(2)}</div>`}`;
+    card.onclick = () => commitSteal(l);
+    box.appendChild(card);
+  });
+}
+
+function commitSteal(loot) {
+  const h = hackState;
+  if (!h || !h.sendPet) { toast('เลือก VIRUZ ก่อน'); return; }
+  const mult = chanceToEnemyMult(loot.chance);
+  if (mult === 0) { grantLoot(loot); finishRaid(true, loot); hackState = null; return; }
+  startRaidFight(h.rival, h.sendPet, loot, mult);
+}
+
+function grantLoot(loot) {
+  const h = hackState;
+  if (loot.kind === 'bitz') G.bitz += loot.amount;
+  else if (loot.kind === 'exp') grantExp(h.sendPet, loot.amount);
+  else if (loot.kind === 'potion') { G.potions = G.potions || {}; G.potions[loot.potId] = (G.potions[loot.potId] || 0) + loot.amount; }
+}
+
+async function renderRaidList() {
+  const list = $('raid-list');
+  if (!list) return;
+  const myPower = teamPower(activeTeam());
+  setText('raid-mypower', myPower.toLocaleString());
+  list.innerHTML = '<div class="muted" style="padding:10px">กำลังค้นหา...</div>';
+  const rivals = await NET.listRivals(12, myPower);
+  list.innerHTML = '';
+  rivals.forEach(rival => {
+    const card = el('div', 'raid-card');
+    card.innerHTML = `
+      <div class="rc-name">${rival.name} <span class="muted">Lv.${rival.level}</span></div>
+      <div class="rc-power">พลัง ${rival.power?.toLocaleString?.() || rival.power}</div>
+      <button class="btn small">💀 เจาะ</button>`;
+    card.querySelector('button').onclick = () => doRaid(rival);
+    list.appendChild(card);
+  });
+}
+
+function finishRaid(win, loot) {
+  if (win && loot) {
+    if (loot.kind === 'bitz') G.bitz += loot.amount;
+    else if (loot.kind === 'exp') { const p = activeTeam()[0]; if (p) grantExp(p, loot.amount); }
+    else if (loot.kind === 'potion') { G.potions[loot.potId] = (G.potions[loot.potId] || 0) + 1; }
+    log(`💀 เจาะสำเร็จ — ได้ ${loot.kind === 'bitz' ? loot.amount + ' Bitz' : loot.kind}`, 'win');
+    toast('เจาะสำเร็จ!');
+  } else if (!win) {
+    G.bitz = Math.max(0, G.bitz - RAID_LOSS_BITZ);
+    log(`เจาะล้มเหลว — เสีย ${RAID_LOSS_BITZ} Bitz`, 'lose');
+    toast('เจาะล้มเหลว');
+  }
+  save();
+  showScreen('raid');
+  renderAll();
+}
+
 function renderBattle() {
   if (!battle) return;
   const side = (pet, elId, isEnemy) => {
@@ -1579,10 +2319,95 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── SPELL VFX ──
 // Each special names a vfx key; this draws it over the stage.
+// ── VFX ASSET REGISTRY ──
+// Maps a vfx key to real uploaded art (WebP, transparent) plus where it
+// anchors and how big it renders. `target` says whether the clip plays
+// on the caster ('self') or the target ('enemy'). Effects without a
+// registry entry fall back to the procedural CSS builders below.
+const VFX_ASSETS = {
+  shield_self:     { file:'shield_self.webp',     target:'self',  w:150, ms:1100 },
+  wind_self:       { file:'wind_self.webp',       target:'self',  w:140, ms:640  },
+  circle_self:     { file:'circle_self.webp',     target:'self',  w:150, ms:900  },
+  heal_self:       { file:'heal_self.webp',       target:'self',  w:150, ms:1150 },
+  crit_self:       { file:'crit_self.webp',       target:'self',  w:160, ms:1000 },
+  pierce_enemy:    { file:'pierce_enemy.webp',    target:'enemy', w:190, ms:260  },
+  ice_enemy:       { file:'ice_enemy.webp',       target:'enemy', w:150, ms:960  },
+  fire_enemy:      { file:'fire_enemy.webp',      target:'enemy', w:150, ms:1000 },
+  charm_enemy:     { file:'charm_enemy.webp',     target:'enemy', w:140, ms:1080 },
+  poison_enemy:    { file:'poison_enemy.webp',    target:'enemy', w:150, ms:1040 },
+  meteor_enemy:    { file:'meteor_enemy.webp',    target:'enemy', w:170, ms:1120,
+                      // impact anchor measured from the source clip's last
+                      // frame (% of frame size), used so the strike lands
+                      // exactly on the target rather than centred generically
+                      anchorPct:{ x:23.6, y:77.2 } },
+  hit_normal_enemy:{ file:'hit_normal_enemy.webp',target:'enemy', w:120, ms:480,
+                      // fades immediately and is fully gone well under 2s
+                      fadeFrom:0 },
+};
+
+// Attribute-keyed aliases so existing SPECIALS vfx tags ('fire','ice',
+// 'heal','holy','shield','poison','charm','wind','meteor','pierce',
+// 'aura','bless') resolve to the new uploaded assets. 'holy'/'bless'
+// reuse the plain self-circle per spec — no dedicated holy asset.
+const VFX_ALIAS = {
+  fire:'fire_enemy', ice:'ice_enemy', heal:'heal_self',
+  holy:'circle_self', bless:'circle_self', shield:'shield_self',
+  poison:'poison_enemy', charm:'charm_enemy', wind:'wind_self',
+  meteor:'meteor_enemy', pierce:'pierce_enemy', aura:'circle_self',
+  impact:'hit_normal_enemy',
+};
+
+function resolveVfxKey(kind) {
+  if (VFX_ASSETS[kind]) return kind;
+  if (VFX_ALIAS[kind]) return VFX_ALIAS[kind];
+  return null;
+}
+
+// Plays a registered WebP clip anchored to a unit. Returns the ms the
+// caller should wait before the next beat (so self-cast → delay →
+// enemy-impact sequencing has a real number to wait on).
+function playVfxAsset(key, unitEl, opts = {}) {
+  const asset = VFX_ASSETS[key];
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  if (!asset || !layer || !stage || !unitEl) return 0;
+  const host = stage.getBoundingClientRect();
+  const r = unitEl.getBoundingClientRect();
+
+  const img = document.createElement('img');
+  img.className = 'vfx-clip';
+  img.src = `assets/fx/${asset.file}`;
+  img.style.width = asset.w + 'px';
+
+  let leftPx, topPx;
+  if (asset.anchorPct) {
+    // Anchor the effect's OWN impact point (from anchorPct) onto the
+    // unit's centre, and flip horizontally when the unit is on the
+    // right side so the effect still reads as coming from offscreen
+    // toward the target rather than always pointing one way.
+    const flip = opts.flip || false;
+    const ax = flip ? (100 - asset.anchorPct.x) : asset.anchorPct.x;
+    const scale = asset.w / (asset.naturalW || asset.w);
+    leftPx = r.left - host.left + r.width / 2 - (ax / 100) * asset.w;
+    topPx = r.top - host.top + r.height * 0.6 - (asset.anchorPct.y / 100) * asset.w;
+    img.style.transform = flip ? 'scaleX(-1)' : 'none';
+  } else {
+    leftPx = r.left - host.left + r.width / 2 - asset.w / 2;
+    topPx = r.top - host.top + r.height * 0.5 - asset.w / 2;
+  }
+  img.style.left = leftPx + 'px';
+  img.style.top = topPx + 'px';
+
+  if (asset.fadeFrom === 0) img.classList.add('vfx-instant-fade');
+  layer.appendChild(img);
+  setTimeout(() => img.remove(), asset.ms + 120);
+  return asset.ms;
+}
+
 function playSpellVFX(kind, caster, target, side) {
   const layer = $('fx-layer');
   const stage = $('battle-stage');
-  if (!layer || !stage || !kind) return;
+  if (!layer || !stage || !kind) return 0;
   const host = stage.getBoundingClientRect();
   const cEl = document.querySelector(`.bunit[data-uid="${caster.uid}"]`);
   const tEl = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
@@ -1591,6 +2416,15 @@ function playSpellVFX(kind, caster, target, side) {
     const r = elm.getBoundingClientRect();
     return { x: r.left - host.left + r.width/2, y: r.top - host.top + r.height*yFactor };
   };
+
+  // Prefer real uploaded art when this vfx key has a registered asset.
+  const resolved = resolveVfxKey(kind);
+  if (resolved) {
+    const asset = VFX_ASSETS[resolved];
+    const unitEl = asset.target === 'self' ? cEl : tEl;
+    const flip = asset.target === 'enemy' && side === 'ally';  // enemy stands on the right
+    return playVfxAsset(resolved, unitEl, { flip });
+  }
 
   const mk = (cls, pos, inner='') => {
     const d = el('div', 'vfx ' + cls, '');
@@ -1694,1087 +2528,6 @@ function playSpellVFX(kind, caster, target, side) {
   }
 }
 
-// Purple rising number for poison ticks
-function poisonPop(pet, amount) {
-  const layer = $('fx-layer');
-  const stage = $('battle-stage');
-  const unit = document.querySelector(`.bunit[data-uid="${pet.uid}"]`);
-  if (!layer || !stage || !unit) return;
-  const host = stage.getBoundingClientRect();
-  const r = unit.getBoundingClientRect();
-  const d = el('div','poison-pop', `-${amount}`);
-  d.style.left = (r.left - host.left + r.width/2) + 'px';
-  d.style.top  = (r.top - host.top + r.height*0.3) + 'px';
-  layer.appendChild(d);
-  setTimeout(() => d.remove(), 1000);
-}
-
-// Green rising number for heals, mirroring the damage number style
-function healPop(pet, amount) {
-  const layer = $('fx-layer');
-  const stage = $('battle-stage');
-  const unit = document.querySelector(`.bunit[data-uid="${pet.uid}"]`);
-  if (!layer || !stage || !unit) return;
-  const host = stage.getBoundingClientRect();
-  const r = unit.getBoundingClientRect();
-  const d = el('div','heal-pop', `+${amount}`);
-  d.style.left = (r.left - host.left + r.width/2) + 'px';
-  d.style.top  = (r.top - host.top + r.height*0.25) + 'px';
-  layer.appendChild(d);
-  setTimeout(() => d.remove(), 1000);
-}
-
-// The ally currently fighting (one at a time, VR2 style)
-function activeAlly() {
-  if (!battle) return null;
-  const cur = battle.team[battle.activeIdx];
-  if (cur && cur.hp > 0) return cur;
-  return null;
-}
-function activeFoe() {
-  if (!battle) return null;
-  return battle.enemies.find(e => e.hp > 0) || null;
-}
-
-// Small row of your remaining VIRUZ under the stage
-function renderBench() {
-  const bench = $('battle-bench');
-  if (!bench || !battle) return;
-  bench.innerHTML = '';
-  battle.team.forEach((p, i) => {
-    const chip = el('div','bench-chip');
-    if (i === battle.activeIdx) chip.classList.add('active');
-    if (p.hp <= 0) chip.classList.add('down');
-    chip.innerHTML = `
-      ${creatureMarkup(p, 'bench-sprite')}
-      <span class="bench-hp">${Math.max(0,p.hp)}</span>`;
-    bench.appendChild(chip);
-  });
-}
-
-function refreshBattleUnits() {
-  if (!battle) return;
-  // Resolve by the unit actually ON STAGE, not by activeAlly()/activeFoe():
-  // those return null the moment a fighter hits 0 HP, which left the name
-  // plate frozen on its last value and hid the killing blow.
-  ['plate-ally','plate-foe'].forEach(plateId => {
-    const wrapId = plateId === 'plate-ally' ? 'battle-allies' : 'battle-enemies';
-    const unit = $(wrapId) && $(wrapId).querySelector('.bunit');
-    if (!unit) return;
-    const uid = unit.dataset.uid;
-    const pet = [...battle.team, ...battle.enemies].find(p => p.uid === uid);
-    if (!pet) return;
-    const plate = $(plateId);
-    const b = plate && plate.querySelector('.np-hp b');
-    if (b) b.textContent = Math.max(0, pet.hp);
-    unit.classList.toggle('dead', pet.hp <= 0);
-  });
-  renderBench();
-}
-
-// ── VR2 TURN BANNER ──
-// Grey pill announcing what is about to happen. Slides in, holds, fades.
-function showBanner(text, kind = '') {
-  return new Promise(resolve => {
-    const host = $('banner-layer');
-    if (!host) { resolve(); return; }
-    const b = el('div', 'turn-banner ' + kind, text);
-    host.appendChild(b);
-    const hold = 300 / battleSpeed;
-    setTimeout(() => {
-      b.classList.add('out');
-      setTimeout(() => { b.remove(); resolve(); }, 150 / battleSpeed);
-    }, hold);
-  });
-}
-
-// ── VR2 IMPACT BURST ──
-// White radiating streak lines across the stage + a yellow slash arc
-// at the contact point. This is what sells the hit in VR2 — the
-// effect crosses the field, not the fighter.
-function impactBurst(targetEl, crit) {
-  const layer = $('fx-layer');
-  const stage = $('battle-stage');
-  if (!layer || !stage || !targetEl) return;
-  const host = stage.getBoundingClientRect();
-  const r = targetEl.getBoundingClientRect();
-  const cx = r.left - host.left + r.width / 2;
-  const cy = r.top - host.top + r.height / 2;
-
-  const burst = el('div', 'impact-burst' + (crit ? ' crit' : ''));
-  burst.style.left = cx + 'px';
-  burst.style.top  = cy + 'px';
-
-  // radiating streak lines
-  let inner = '';
-  const n = crit ? 14 : 10;
-  for (let i = 0; i < n; i++) {
-    const ang = (360 / n) * i + (Math.random() * 12 - 6);
-    const len = 70 + Math.random() * 90;
-    inner += `<i class="streak" style="transform:rotate(${ang}deg);--len:${len}px"></i>`;
-  }
-  // slash arc
-  inner += `<b class="slash"></b>`;
-  // sparks
-  for (let i = 0; i < (crit ? 10 : 6); i++) {
-    const ang = Math.random() * 360, dist = 30 + Math.random() * 55;
-    inner += `<s class="spark" style="--a:${ang}deg;--d:${dist}px"></s>`;
-  }
-  burst.innerHTML = inner;
-  layer.appendChild(burst);
-  setTimeout(() => burst.remove(), 620);
-}
-
-// ── VR2 DAMAGE NUMBER ──
-// Huge, red-orange, thick black stroke, tilted, scale-punch on entry.
-// Multi-hits stack a "× N" underneath. Crits append "!".
-function floatDamage(anchor, res) {
-  const layer = $('fx-layer');
-  const stage = $('battle-stage');
-  if (!layer || !stage || !anchor) return;
-  const host = stage.getBoundingClientRect();
-  const r = anchor.getBoundingClientRect();
-
-  const wrap = el('div', 'dmg-big' + (res.crit ? ' crit' : ''));
-  wrap.style.left = (r.left - host.left + r.width / 2) + 'px';
-  wrap.style.top  = (r.top - host.top + r.height * 0.18) + 'px';
-  wrap.style.setProperty('--tilt', (Math.random() * 14 - 7).toFixed(1) + 'deg');
-  wrap.innerHTML = `
-    <span class="dmg-num">${res.dmg}${res.crit ? '!' : ''}</span>
-    ${res.hits > 1 ? `<span class="dmg-mult">× ${res.hits}</span>` : ''}`;
-  layer.appendChild(wrap);
-  setTimeout(() => wrap.remove(), 1050);
-}
-
-function scheduleTurn(delay) {
-  clearTimeout(battleTimer);
-  const ms = delay != null ? delay : (TUNING.turnBaseMs / battleSpeed);
-  battleTimer = setTimeout(runTurn, ms);
-}
-
-// runTurn is async now: it AWAITS the attack animation before
-// scheduling the next turn, so animations can never be interrupted
-// or skipped by the next action firing early.
-// One-at-a-time duel loop. Your active VIRUZ trades blows with the
-// current antiviruz until one falls. No skill input — fully automatic,
-// paced so each hit is readable.
-async function runTurn() {
-  if (!battle || battle.over) return;
-
-  const ally = activeAlly();
-  const foe  = activeFoe();
-  if (!ally) { promptSwap(); return; }
-  if (!foe)  { checkBattleEnd(); return; }
-
-  const isAllyPhase = battle.phase !== 'foe';
-  let attacker = isAllyPhase ? ally : foe;
-  let target   = isAllyPhase ? foe  : ally;
-  const side   = isAllyPhase ? 'ally' : 'foe';
-  battle.phase = isAllyPhase ? 'foe' : 'ally';
-
-  if (attacker.hp <= 0 || target.hp <= 0) { checkBattleEnd(); return; }
-
-  // ── FREEZE: skip the turn entirely ──
-  if (hasAilment(attacker, 'freeze')) {
-    await showBanner(`${attacker.name} ถูกแช่แข็ง!`, 'ail');
-    blog(`❄️ ${attacker.name} ขยับไม่ได้`, side);
-    await endOfTurnTicks(attacker, side);
-    if (checkBattleEnd()) return;
-    renderBattle(); scheduleTurn(); return;
-  }
-
-  // ── CHARM: attacker turns on its own side ──
-  let charmed = false;
-  if (hasAilment(attacker, 'charm')) {
-    charmed = true;
-    target = attacker;      // hits itself (single-fighter stage)
-    await showBanner(`${attacker.name} ถูกสะกด!`, 'ail');
-  }
-
-  const atkTeam = side === 'ally' ? battle.team : battle.enemies;
-  const defTeam = side === 'ally' ? battle.enemies : battle.team;
-
-  // ── SPEED COUNTER: how many actions this turn ──
-  const aStats = combatStats(attacker, atkTeam);
-  const tStats = combatStats(target, defTeam);
-  const actions = advanceSpeedCounter(attacker, aStats.spd, tStats.spd);
-  if (actions > 1) await showBanner(`⚡ ${attacker.name} เร็วกว่า — โจมตี 2 ครั้ง!`, 'speed');
-
-  for (let act = 0; act < actions; act++) {
-    if (!battle || battle.over) return;
-    if (attacker.hp <= 0 || target.hp <= 0) break;
-
-    // ── PICK ACTION: auto-cast special if toggled and MP allows ──
-    const special = pickAutoSpecial(attacker, side);
-    if (special) {
-      await castSpecial(attacker, target, special, side, atkTeam, defTeam);
-    } else {
-      await basicAttack(attacker, target, side, atkTeam, defTeam, charmed);
-    }
-
-    if (target.hp <= 0) {
-      await showBanner(`${target.name} ถูกกำจัด`, 'ko');
-      const koEl = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
-      if (koEl) koEl.classList.add('dead');
-      break;
-    }
-  }
-
-  await endOfTurnTicks(attacker, side);
-  if (checkBattleEnd()) return;
-  if (!activeAlly() && battle.team.some(p => p.hp > 0)) { promptSwap(); return; }
-  if (!activeFoe()) { checkBattleEnd(); return; }
-
-  renderBattle();
-  scheduleTurn();
-}
-
-// Choose an auto-cast special the attacker can afford right now.
-function pickAutoSpecial(pet, side) {
-  if (side !== 'ally') {
-    // enemies occasionally use their own signature
-    const sig = signatureSkillOf(pet);
-    if (sig && Math.random() < 0.2) return null;
-    return null;
-  }
-  const auto = pet.autoCast || {};
-  let list = unlockedSpecials(pet).filter(sp => auto[sp.id] && canCast(pet, sp));
-
-  // Don't re-cast a self-buff that's already running, and don't cast a
-  // heal at full HP — otherwise the pet loops on it and never attacks.
-  list = list.filter(sp => {
-    if (sp.buffSelf && hasAilment(pet, sp.buffSelf.id)) return false;
-    if (sp.shieldSelf && pet._shield) return false;
-    if ((sp.heal || sp.healTeam) && !sp.pw) {
-      const mx = statsOf(pet).vit;
-      if (pet.hp >= mx * 0.85) return false;      // only heal when hurt
-    }
-    if (sp.cleanse && !(pet.ailments || []).length) return false;
-    if (sp.reviveTeam && !battle.team.some(p => p.hp <= 0)) return false;
-    return true;
-  });
-  if (!list.length) return null;
-
-  // Damage skills take priority; utility only when nothing to hit with.
-  const dmg = list.filter(sp => sp.pw > 0);
-  const util = list.filter(sp => !sp.pw);
-  if (util.length && Math.random() < 0.45) return util.sort((a,b)=>b.mp-a.mp)[0];
-  if (dmg.length) return dmg.sort((a, b) => b.mp - a.mp)[0];
-  return list.sort((a, b) => b.mp - a.mp)[0];
-}
-
-// Normal attack using the pet's basic skills.
-async function basicAttack(attacker, target, side, atkTeam, defTeam, charmed) {
-  const all = availableSkills(attacker);
-  const sig = all.find(sk => sk.sig);
-  const normal = all.filter(sk => !sk.sig);
-  let skill;
-  if (sig && Math.random() < 0.25) skill = sig;
-  else skill = normal[Math.floor(Math.random() * normal.length)] || { n:'Strike', pw:1 };
-
-  // legacy skills use pw as 0-120 "power"; normalize to a multiplier
-  const norm = { ...skill, pw: skill.pw > 5 ? skill.pw / 50 : skill.pw };
-
-  const res = computeDamage(attacker, atkTeam, target, defTeam, norm, !!skill.special);
-  if (skill.sig) await showBanner(`✦ ${skill.n} ✦`, 'sig');
-  if (res.evaded) {
-    await showBanner('MISS!', 'miss');
-    blog(`${target.name} หลบได้!`, side);
-    await playAttack(attacker, target, res, side);
-    return;
-  }
-  if (res.crit) await showBanner('CRITICAL!!', 'crit');
-  const aEl0 = document.querySelector(`.bunit[data-uid="${attacker.uid}"]`);
-  const tEl0 = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
-  if (res.crit && aEl0 && tEl0) {
-    // Crits get the camera treatment: pan in on the attacker, slow the
-    // wind-up, then pan to the target as the number lands.
-    await cinematicStrike(aEl0, tEl0, () => playAttack(attacker, target, res, side));
-  } else {
-    await playAttack(attacker, target, res, side);
-  }
-  target.hp = Math.max(0, target.hp - res.dmg);
-  refreshBattleUnits();
-
-  let line = charmed ? `💗 ${attacker.name} โจมตีตัวเอง` : `${attacker.name} → ${skill.n}`;
-  if (res.hits > 1) line += ` ×${res.hits}`;
-  if (res.crit) line += ' CRIT';
-  line += ` · -${res.dmg}`;
-  blog(line, side);
-}
-
-// Cast a special: spends MP, plays its VFX, applies its payload.
-async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
-  spendMP(caster, sp);
-  await showBanner(`✦ ${sp.name} ✦`, 'sig');
-
-  // Specials always get the cinematic: pan to the caster, slow time so
-  // the spell animation reads, then pan out to the target.
-  const cEl0 = document.querySelector(`.bunit[data-uid="${caster.uid}"]`);
-  const tEl0 = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
-  if (cEl0) {
-    cameraTo(cEl0, { zoom: 1.4, ms: 200 });
-    setTimeScale(0.6);
-    await wait(200);
-  }
-  playSpellVFX(sp.vfx, caster, target, side);
-  await wait(260);            // let the spell animation read in slow-mo
-  setTimeScale(1);
-  // Pull back to a wide shot BEFORE the damage resolves so the number
-  // is visible when it pops.
-  cameraReset(280);
-  await wait(120);
-
-  // ── HEAL / SUPPORT ──
-  if (sp.heal) {
-    const mx = statsOf(caster).vit;
-    const amt = Math.floor(mx * sp.heal);
-    caster.hp = Math.min(mx, caster.hp + amt);
-    healPop(caster, amt);
-    blog(`💚 ${caster.name} ใช้ ${sp.name} · +${amt} HP`, 'buff');
-  }
-  if (sp.healTeam) {
-    atkTeam.forEach(p => {
-      if (p.hp <= 0) return;
-      const mx = statsOf(p).vit;
-      const amt = Math.floor(mx * sp.healTeam);
-      p.hp = Math.min(mx, p.hp + amt);
-    });
-    blog(`💚 ${caster.name} ใช้ ${sp.name} · ฟื้นทั้งทีม`, 'buff');
-  }
-  if (sp.reviveTeam) {
-    let n = 0;
-    atkTeam.forEach(p => {
-      if (p.hp > 0) return;
-      p.hp = Math.floor(statsOf(p).vit * sp.reviveTeam); n++;
-    });
-    blog(`✨ ${caster.name} กู้ระบบ · ชุบชีวิต ${n} ตัว`, 'buff');
-  }
-  if (sp.cleanse) { clearAilments(caster); blog(`🧼 ${caster.name} ล้างสถานะ`, 'buff'); }
-  if (sp.shieldSelf) {
-    caster._shield = sp.shieldSelf;
-    caster._shieldTurns = 3;
-    blog(`🛡 ${caster.name} ตั้งเกราะ ${Math.round(sp.shieldSelf*100)}%`, 'buff');
-  }
-  if (sp.buffSelf) {
-    addAilment(caster, { ...sp.buffSelf });
-    blog(`🔥 ${caster.name} เข้าสู่สภาวะ ${sp.buffSelf.id}`, 'buff');
-  }
-  if (sp.buffTeam) {
-    atkTeam.forEach(p => { if (p.hp > 0) addAilment(p, { id:'frenzy', ...sp.buffTeam }); });
-    blog(`✨ ${caster.name} เสริมพลังทั้งทีม`, 'buff');
-  }
-
-  // ── DAMAGE ──
-  if (sp.pw > 0 && sp.hits > 0) {
-    const res = computeDamage(caster, atkTeam, target, defTeam, sp, true);
-    if (res.evaded) {
-      await showBanner('MISS!', 'miss');
-      blog(`${target.name} หลบ ${sp.name} ได้!`, side);
-    } else {
-      if (res.crit) await showBanner('CRITICAL!!', 'crit');
-      await playAttack(caster, target, res, side);
-      target.hp = Math.max(0, target.hp - res.dmg);
-      let line = `✦ ${caster.name} → ${sp.name}`;
-      if (res.hits > 1) line += ` ×${res.hits}`;
-      if (res.crit) line += ' CRIT';
-      line += ` · -${res.dmg}`;
-      blog(line, side);
-    }
-  }
-
-  // ── AILMENT ON TARGET ──
-  if (sp.ailment && target.hp > 0) {
-    addAilment(target, { ...sp.ailment });
-    const A = AILMENTS[sp.ailment.id];
-    blog(`${A.icon} ${target.name} ติด${A.thai}`, side);
-    await showBanner(`${A.icon} ${A.name}!`, 'ail');
-  }
-
-  cameraReset(400);
-  refreshBattleUnits();
-  renderPotionBar();
-}
-
-// Poison damage, buff expiry, shield countdown — run at the end of a turn.
-async function endOfTurnTicks(unit, side) {
-  const evs = tickAilments(unit);
-  evs.forEach(e => {
-    if (e.type === 'poison') {
-      blog(`☠️ ${unit.name} เสีย ${e.dmg} HP จากพิษ`, side);
-      poisonPop(unit, e.dmg);
-    }
-    if (e.type === 'expire') {
-      const A = AILMENTS[e.id];
-      if (A) blog(`${unit.name} หาย${A.thai}แล้ว`, 'sys');
-    }
-  });
-  if (unit._shieldTurns) {
-    unit._shieldTurns--;
-    if (unit._shieldTurns <= 0) { unit._shield = 0; delete unit._shieldTurns; }
-  }
-  // small MP regen each turn
-  if (unit.uid && battle && battle.team.includes(unit)) restoreMP(unit, 2);
-  refreshBattleUnits();
-}
-
-// Attack sequence with hit-stop. Fighters barely travel — VR2 sells
-// the hit through the burst effect, not by crossing the field — so
-// the lunge is a short forward push and the burst does the rest.
-function playAttack(attacker, target, res, side) {
-  return new Promise(resolve => {
-    const stage = $('battle-stage');
-    const aEl = document.querySelector(`.bunit[data-uid="${attacker.uid}"]`);
-    const tEl = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
-    if (!aEl || !tEl || !stage) { resolve(); return; }
-
-    const img = aEl.querySelector('.bu-sprite');
-    const dir = side === 'ally' ? 1 : -1;
-
-    const windMs   = 120 / battleSpeed;   // pull back
-    const lungeMs  = 130 / battleSpeed;   // drive forward
-    const stopMs   =  90 / battleSpeed;   // hit-stop freeze
-    const returnMs = 170 / battleSpeed;
-
-    aEl.style.setProperty('--wind-ms',   windMs.toFixed(0) + 'ms');
-    aEl.style.setProperty('--lunge-ms',  lungeMs.toFixed(0) + 'ms');
-    aEl.style.setProperty('--return-ms', returnMs.toFixed(0) + 'ms');
-    aEl.style.setProperty('--dir', dir);
-
-    // Same fallback as creatureMarkup — enemies live outside SPECIES.
-    const atkSpecies = SPECIES[attacker.speciesId] ||
-      { gif: attacker.gif, ext: attacker.ext };
-    if (img) {
-      img.classList.remove('float');
-      img.classList.add('attacking');
-      if (atkSpecies && atkSpecies.gif && img.tagName === 'IMG') {
-        img.dataset.stillSrc = img.getAttribute('src');
-        img.setAttribute('src', gifURL(atkSpecies.gif, 'attack', atkSpecies.ext || 'gif'));
-      }
-    }
-
-    // wind up, then lunge
-    // Crits get an exaggerated version of the whole sequence: the
-    // attacker swells during wind-up and slams across with a bigger,
-    // faster strike.
-    if (res.crit) aEl.classList.add('crit-attack');
-
-    aEl.classList.add('wind-up');
-    setTimeout(() => {
-      aEl.classList.remove('wind-up');
-      aEl.classList.add('lunge-out');
-
-      setTimeout(() => {
-        // ── CONTACT ──
-        impactBurst(tEl, res.crit);
-        floatDamage(tEl, res);
-        tEl.classList.add('hit');
-        stage.classList.add('shake' + (res.crit ? '-hard' : ''));
-
-        // Hit-stop: freeze everything briefly so the blow lands with weight
-        stage.classList.add('hitstop');
-        setTimeout(() => stage.classList.remove('hitstop'), stopMs);
-
-        setTimeout(() => {
-          tEl.classList.remove('hit');
-          stage.classList.remove('shake','shake-hard');
-        }, 380 / battleSpeed);
-
-        aEl.classList.remove('lunge-out');
-        aEl.classList.add('lunge-back');
-        setTimeout(() => {
-          aEl.classList.remove('lunge-back');
-          aEl.classList.remove('crit-attack');
-          if (img) {
-            img.classList.remove('attacking');
-            img.classList.add('float');
-            if (img.dataset.stillSrc) {
-              img.setAttribute('src', img.dataset.stillSrc);
-              delete img.dataset.stillSrc;
-            }
-          }
-          resolve();
-        }, returnMs + stopMs);
-      }, lungeMs);
-    }, windMs);
-  });
-}
-
-// ── SWAP MENU ──
-// When your fighter falls, choose which VIRUZ steps up next.
-function promptSwap() {
-  if (!battle || battle.over) return;
-  clearTimeout(battleTimer);
-  const alive = battle.team.map((p,i) => ({p,i})).filter(x => x.p.hp > 0);
-  if (!alive.length) { endBattle(false); return; }
-
-  const host = $('swap-menu');
-  if (!host) { battle.activeIdx = alive[0].i; renderBattle(); scheduleTurn(400); return; }
-  host.innerHTML = `<div class="swap-title">เลือก VIRUZ ตัวถัดไป</div>`;
-  const row = el('div','swap-row');
-  alive.forEach(({p,i}) => {
-    const s = statsOf(p);
-    const card = el('button','swap-card');
-    card.innerHTML = `
-      ${creatureMarkup(p, 'swap-sprite')}
-      <div class="swap-name">${p.name}</div>
-      <div class="swap-hp">♥ ${p.hp}/${s.mhp}</div>`;
-    card.onclick = () => {
-      host.classList.remove('on');
-      battle.activeIdx = i;
-      battle.phase = 'ally';
-      renderBattle();
-      showBanner(`${p.name} ออกสู้!`, 'ally').then(() => scheduleTurn(200));
-    };
-    row.appendChild(card);
-  });
-  host.appendChild(row);
-  host.classList.add('on');
-}
-
-function startRegen() {
-  clearInterval(regenTimer);
-  regenTimer = setInterval(() => {
-    if (!battle || battle.over) return;
-    const sup = supportOf(battle.team);
-    if (sup.regenPct <= 0) return;
-    let healed = 0;
-    battle.team.filter(p => p.hp > 0).forEach(p => {
-      const m = statsOf(p).mhp;
-      const amt = Math.floor(m * sup.regenPct);
-      const before = p.hp;
-      p.hp = clamp(p.hp + amt, 0, m);
-      healed += p.hp - before;
-    });
-    if (healed > 0) {
-      blog(`💗 ซัพพอร์ตฟื้นฟู +${healed} HP`, 'buff');
-      refreshBattleUnits(); // HP-only change — no rebuild needed
-    }
-  }, 8000);
-}
-
-function checkBattleEnd() {
-  if (!battle || battle.over) return true;
-  const alliesUp = battle.team.some(p => p.hp > 0);
-  const foesUp   = battle.enemies.some(p => p.hp > 0);
-
-  if (!foesUp) {
-    // Wave cleared
-    const waveExp  = battle.enemies.reduce((s,e) => s + 18 + e.level * 4, 0);
-    const waveBitz = battle.enemies.reduce((s,e) => s + 14 + e.level * 3, 0);
-    const mult = battle.mode === 'hack'
-      ? battle.target.reward
-      : { expMult: 1.8, bitzMult: 1.8 };
-    battle.totalExp  += Math.floor(waveExp  * mult.expMult);
-    battle.totalBitz += Math.floor(waveBitz * mult.bitzMult);
-
-    if (battle.mode === 'hack' && battle.wave + 1 < battle.run.waveCount) {
-      battle.wave++;
-      battle.enemies = battle.run.waves[battle.wave];
-      battle.turn = 0;
-      battle.phase = 'ally';
-      setText('battle-wave', `คลื่น ${battle.wave+1} / ${battle.run.waveCount}`);
-      blog(`คลื่นถัดไป (${battle.wave+1}/${battle.run.waveCount}) — HP คงเดิม`, 'sys');
-      renderBattle();
-      scheduleTurn(1000);
-      return false;
-    }
-    endBattle(true);
-    return true;
-  }
-  if (!alliesUp) { endBattle(false); return true; }
-  return false;
-}
-
-function endBattle(win) {
-  battle.over = true;
-  clearTimeout(battleTimer);
-  clearInterval(regenTimer);
-  cameraReset(300); setTimeScale(1);
-
-  // Raid fights resolve through the hack flow, not the normal reward path.
-  if (battle.mode === 'raid') {
-    const { rival, loot } = battle.raid;
-    // heal the sent pet a little so a loss isn't punishing beyond the Bitz hit
-    battle.team.forEach(p => {
-      if (p.hp <= 0) p.hp = Math.max(1, Math.floor(statsOf(p).mhp * 0.1));
-    });
-    if (win) grantLoot(loot);
-    const done = $('battle-done');
-    if (done) {
-      done.style.display = '';
-      done.onclick = () => {
-        done.style.display = 'none';
-        const b = battle; battle = null;
-        finishRaid(win, b.raid.loot);
-      };
-    }
-    save();
-    return;
-  }
-
-  let results = null;
-  if (win) {
-    G.wins++;
-    G.bitz += battle.totalBitz;
-    const share = Math.floor(battle.totalExp / Math.max(1, battle.team.length));
-    // Snapshot each pet's exp before/after so the results panel can show
-    // an animated bar and how close each is to the next level.
-    results = battle.team.map(p => {
-      const beforeLv = p.level;
-      const beforeExp = p.exp;
-      const beforeNeed = p.expNeed;
-      const beforeLoyId = loyaltyTier(p.loyalty).id;
-      const evs = grantExp(p, share);
-      const leveled = evs.filter(e => e.type === 'levelup').length;
-      const skills  = evs.filter(e => e.type === 'skill').map(e => e.name);
-      evs.forEach(e => {
-        if (e.type === 'levelup') blog(`⬆️ ${p.name} → Lv.${e.level} (+${e.pts} แต้ม)`, 'buff');
-        if (e.type === 'skill')   blog(`✨ ${p.name} ปลดล็อก ${e.name}`, 'buff');
-      });
-      // loyalty from fighting
-      p.loyalty = clamp((p.loyalty || 0) + LOYALTY_PER_WIN, 0, 100);
-      const loyPromo = loyaltyTier(p.loyalty).id !== beforeLoyId ? loyaltyTier(p.loyalty) : null;
-      if (loyPromo) blog(`${loyPromo.icon} ${p.name} → ${loyPromo.name}!`, 'buff');
-      return {
-        pet: p, gained: share,
-        beforeLv, beforeExp, beforeNeed,
-        afterLv: p.level, afterExp: p.exp, afterNeed: p.expNeed,
-        maxed: p.level >= p.maxLv,
-        leveled, skills, loyPromo,
-      };
-    });
-    blog(`สำเร็จ! +${battle.totalExp} EXP · +${battle.totalBitz} Bitz`, 'win');
-    log(`ชนะ ${battle.mode === 'hack' ? battle.target.name : 'Arena'} · +${battle.totalBitz} Bitz`, 'win');
-  } else {
-    battle.team.forEach(p => {
-      if (p.hp <= 0) p.hp = Math.max(1, Math.floor(statsOf(p).mhp * TUNING.loseHpRestore));
-    });
-    blog('การเจาะล้มเหลว — ทีมถูกตรวจจับ', 'lose');
-    log(`แพ้ ${battle.mode === 'hack' ? battle.target.name : 'Arena'}`, 'lose');
-  }
-  save();
-
-  // Where "done" should return to: zone fights go back to the world map,
-  // arena/other go to the city map. This is the fix for the "kicked to
-  // city hub, have to re-open the map" annoyance.
-  const returnTo = (battle.mode === 'hack' && battle.target && battle.target.map) ? 'world'
-                 : (battle.mode === 'hack') ? 'world'
-                 : 'map';
-
-  showBattleResults(win, battle.totalBitz, battle.totalExp, results, returnTo);
-}
-
-// ── BATTLE RESULTS PANEL ──
-// Overlay showing win/lose, Bitz, and per-pet EXP bars that animate from
-// their pre-fight fill to the new one so you can see progress to level-up.
-function showBattleResults(win, bitz, exp, results, returnTo) {
-  const panel = $('battle-results');
-  if (!panel) {
-    // Fallback: no panel in DOM, just leave via the done button.
-    const done = $('battle-done');
-    done.style.display = '';
-    done.onclick = () => { done.style.display='none'; battle=null; showScreen(returnTo); renderAll(); };
-    return;
-  }
-
-  const rows = (results || []).map(r => {
-    const pct0 = r.maxed ? 100 : Math.round(r.beforeExp / Math.max(1, r.beforeNeed) * 100);
-    const pct1 = r.maxed ? 100 : Math.round(r.afterExp  / Math.max(1, r.afterNeed)  * 100);
-    const lvUp = r.leveled > 0
-      ? `<span class="br-lvup">▲ Lv.${r.beforeLv} → ${r.afterLv}</span>` : '';
-    const extra = [
-      ...(r.skills || []).map(n => `<span class="br-skill">✨ ${n}</span>`),
-      r.loyPromo ? `<span class="br-loy">${r.loyPromo.icon} ${r.loyPromo.name}</span>` : '',
-    ].join('');
-    return `
-      <div class="br-row" data-pct0="${pct0}" data-pct1="${pct1}" data-leveled="${r.leveled}">
-        <div class="br-art">${creatureMarkup(r.pet,'br-sprite')}</div>
-        <div class="br-info">
-          <div class="br-name">${r.pet.name} ${lvUp}</div>
-          <div class="br-xpbar"><i style="width:${pct0}%"></i></div>
-          <div class="br-xptext">
-            ${r.maxed ? 'ระดับสูงสุด' : `EXP ${r.afterExp}/${r.afterNeed}`}
-            <span class="br-gain">+${r.gained}</span>
-          </div>
-          ${extra ? `<div class="br-extra">${extra}</div>` : ''}
-        </div>
-      </div>`;
-  }).join('');
-
-  panel.innerHTML = `
-    <div class="br-card ${win ? 'win' : 'lose'}">
-      <div class="br-title">${win ? '✅ ชนะ!' : '❌ พ่ายแพ้'}</div>
-      ${win ? `<div class="br-loot">💰 +${bitz} Bitz · ⚡ +${exp} EXP รวม</div>` : ''}
-      <div class="br-rows">${rows || '<div class="br-empty">ทีมกลับมาพร้อม HP บางส่วน</div>'}</div>
-      <button class="btn primary wide" id="br-continue">ต่อไป →</button>
-    </div>`;
-  panel.classList.add('on');
-
-  // Animate each xp bar from pre-fight to post-fight fill.
-  requestAnimationFrame(() => {
-    panel.querySelectorAll('.br-row').forEach(row => {
-      const bar = row.querySelector('.br-xpbar i');
-      const pct1 = +row.dataset.pct1, leveled = +row.dataset.leveled;
-      if (!bar) return;
-      // If they leveled, sweep to 100 first, then drop to the new fill.
-      setTimeout(() => {
-        if (leveled > 0) {
-          bar.style.width = '100%';
-          setTimeout(() => { bar.style.transition = 'none'; bar.style.width = '0%';
-            requestAnimationFrame(() => { bar.style.transition = ''; bar.style.width = pct1 + '%'; });
-          }, 420);
-        } else {
-          bar.style.width = pct1 + '%';
-        }
-      }, 260);
-    });
-  });
-
-  $('br-continue').onclick = () => {
-    panel.classList.remove('on');
-    panel.innerHTML = '';
-    battle = null;
-    showScreen(returnTo);
-    renderAll();
-  };
-}
-
-function fleeBattle() {
-  if (!battle || battle.over) return;
-  battle.over = true;
-  clearTimeout(battleTimer);
-  clearInterval(regenTimer);
-  cameraReset(300); setTimeScale(1);
-  blog('ถอนตัวออกจากระบบ', 'sys');
-  save();
-  battle = null;
-  showScreen('map');
-  renderAll();
-}
-
-// ═══════════════ SCREEN: RAID ═══════════════
-async function renderRaidList() {
-  const wrap = $('raid-list');
-  wrap.innerHTML = '<div class="muted">กำลังค้นหาเป้าหมาย…</div>';
-  const myPower = teamPower(activeTeam());
-  const rivals = await NET.listRivals(12, myPower);
-  wrap.innerHTML = '';
-  if (!rivals.length) {
-    wrap.appendChild(el('div','muted','ยังไม่พบผู้เล่นคนอื่น'));
-    return;
-  }
-  rivals.forEach(r => {
-    const diff = r.power / Math.max(1, myPower);
-    const tier = diff < 0.8 ? ['ง่าย','#3ddc84'] : diff < 1.2 ? ['สูสี','#4fc3f7'] : ['ยาก','#ff4d5e'];
-    const card = el('div','raid-card');
-    card.style.setProperty('--tier', tier[1]);
-    card.innerHTML = `
-      <div class="rc-head">
-        <span class="rc-name">${r.name}</span>
-        <span class="rc-tier">${tier[0]}</span>
-      </div>
-      <div class="rc-meta">
-        <span>Lv.${r.level}</span>
-        <span>พลัง ${r.power.toLocaleString()}</span>
-        <span>🛡 ${r.defense.botCount} บอท</span>
-      </div>
-      <div class="rc-loot">รางวัล ~${r.loot} Bitz</div>
-      <button class="btn wide">โจมตีฐาน</button>`;
-    card.querySelector('button').onclick = () => doRaid(r);
-    wrap.appendChild(card);
-  });
-
-  setText('raid-mypower', myPower.toLocaleString());
-}
-
-// ── HACK STAGE 1: PASSWORD MINIGAME ──
-let hackState = null;
-
-function doRaid(rival) {
-  const team = activeTeam();
-  if (!teamAlive(team)) { toast('ทีมหมด HP'); return; }
-  const puzzle = buildHackPuzzle(rival.level);
-  hackState = { rival, puzzle, attempts: puzzle.attempts, guessed: [] };
-  showScreen('hack');
-  renderHackTerminal();
-}
-
-function renderHackTerminal() {
-  const h = hackState;
-  if (!h) return;
-  setText('hack-target', h.rival.name);
-  setText('hack-attempts', h.attempts);
-
-  // attempts as blocks
-  const ab = $('hack-attempt-blocks');
-  if (ab) {
-    ab.innerHTML = '';
-    for (let i = 0; i < h.puzzle.attempts; i++) {
-      ab.appendChild(el('span','atk-block' + (i < h.attempts ? '' : ' spent')));
-    }
-  }
-
-  // Build the terminal grid. Words are clickable spans; junk is inert.
-  const grid = $('hack-grid');
-  const { stream, rows, cols, addrs, placements } = h.puzzle;
-  // map each cell index → word placement (if part of a word)
-  const cellWord = {};
-  placements.forEach((p, wi) => {
-    for (let k = 0; k < p.len; k++) cellWord[p.start + k] = wi;
-  });
-
-  let html = '';
-  for (let r = 0; r < rows; r++) {
-    html += `<div class="hg-row"><span class="hg-addr">${addrs[r]}</span><span class="hg-cells">`;
-    for (let c = 0; c < cols; c++) {
-      const idx = r * cols + c;
-      const wi = cellWord[idx];
-      if (wi != null) {
-        const p = placements[wi];
-        const used = h.guessed.includes(p.word);
-        const first = idx === p.start;
-        html += `<span class="hg-ch word${used ? ' used' : ''}" data-wi="${wi}"${first ? '' : ''}>${stream[idx]}</span>`;
-      } else {
-        html += `<span class="hg-ch">${stream[idx]}</span>`;
-      }
-    }
-    html += `</span></div>`;
-  }
-  grid.innerHTML = html;
-
-  // hover + click by word
-  grid.querySelectorAll('.hg-ch.word').forEach(ch => {
-    const wi = ch.dataset.wi;
-    ch.onmouseenter = () => grid.querySelectorAll(`.hg-ch.word[data-wi="${wi}"]`).forEach(x => x.classList.add('hot'));
-    ch.onmouseleave = () => grid.querySelectorAll(`.hg-ch.word[data-wi="${wi}"]`).forEach(x => x.classList.remove('hot'));
-    ch.onclick = () => guessHackWord(h.puzzle.placements[wi].word);
-  });
-
-  // clear the readout
-  const out = $('hack-readout');
-  if (out) out.innerHTML = '<div class="hr-line">&gt; เลือกคำเพื่อลองรหัส</div>';
-}
-
-function pushReadout(text, cls='') {
-  const out = $('hack-readout');
-  if (!out) return;
-  const line = el('div','hr-line ' + cls, '> ' + text);
-  out.appendChild(line);
-  out.scrollTop = out.scrollHeight;
-}
-
-function guessHackWord(word) {
-  const h = hackState;
-  if (!h || h.done) return;
-  if (h.guessed.includes(word)) return;
-  h.guessed.push(word);
-
-  const res = checkHackGuess(h.puzzle, word);
-  pushReadout(word);
-  if (res.correct) {
-    h.done = true;
-    pushReadout('เข้าถึงระบบสำเร็จ!', 'ok');
-    setTimeout(() => enterStealStage(), 900);
-    return;
-  }
-  h.attempts--;
-  pushReadout(`ตรงกัน ${res.likeness}/${h.puzzle.len}`, 'warn');
-  setText('hack-attempts', h.attempts);
-  renderHackTerminal._refreshBlocks && renderHackTerminal._refreshBlocks();
-  // grey the guessed word + update attempt blocks
-  const grid = $('hack-grid');
-  if (grid) grid.querySelectorAll('.hg-ch.word').forEach(ch => {
-    const w = h.puzzle.placements[ch.dataset.wi].word;
-    if (w === word) ch.classList.add('used');
-  });
-  const ab = $('hack-attempt-blocks');
-  if (ab && ab.children[h.attempts]) ab.children[h.attempts].classList.add('spent');
-
-  if (h.attempts <= 0) {
-    h.done = true;
-    pushReadout('ล็อกเอาต์ — การเจาะล้มเหลว', 'bad');
-    log(`เจาะบ้าน ${h.rival.name} ล้มเหลว (รหัสผิด)`, 'lose');
-    setTimeout(() => { toast('เจาะไม่สำเร็จ\nระบบล็อก'); showScreen('raid'); }, 1400);
-  }
-}
-
-// ── HACK STAGE 2: STEAL MENU ──
-function enterStealStage() {
-  const h = hackState;
-  if (!h) return;
-  showScreen('steal');
-  const myLv = Math.max(1, ...activeTeam().map(p => p.level));
-  const menu = buildLootMenu(h.rival.level, myLv);
-  h.loot = menu;
-
-  setText('steal-target', h.rival.name);
-
-  // pick which single pet to send
-  const petRow = $('steal-pets');
-  petRow.innerHTML = '<div class="steal-lab">เลือก VIRUZ 1 ตัวไปเจาะ:</div>';
-  const row = el('div','steal-petrow');
-  h.sendPet = null;
-  activeTeam().filter(p => p.hp > 0).forEach(p => {
-    const card = el('button','steal-pet');
-    card.innerHTML = `${creatureMarkup(p,'sp-art')}<span>${p.name}</span><i>Lv.${p.level}</i>`;
-    card.onclick = () => {
-      h.sendPet = p;
-      row.querySelectorAll('.steal-pet').forEach(x => x.classList.remove('on'));
-      card.classList.add('on');
-      renderLootMenu();
-    };
-    row.appendChild(card);
-  });
-  petRow.appendChild(row);
-  renderLootMenu();
-}
-
-function renderLootMenu() {
-  const h = hackState;
-  const box = $('steal-loot');
-  if (!box) return;
-  box.innerHTML = '';
-  if (!h.sendPet) {
-    box.innerHTML = '<div class="muted" style="padding:10px">เลือก VIRUZ ก่อน</div>';
-    return;
-  }
-  h.loot.forEach(l => {
-    const label = l.kind === 'bitz' ? `${l.amount} Bitz`
-      : l.kind === 'exp' ? `EXP Booster +${l.amount}`
-      : POTIONS.find(p => p.id === l.potId)?.name || 'Potion';
-    const card = el('button','loot-card');
-    const autoWin = l.chance >= 100;
-    card.innerHTML = `
-      <div class="lc-icon">${l.icon}</div>
-      <div class="lc-name">${label}</div>
-      <div class="lc-chance ${autoWin ? 'auto' : ''}">${autoWin ? 'สำเร็จอัตโนมัติ' : l.chance + '% สำเร็จ'}</div>
-      ${autoWin ? '' : `<div class="lc-warn">ศัตรู ×${chanceToEnemyMult(l.chance).toFixed(2)}</div>`}`;
-    card.onclick = () => commitSteal(l);
-    box.appendChild(card);
-  });
-}
-
-function commitSteal(loot) {
-  const h = hackState;
-  if (!h || !h.sendPet) { toast('เลือก VIRUZ ก่อน'); return; }
-  const mult = chanceToEnemyMult(loot.chance);
-
-  if (mult === 0) {
-    // auto-win
-    grantLoot(loot);
-    finishRaid(true, loot);
-    return;
-  }
-  // Build a defense fight scaled by the multiplier, using the chosen pet.
-  startRaidFight(h.rival, h.sendPet, loot, mult);
-}
-
-function grantLoot(loot) {
-  if (loot.kind === 'bitz') G.bitz += loot.amount;
-  else if (loot.kind === 'exp') { grantExp(hackState.sendPet, loot.amount); }
-  else if (loot.kind === 'potion') {
-    G.potions = G.potions || {};
-    G.potions[loot.potId] = (G.potions[loot.potId] || 0) + loot.amount;
-  }
-}
-
-async function finishRaid(win, loot) {
-  const h = hackState;
-  G.raids++;
-  if (win) {
-    const label = loot.kind === 'bitz' ? `${loot.amount} Bitz`
-      : loot.kind === 'exp' ? 'EXP Booster' : 'Potion';
-    log(`💀 เจาะบ้าน ${h.rival.name} สำเร็จ — ขโมย ${label}`, 'win');
-    toast(`เจาะสำเร็จ!\nขโมย ${label}`);
-  } else {
-    G.bitz = Math.max(0, G.bitz - RAID_LOSS_BITZ);
-    log(`เจาะบ้าน ${h.rival.name} ล้มเหลว — เสีย ${RAID_LOSS_BITZ} Bitz`, 'lose');
-    toast(`ป้องกันไว้ได้!\nเสีย ${RAID_LOSS_BITZ} Bitz`);
-  }
-  renderHUD();
-  await save();                       // persist bitz/loot BEFORE submitRaid
-  await NET.submitRaid(h.rival.uid, { win, loot: win ? loot : null });
-  hackState = null;
-  showScreen('raid');
-  renderRaidList();
-}
-
-// ═══════════════ LOG / TOAST / MODAL ═══════════════
-function log(msg, cls = 'info') {
-  const box = $('log-box');
-  if (box) {
-    const line = el('div', 'log-line ' + cls, msg);
-    box.appendChild(line);
-    box.scrollTop = box.scrollHeight;
-    while (box.children.length > 60) box.removeChild(box.firstChild);
-  }
-  // Also record to the persistent PROCESS feed
-  feed(msg, cls);
-}
-
-// ── PROCESS ACTIVITY FEED ──
-// A persistent, timestamped event log shown on the city hub. Built to
-// become a chat box later (multiplayer), so it's stored as records.
-function feed(msg, cls = 'info') {
-  G.feed = G.feed || [];
-  G.feed.unshift({ t: Date.now(), msg, cls });
-  if (G.feed.length > 40) G.feed.length = 40;
-  renderFeed();
-}
-
-function feedTime(ts) {
-  const d = new Date(ts);
-  const p = n => String(n).padStart(2, '0');
-  return `${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-function renderFeed() {
-  const box = $('process-feed');
-  if (!box) return;
-  const items = G.feed || [];
-  if (!items.length) {
-    box.innerHTML = `<div class="pf-empty">ยังไม่มีความเคลื่อนไหว</div>`;
-    return;
-  }
-  box.innerHTML = items.map(it =>
-    `<div class="pf-line ${it.cls}">
-       <span class="pf-time">${feedTime(it.t)}</span>
-       <span class="pf-msg">${it.msg}</span>
-     </div>`).join('');
-}
-function blog(msg, cls = 'info') {
-  const box = $('battle-log');
-  if (!box) return;
-  const line = el('div', 'blog-line ' + cls, msg);
-  box.appendChild(line);
-  box.scrollTop = box.scrollHeight;
-  while (box.children.length > 80) box.removeChild(box.firstChild);
-}
-function clearBattleLog() { const b = $('battle-log'); if (b) b.innerHTML = ''; }
-
-let toastTimer;
-function toast(msg) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('on');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('on'), 3000);
-}
-
-function modal(title, builder) {
-  const back = $('modal-back');
-  const body = $('modal-body');
-  setText('modal-title', title);
-  body.innerHTML = '';
-  builder(body);
-  back.classList.add('on');
-  $('modal-close').onclick = closeModal;
-  back.onclick = e => { if (e.target === back) closeModal(); };
-}
-function closeModal() { $('modal-back').classList.remove('on'); }
-
-// ═══════════════ EXPOSE FOR HTML ═══════════════
 window.VIRUZ = {
   startArena,
   showScreen,
