@@ -473,9 +473,9 @@ export const ANTIVIRUZ = {
   rock_golem:   { id:'rock_golem',   name:'RockGolem',     gif:'rock_golem',   ext:'png', faces:'right', scale:1.42, base:{atk:46,def:28,spd:8,  mhp:118}, attr:'yellow' },
   hobgoblin:    { id:'hobgoblin',    name:'RedHobgoblin',  gif:'hobgoblin',    ext:'png', faces:'right', scale:1.1, base:{atk:56,def:20,spd:16, mhp:98},  attr:'red'    },
   fire_golem:   { id:'fire_golem',   name:'FireGolem',     gif:'fire_golem',   ext:'png', faces:'right', scale:1.48, base:{atk:60,def:26,spd:11, mhp:126}, attr:'red'    },
-  butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'left', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     },
+  butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'right', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     },
   vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', faces:'right', scale:1.06, base:{atk:72,def:24,spd:22, mhp:130}, attr:null     },
-  vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'left', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    },
+  vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'right', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    },
 };
 
 
@@ -702,44 +702,44 @@ function skillNode(id, skill, x, y, req, lv) {
 // heal / shield / ailment / buff — non-damage payloads
 export const SPECIALS = {
   // ── RED: raw damage ──
-  r_slash:    { id:'r_slash',    name:'Ember Slash',    thai:'ฟันเพลิง',     mp:6,  pw:1.4, hits:1, vfx:'fire',   desc:'ฟันไฟ x1.4' },
-  r_double:   { id:'r_double',   name:'Twin Fang',      thai:'เขี้ยวคู่',     mp:9,  pw:0.9, hits:2, vfx:'slash',  desc:'โจมตี 2 ครั้ง' },
-  r_burn:     { id:'r_burn',     name:'Cinder Touch',   thai:'สัมผัสเถ้า',   mp:10, pw:1.1, hits:1, vfx:'fire',   ailment:{ id:'poison', turns:3, val:0.05 }, desc:'ติดพิษไฟ 3 เทิร์น' },
-  r_frenzy:   { id:'r_frenzy',   name:'Blood Rage',     thai:'คลั่งเลือด',   mp:12, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', turns:4, atk:0.35, spd:0.25, def:-0.20 }, desc:'ATK+35% SPD+25% DEF-20%' },
-  r_pierce:   { id:'r_pierce',   name:'Kernel Pierce',  thai:'เจาะเคอร์เนล', mp:14, pw:1.8, hits:1, vfx:'pierce', ignoreDef:0.5, desc:'เจาะเกราะ 50% x1.8' },
-  r_triple:   { id:'r_triple',   name:'Triple Fang',    thai:'สามเขี้ยว',    mp:16, pw:0.85,hits:3, vfx:'slash',  desc:'โจมตี 3 ครั้ง' },
-  r_meteor:   { id:'r_meteor',   name:'Meteor Byte',    thai:'อุกกาบาต',     mp:20, pw:2.4, hits:1, vfx:'meteor', desc:'ระเบิดใหญ่ x2.4' },
-  r_phoenix:  { id:'r_phoenix',  name:'Phoenix Dance',  thai:'ระบำหงส์ไฟ',   mp:24, pw:2.0, hits:2, vfx:'phoenix',desc:'ท่าไม้ตาย x2 สองครั้ง' },
-  r_ragnarok: { id:'r_ragnarok', name:'Ragnarok Core',  thai:'แกนรักนาร็อค', mp:32, pw:3.2, hits:1, vfx:'meteor', ignoreDef:0.35, desc:'ทำลายล้าง x3.2' },
+  r_slash:    { id:'r_slash',    name:'Ember Slash',    thai:'ฟันเพลิง',     mp:10, cd:3.5,  pw:1.4, hits:1, vfx:'fire',   desc:'ฟันไฟ x1.4' },
+  r_double:   { id:'r_double',   name:'Twin Fang',      thai:'เขี้ยวคู่',     mp:13, cd:3.7,  pw:0.9, hits:2, vfx:'slash',  desc:'โจมตี 2 ครั้ง' },
+  r_burn:     { id:'r_burn',     name:'Cinder Touch',   thai:'สัมผัสเถ้า',   mp:14, cd:3.4, pw:1.1, hits:1, vfx:'fire',   ailment:{ id:'poison', turns:3, val:0.05 }, desc:'ติดพิษไฟ 3 เทิร์น' },
+  r_frenzy:   { id:'r_frenzy',   name:'Blood Rage',     thai:'คลั่งเลือด',   mp:17, cd:3.8, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', turns:4, atk:0.35, spd:0.25, def:-0.20 }, desc:'ATK+35% SPD+25% DEF-20%' },
+  r_pierce:   { id:'r_pierce',   name:'Kernel Pierce',  thai:'เจาะเคอร์เนล', mp:20, cd:3.7, pw:1.8, hits:1, vfx:'pierce', ignoreDef:0.5, desc:'เจาะเกราะ 50% x1.8' },
+  r_triple:   { id:'r_triple',   name:'Triple Fang',    thai:'สามเขี้ยว',    mp:23, cd:4.0, pw:0.85,hits:3, vfx:'slash',  desc:'โจมตี 3 ครั้ง' },
+  r_meteor:   { id:'r_meteor',   name:'Meteor Byte',    thai:'อุกกาบาต',     mp:29, cd:3.9, pw:2.4, hits:1, vfx:'meteor', desc:'ระเบิดใหญ่ x2.4' },
+  r_phoenix:  { id:'r_phoenix',  name:'Phoenix Dance',  thai:'ระบำหงส์ไฟ',   mp:35, cd:4.5, pw:2.0, hits:2, vfx:'phoenix',desc:'ท่าไม้ตาย x2 สองครั้ง' },
+  r_ragnarok: { id:'r_ragnarok', name:'Ragnarok Core',  thai:'แกนรักนาร็อค', mp:46, cd:4.2, pw:3.2, hits:1, vfx:'meteor', ignoreDef:0.35, desc:'ทำลายล้าง x3.2' },
 
   // ── GREEN: speed, evasion, multi-hit ──
-  g_dash:     { id:'g_dash',     name:'Static Dash',    thai:'พุ่งไฟฟ้า',    mp:6,  pw:1.3, hits:1, vfx:'wind',   desc:'พุ่งเร็ว x1.3' },
-  g_gust:     { id:'g_gust',     name:'Gust Cutter',    thai:'ใบมีดลม',      mp:8,  pw:0.8, hits:2, vfx:'wind',   desc:'ลมคม 2 ครั้ง' },
-  g_blur:     { id:'g_blur',     name:'Blur Step',      thai:'ก้าวเลือน',    mp:10, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', turns:3, spd:0.5, atk:0.1, def:0 }, desc:'SPD+50% 3 เทิร์น' },
-  g_venom:    { id:'g_venom',    name:'Venom Spray',    thai:'พ่นพิษ',       mp:11, pw:1.0, hits:1, vfx:'poison', ailment:{ id:'poison', turns:4, val:0.06 }, desc:'พิษแรง 4 เทิร์น' },
-  g_flurry:   { id:'g_flurry',   name:'Wind Flurry',    thai:'พายุหมุน',     mp:14, pw:0.75,hits:3, vfx:'wind',   desc:'โจมตี 3 ครั้ง' },
-  g_cyclone:  { id:'g_cyclone',  name:'Cyclone Rip',    thai:'ไซโคลน',       mp:18, pw:0.8, hits:4, vfx:'wind',   desc:'โจมตี 4 ครั้ง' },
-  g_charm:    { id:'g_charm',    name:'Siren Pulse',    thai:'คลื่นเสน่ห์',  mp:20, pw:0,   hits:0, vfx:'charm',  ailment:{ id:'charm', turns:2 }, desc:'สะกดศัตรู 2 เทิร์น' },
-  g_tempest:  { id:'g_tempest',  name:'Tempest Storm',  thai:'พายุคลั่ง',    mp:26, pw:0.9, hits:5, vfx:'wind',   desc:'โจมตี 5 ครั้ง' },
+  g_dash:     { id:'g_dash',     name:'Static Dash',    thai:'พุ่งไฟฟ้า',    mp:10, cd:3.5,  pw:1.3, hits:1, vfx:'wind',   desc:'พุ่งเร็ว x1.3' },
+  g_gust:     { id:'g_gust',     name:'Gust Cutter',    thai:'ใบมีดลม',      mp:13, cd:3.6,  pw:0.8, hits:2, vfx:'wind',   desc:'ลมคม 2 ครั้ง' },
+  g_blur:     { id:'g_blur',     name:'Blur Step',      thai:'ก้าวเลือน',    mp:14, cd:3.6, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', turns:3, spd:0.5, atk:0.1, def:0 }, desc:'SPD+50% 3 เทิร์น' },
+  g_venom:    { id:'g_venom',    name:'Venom Spray',    thai:'พ่นพิษ',       mp:16, cd:3.4, pw:1.0, hits:1, vfx:'poison', ailment:{ id:'poison', turns:4, val:0.06 }, desc:'พิษแรง 4 เทิร์น' },
+  g_flurry:   { id:'g_flurry',   name:'Wind Flurry',    thai:'พายุหมุน',     mp:20, cd:3.9, pw:0.75,hits:3, vfx:'wind',   desc:'โจมตี 3 ครั้ง' },
+  g_cyclone:  { id:'g_cyclone',  name:'Cyclone Rip',    thai:'ไซโคลน',       mp:26, cd:4.2, pw:0.8, hits:4, vfx:'wind',   desc:'โจมตี 4 ครั้ง' },
+  g_charm:    { id:'g_charm',    name:'Siren Pulse',    thai:'คลื่นเสน่ห์',  mp:29, cd:4.3, pw:0,   hits:0, vfx:'charm',  ailment:{ id:'charm', turns:2 }, desc:'สะกดศัตรู 2 เทิร์น' },
+  g_tempest:  { id:'g_tempest',  name:'Tempest Storm',  thai:'พายุคลั่ง',    mp:38, cd:4.7, pw:0.9, hits:5, vfx:'wind',   desc:'โจมตี 5 ครั้ง' },
 
   // ── YELLOW: defense, control ──
-  y_bash:     { id:'y_bash',     name:'Bulwark Bash',   thai:'ทุบโล่',       mp:7,  pw:1.35,hits:1, vfx:'impact', desc:'ทุบหนัก x1.35' },
-  y_guard:    { id:'y_guard',    name:'Iron Guard',     thai:'เกราะเหล็ก',   mp:8,  pw:0,   hits:0, vfx:'shield', shieldSelf:0.35, desc:'ลดดาเมจ 35% 3 เทิร์น' },
-  y_frost:    { id:'y_frost',    name:'Frost Lock',     thai:'ล็อคน้ำแข็ง',  mp:13, pw:0.9, hits:1, vfx:'ice',    ailment:{ id:'freeze', turns:1 }, desc:'แช่แข็ง 1 เทิร์น' },
-  y_quake:    { id:'y_quake',    name:'Fault Quake',    thai:'แผ่นดินไหว',   mp:15, pw:1.7, hits:1, vfx:'impact', desc:'สั่นสะเทือน x1.7' },
-  y_fortress: { id:'y_fortress', name:'Fortress Mode',  thai:'โหมดป้อม',     mp:18, pw:0,   hits:0, vfx:'shield', shieldSelf:0.55, desc:'ลดดาเมจ 55% 3 เทิร์น' },
-  y_glacier:  { id:'y_glacier',  name:'Glacier Prison', thai:'คุกน้ำแข็ง',   mp:22, pw:1.2, hits:1, vfx:'ice',    ailment:{ id:'freeze', turns:2 }, desc:'แช่แข็ง 2 เทิร์น' },
-  y_bastion:  { id:'y_bastion',  name:'Bastion Crush',  thai:'ป้อมบดขยี้',   mp:28, pw:2.6, hits:1, vfx:'impact', ignoreDef:0.3, desc:'บดขยี้ x2.6' },
+  y_bash:     { id:'y_bash',     name:'Bulwark Bash',   thai:'ทุบโล่',       mp:11, cd:3.5,  pw:1.35,hits:1, vfx:'impact', desc:'ทุบหนัก x1.35' },
+  y_guard:    { id:'y_guard',    name:'Iron Guard',     thai:'เกราะเหล็ก',   mp:13, cd:3.5,  pw:0,   hits:0, vfx:'shield', shieldSelf:0.35, desc:'ลดดาเมจ 35% 3 เทิร์น' },
+  y_frost:    { id:'y_frost',    name:'Frost Lock',     thai:'ล็อคน้ำแข็ง',  mp:19, cd:3.3, pw:0.9, hits:1, vfx:'ice',    ailment:{ id:'freeze', turns:1 }, desc:'แช่แข็ง 1 เทิร์น' },
+  y_quake:    { id:'y_quake',    name:'Fault Quake',    thai:'แผ่นดินไหว',   mp:22, cd:3.7, pw:1.7, hits:1, vfx:'impact', desc:'สั่นสะเทือน x1.7' },
+  y_fortress: { id:'y_fortress', name:'Fortress Mode',  thai:'โหมดป้อม',     mp:26, cd:4.2, pw:0,   hits:0, vfx:'shield', shieldSelf:0.55, desc:'ลดดาเมจ 55% 3 เทิร์น' },
+  y_glacier:  { id:'y_glacier',  name:'Glacier Prison', thai:'คุกน้ำแข็ง',   mp:32, cd:3.5, pw:1.2, hits:1, vfx:'ice',    ailment:{ id:'freeze', turns:2 }, desc:'แช่แข็ง 2 เทิร์น' },
+  y_bastion:  { id:'y_bastion',  name:'Bastion Crush',  thai:'ป้อมบดขยี้',   mp:41, cd:4.0, pw:2.6, hits:1, vfx:'impact', ignoreDef:0.3, desc:'บดขยี้ x2.6' },
 
   // ── WHITE: support / heal ──
-  w_mend:     { id:'w_mend',     name:'Patch Mend',     thai:'ปะแผล',        mp:7,  pw:0, hits:0, vfx:'heal',  heal:0.25, desc:'ฟื้น HP 25% ตัวเอง' },
-  w_cleanse:  { id:'w_cleanse',  name:'Purge Protocol', thai:'ล้างสถานะ',    mp:9,  pw:0, hits:0, vfx:'heal',  cleanse:true, desc:'ล้างสถานะผิดปกติ' },
-  w_ward:     { id:'w_ward',     name:'Aegis Ward',     thai:'พรเกราะ',      mp:11, pw:0, hits:0, vfx:'shield',shieldSelf:0.3, desc:'ลดดาเมจ 30% 3 เทิร์น' },
-  w_bless:    { id:'w_bless',    name:'Data Bless',     thai:'พรข้อมูล',     mp:13, pw:0, hits:0, vfx:'bless', buffTeam:{ turns:4, atk:0.2, def:0.2 }, desc:'ทีม ATK/DEF +20%' },
-  w_healall:  { id:'w_healall',  name:'Radiant Cascade',thai:'สายธารแสง',    mp:18, pw:0, hits:0, vfx:'heal',  healTeam:0.35, desc:'ฟื้น HP 35% ทั้งทีม' },
-  w_smite:    { id:'w_smite',    name:'Judgment Ray',   thai:'ลำแสงตัดสิน',  mp:16, pw:1.9, hits:1, vfx:'holy', desc:'ลำแสงศักดิ์สิทธิ์ x1.9' },
-  w_revive:   { id:'w_revive',   name:'System Restore', thai:'กู้ระบบ',      mp:30, pw:0, hits:0, vfx:'bless', reviveTeam:0.5, desc:'ชุบชีวิตเพื่อนที่ล้ม 50% HP' },
-  w_sanctuary:{ id:'w_sanctuary',name:'Sanctuary',      thai:'วิหารศักดิ์สิทธิ์',mp:26,pw:0,hits:0,vfx:'bless', healTeam:0.5, buffTeam:{ turns:3, def:0.3 }, desc:'ฟื้น 50% + DEF+30%' },
+  w_mend:     { id:'w_mend',     name:'Patch Mend',     thai:'ปะแผล',        mp:11, cd:3.4,  pw:0, hits:0, vfx:'heal',  heal:0.25, desc:'ฟื้น HP 25% ตัวเอง' },
+  w_cleanse:  { id:'w_cleanse',  name:'Purge Protocol', thai:'ล้างสถานะ',    mp:13, cd:3.6,  pw:0, hits:0, vfx:'heal',  cleanse:true, desc:'ล้างสถานะผิดปกติ' },
+  w_ward:     { id:'w_ward',     name:'Aegis Ward',     thai:'พรเกราะ',      mp:16, cd:3.7, pw:0, hits:0, vfx:'shield',shieldSelf:0.3, desc:'ลดดาเมจ 30% 3 เทิร์น' },
+  w_bless:    { id:'w_bless',    name:'Data Bless',     thai:'พรข้อมูล',     mp:19, cd:3.8, pw:0, hits:0, vfx:'bless', buffTeam:{ turns:4, atk:0.2, def:0.2 }, desc:'ทีม ATK/DEF +20%' },
+  w_healall:  { id:'w_healall',  name:'Radiant Cascade',thai:'สายธารแสง',    mp:26, cd:4.2, pw:0, hits:0, vfx:'heal',  healTeam:0.35, desc:'ฟื้น HP 35% ทั้งทีม' },
+  w_smite:    { id:'w_smite',    name:'Judgment Ray',   thai:'ลำแสงตัดสิน',  mp:23, cd:3.7, pw:1.9, hits:1, vfx:'holy', desc:'ลำแสงศักดิ์สิทธิ์ x1.9' },
+  w_revive:   { id:'w_revive',   name:'System Restore', thai:'กู้ระบบ',      mp:44, cd:4.9, pw:0, hits:0, vfx:'bless', reviveTeam:0.5, desc:'ชุบชีวิตเพื่อนที่ล้ม 50% HP' },
+  w_sanctuary:{ id:'w_sanctuary',name:'Sanctuary',      thai:'วิหารศักดิ์สิทธิ์',mp:38, cd:4.7,pw:0,hits:0,vfx:'bless', healTeam:0.5, buffTeam:{ turns:3, def:0.3 }, desc:'ฟื้น 50% + DEF+30%' },
 };
 
 // Rarer pets unlock a bonus tier of skills at the deep nodes.
@@ -878,15 +878,25 @@ export const DEFENSE_BOTS = [
 
 // ── CITY MAP HOTSPOTS ──
 // Percentages relative to the video frame, so it scales on any screen.
+// Coordinates measured from the marked reference screenshot (same
+// 1080x1920 frame as assets/video/city2.mp4). `region` is either
+// 'pin' (small arrow-pointed spot — click the text label) or 'zone'
+// (a big circled area — click anywhere inside the whole building).
+// zoneR is the clickable radius as a % of the shorter screen dimension,
+// only used for 'zone' nodes.
 export const MAP_NODES = [
-  { id:'clinic', label:'Clinic',      icon:'🏥', x:29.0, y:64.5, screen:'clinic',
-    hint:'รักษา VIRUZ · ฟักไข่' },
-  { id:'shop',   label:'Shop',        icon:'🛒', x:61.8, y:78.0, screen:'shop',
-    hint:'ไอเทม · บูสเตอร์' },
-  { id:'tower',  label:'World Gate', icon:'🌐', x:15.4, y:28.0, screen:'world',
-    hint:'ออกผจญภัย · แผนที่โลก' },
-  { id:'home',   label:'Your Home',   icon:'🏠', x:87.4, y:44.0, screen:'home',
-    hint:'ฐานของคุณ · ทีม · ป้องกัน' },
+  { id:'warp_gate', label:'Warp Gate',    x:40.5, y:9.8,  region:'pin',
+    screen:'world', hint:'ออกผจญภัย · แผนที่โลก' },
+  { id:'clinic',    label:'Clinic',       x:65.0, y:11.5, region:'pin',
+    screen:'clinic', hint:'รักษา VIRUZ · ฟักไข่' },
+  { id:'apartment', label:'Your Home',    x:39.6, y:45.0, region:'pin',
+    screen:'home',  hint:'ฐานของคุณ · ทีม · ป้องกัน' },
+  { id:'hacking',   label:'Hacking Center', x:23.4, y:56.3, region:'zone',
+    zoneR:15, screen:'raid', hint:'เจาะบ้านผู้เล่นคนอื่น' },
+  { id:'tech_shop', label:'Tech Shop',    x:87.0, y:64.8, region:'zone',
+    zoneR:13, screen:'shop', hint:'ไอเทม · บูสเตอร์ (ในอนาคต: คราฟต์อุปกรณ์ · การ์ดอัพเกรด)' },
+  { id:'food_shop', label:'Ramen Shop',   x:11.3, y:84.2, region:'zone',
+    zoneR:14, screen:'care', hint:'ดูแล VIRUZ (ในอนาคต: ซื้อวัตถุดิบคราฟต์อาหารเพิ่มสเตตัส/ความผูกพัน)' },
 ];
 
 // ── PROGRESSION TUNING ──
@@ -898,7 +908,7 @@ export const TUNING = {
   // 1-2 fights, then ramping steadily so progression still has weight.
   expCurve: (lv) => Math.floor(28 * Math.pow(lv, 1.55) + lv * 12),
   statPerPoint: 3,
-  turnBaseMs: 260,   // gap BETWEEN exchanges; the attack sequence itself
+  turnBaseMs: 150,   // gap BETWEEN exchanges; the attack sequence itself
                      // (banner + wind-up + lunge + hit-stop + return) adds ~1.5s,
                      // so this stays short or the fight drags
   fleePenalty: 0.0,

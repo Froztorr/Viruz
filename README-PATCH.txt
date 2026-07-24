@@ -1,28 +1,60 @@
-VIRUZ PET — patch: recovery checkpoint + effect assets
-
-IMPORTANT CONTEXT: while integrating your uploaded effect videos, an
-editing mistake deleted a large block of core battle code from
-src/game.js (turn loop, attack sequencing, battle results, the hack/
-password minigame — ~20 functions). This patch is the fully
-reconstructed and RE-VERIFIED file. Everything below has been tested
-in-browser end to end:
-  - boot -> map -> world -> zone battle -> results panel -> return  OK
-  - raid -> password terminal -> steal menu -> raid fight -> resolve OK
-  - all screen navigation (home/world/care/tree/raid/shop/map)       OK
-  - zero console errors, zero 404s across all of the above
+VIRUZ PET — patch: city hub redesign, safe-spot NPC, skill cooldowns
 
 Changed this round:
-  src/game.js       — full reconstruction of the battle core (see above)
-  assets/fx/*.webp  — 12 processed effect clips, background-removed,
-                      transparent, capped at 320px/28 frames each
-                      (2.6MB total)
+  index.html        — CSS for new map nodes (pin vs zone), NPC scene
+  src/game.js        — buildMapNodes() rebuilt for text-only pins +
+                       whole-building zone clicks; renderSafeSpot()
+                       rebuilt as NPC dialogue; cooldown gate added to
+                       skill selection in runTurn()
+  src/data.js        — MAP_NODES rebuilt with 6 locations at measured
+                       coordinates; every entry in SPECIALS now has a
+                       cd (cooldown, seconds) field; MP costs raised
+                       ~45-60%
+  assets/video/city2.mp4 + .jpg  — new city hub background (3.9MB ->
+                       290KB), replaces assets/video/background.mp4
+  assets/ui/merchant.webp — safe-spot NPC portrait (82KB)
 
-NOT YET DONE (next patch): exp gap gating by level difference, floating
-pet-status/skill-explainer windows, skill tree 3/5 pre-unlock, removing
-the button-tap zoom, and wiring the new effect assets into the actual
-self-then-enemy cast sequence (the plumbing for this exists in
-playSpellVFX/castSpecial but hasn't been exercised against the new
-assets yet — verify VFX playback before relying on it).
+CITY HUB — 6 locations, coordinates measured from your marked
+reference screenshot (same frame as the video, so they line up):
+  Warp Gate       (pin)  -> world map
+  Clinic          (pin)  -> clinic
+  Your Home       (pin)  -> home
+  Hacking Center  (zone) -> raid ("เจาะบ้านผู้เล่นคนอื่น")
+  Tech Shop       (zone) -> shop (future: crafting equipment, upgrade
+                            cards)
+  Ramen Shop      (zone) -> care (future: buy ingredients to craft
+                            homemade food, better stat/loyalty boosts
+                            than shop potions)
+Pin nodes show text only, no emoji/icon box. Zone nodes are clickable
+across their entire circled area (measured radius), not a small pin —
+tap anywhere on the building.
 
-Copy src/game.js over your existing file, and copy the assets/fx/
-folder into your repo's assets/ directory (new folder).
+SAFE SPOT — now a dialogue scene: merchant portrait, greeting bubble
+with the player's name inserted, and two menu buttons (rest / potion
+shop) instead of plain section headers. Potion shop expands inline
+when tapped rather than always being visible.
+
+SKILL COOLDOWNS — every special now has a cd field (3.3s-4.9s,
+scaled by how strong the effect is) tracked in real wall-clock time
+per unit per skill (unit._cooldowns). A skill is only eligible for
+auto-cast if it's unlocked, MP-affordable, AND off cooldown. Reset at
+the start of every battle. MP costs raised across the board (~45% for
+most, ~60% for the cheapest ones) so a cheap skill can't be
+functionally free even off cooldown.
+
+VERIFIED IN-BROWSER:
+  - all 6 hub nodes route to their correct screen
+  - safe-spot: greeting shows player name, portrait loads, rest heals,
+    potion shop toggle works
+  - cooldown: an unlocked special with autoCast on cast ONCE in a
+    10-action sample, correctly falling back to normal attacks/
+    signature skill for the rest of the fight (previously would fire
+    on ~55% of every single turn with no gap)
+  - full regression: all 7 screens navigate, a complete battle
+    resolves and returns correctly, zero console errors, zero 404s
+
+NOT BUILT YET (deferred per your own note — future systems):
+  - Tech Shop crafting/equipment/upgrade-card system
+  - Ramen Shop ingredient purchases + homemade food crafting
+  Both currently route to the existing shop/care screens as
+  placeholders until those systems exist.

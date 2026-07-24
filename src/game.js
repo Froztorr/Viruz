@@ -339,16 +339,26 @@ function buildMapNodes() {
   const layer = $('map-nodes');
   layer.innerHTML = '';
   MAP_NODES.forEach(n => {
-    const node = el('button', 'map-node');
+    const isZone = n.region === 'zone';
+    const node = el('button', 'map-node' + (isZone ? ' zone' : ' pin'));
     node.style.left = n.x + '%';
     node.style.top  = n.y + '%';
-    node.innerHTML = `
-      <span class="node-pin"></span>
-      <span class="node-label">
-        <span class="node-icon">${n.icon}</span>
-        <span class="node-text">${n.label}</span>
-        <span class="node-hint">${n.hint}</span>
-      </span>`;
+    if (isZone) {
+      // A zone node's clickable area is the circle itself (sized in
+      // vmin so it scales with the video), positioned centred on the
+      // measured region — clicking ANYWHERE on the building works,
+      // not just a small pin.
+      node.style.width  = (n.zoneR * 2) + 'vmin';
+      node.style.height = (n.zoneR * 2) + 'vmin';
+      node.innerHTML = `<span class="node-text">${n.label}</span>`;
+    } else {
+      // Pin nodes keep a small marker plus the text label beside it —
+      // text only, no emoji, so the artwork underneath stays visible.
+      node.innerHTML = `
+        <span class="node-pin-dot"></span>
+        <span class="node-text">${n.label}</span>`;
+    }
+    node.title = n.hint;
     node.onclick = () => showScreen(n.screen);
     layer.appendChild(node);
   });
@@ -476,9 +486,86 @@ function petCard(pet, opts = {}) {
       ${tier.icon} ${tier.name}
       <span class="pc-loy-bar"><i style="width:${loyProg.pct}%"></i></span>
     </div>
-    ${sig ? `<div class="pc-sig" title="${sig.desc}">✦ ${sig.n}</div>` : ''}`;
+    ${sig ? `<div class="pc-sig" title="${sig.desc}">✦ ${sig.n}</div>` : ''}
+    <button class="pc-info" title="สถานะ">ℹ</button>`;
   if (opts.onClick) card.onclick = () => opts.onClick(pet);
+  // The info button always opens the status window, independent of
+  // whatever the card's main click does (team swap, defense pick, etc).
+  card.querySelector('.pc-info').onclick = (ev) => {
+    ev.stopPropagation();
+    openPetStatus(pet);
+  };
   return card;
+}
+
+// ── PET STATUS FLOATING WINDOW ──
+// Full stat readout + every unlocked special with an auto-cast toggle.
+// Tapping a skill's name opens the same explainer window the skill
+// tree uses, so the description is identical everywhere it's shown.
+function openPetStatus(pet) {
+  const a = ATTR[pet.attr];
+  const r = RARITY[pet.rarity];
+  const s = statsOf(pet);
+  const tier = loyaltyTier(pet.loyalty);
+  const loyProg = loyaltyProgress(pet.loyalty);
+  const tree = treeFor(pet.attr);
+  const specials = unlockedSpecials(pet);
+
+  modal(`${pet.name}`, body => {
+    body.innerHTML = `
+      <div class="ps-head">
+        ${creatureMarkup(pet, 'ps-sprite float')}
+        <div class="ps-headinfo">
+          <div class="ps-rar" style="color:${r.color}">${r.name} · ${a.icon} ${a.name}</div>
+          <div class="ps-lv">Lv.${pet.level}/${pet.maxLv} · EXP ${pet.exp}/${pet.expNeed}</div>
+          <div class="ps-loy">${tier.icon} ${tier.name}
+            <span class="pc-loy-bar" style="width:60px;display:inline-block"><i style="width:${loyProg.pct}%"></i></span>
+          </div>
+        </div>
+      </div>
+      <div class="ps-stats">
+        ${STAT_KEYS.map(k => {
+          const meta = STAT_META[k];
+          const val = (k === 'crit' || k === 'eva') ? s[k] + '%' : s[k];
+          return `<span class="ps-stat"><i>${meta.icon}</i>${meta.name}<b>${val}</b></span>`;
+        }).join('')}
+      </div>
+      <div class="ps-skills-title">// สกิลพิเศษ //</div>
+      <div class="ps-skills"></div>`;
+
+    const list = body.querySelector('.ps-skills');
+    if (!specials.length) {
+      list.innerHTML = `<div class="muted" style="padding:8px">ยังไม่ปลดล็อกสกิลพิเศษ — ไปที่ผังสกิล</div>`;
+    }
+    pet.autoCast = pet.autoCast || {};
+    specials.forEach(sp => {
+      const on = !!pet.autoCast[sp.id];
+      const row = el('div', 'ps-skill-row');
+      row.innerHTML = `
+        <button class="ps-skill-name">✦ ${sp.name}</button>
+        <label class="ps-toggle">
+          <input type="checkbox" ${on ? 'checked' : ''}>
+          <span>${on ? 'อัตโนมัติ' : 'ปิด'}</span>
+        </label>`;
+      row.querySelector('.ps-skill-name').onclick = () => {
+        // find the node that unlocked this skill so the explainer can
+        // show the same content the tree shows
+        const node = tree.nodes.find(n => n.kind === 'skill' && n.skill === sp.id);
+        if (node) openSkillExplainer(pet, tree, node.id, 'status');
+      };
+      const cb = row.querySelector('input');
+      cb.onchange = () => {
+        pet.autoCast[sp.id] = cb.checked;
+        row.querySelector('.ps-toggle span').textContent = cb.checked ? 'อัตโนมัติ' : 'ปิด';
+        save();
+      };
+      list.appendChild(row);
+    });
+
+    const treeBtn = el('button', 'btn wide', '🌳 ไปที่ผังสกิล');
+    treeBtn.onclick = () => { closeModal(); treePetId = pet.uid; showScreen('tree'); };
+    body.appendChild(treeBtn);
+  });
 }
 
 // ═══════════════ SCREEN: HOME ═══════════════
@@ -967,21 +1054,76 @@ function renderTree() {
     ${nodesHtml}`;
 
   host.querySelectorAll('.tree-node').forEach(btn => {
-    btn.onclick = () => {
-      const id = btn.dataset.node;
-      const node = tree.nodes.find(n => n.id === id);
-      const res = canTakeNode(pet, id);
-      if (!res.ok) { toast(res.why); return; }
-      takeNode(pet, id);
-      if (node.kind === 'skill') {
-        const sp = SPECIALS[node.skill];
-        pet.autoCast = pet.autoCast || {};
-        pet.autoCast[sp.id] = true;      // on by default when unlocked
-        toast(`ปลดล็อก ${sp.name}!\n${sp.desc}`);
-        log(`✦ ${pet.name} ปลดล็อก ${sp.name}`, 'win');
-      }
-      save(); renderTree(); renderHUD();
-    };
+    btn.onclick = () => openSkillExplainer(pet, tree, btn.dataset.node, 'tree');
+  });
+}
+
+// ── SKILL EXPLAINER FLOATING WINDOW ──
+// Opened from the skill tree (a node) or from the pet status window (an
+// unlocked special). Shows what the node/skill actually does, and for
+// tree nodes a confirm button that actually spends the point — so a
+// point never gets spent by an accidental tap.
+function openSkillExplainer(pet, tree, nodeId, originScreen) {
+  const node = tree.nodes.find(n => n.id === nodeId);
+  if (!node) return;
+  const spent = pet.tree || {};
+  const rank = spent[nodeId] || 0;
+  const chk = canTakeNode(pet, nodeId);
+
+  let title, body;
+  if (node.kind === 'stat') {
+    const meta = STAT_META[node.stat];
+    title = `${meta.icon} +${meta.name}`;
+    body = `
+      <div class="se-desc">เพิ่ม ${meta.name} (${meta.thai}) ทีละ ${node.per} แต้มต่อระดับ</div>
+      <div class="se-meta">
+        <span>ระดับปัจจุบัน <b>${rank}/${node.max}</b></span>
+        <span>ต้องการเลเวล <b>${node.reqLv}+</b></span>
+      </div>
+      ${node.max > 3 ? `<div class="se-note">ลงถึง 3/${node.max} จะปลดล็อกโหนดถัดไปให้เลือกเล่นต่อได้ทันที — ไม่ต้องเต็มก่อน</div>` : ''}`;
+  } else {
+    const sp = SPECIALS[node.skill];
+    title = `✦ ${sp.name}`;
+    const parts = [];
+    if (sp.pw > 0) parts.push(`ดาเมจ ${Math.round(sp.pw*100)}% ${sp.hits>1?`x${sp.hits} ครั้ง`:''}`);
+    if (sp.heal) parts.push(`ฟื้น HP ${Math.round(sp.heal*100)}% ให้ตัวเอง`);
+    if (sp.healTeam) parts.push(`ฟื้น HP ${Math.round(sp.healTeam*100)}% ให้ทั้งทีม`);
+    if (sp.shieldSelf) parts.push(`ลดดาเมจ ${Math.round(sp.shieldSelf*100)}% 3 เทิร์น`);
+    if (sp.ailment) { const A = AILMENTS[sp.ailment.id]; if (A) parts.push(`ทำให้ศัตรู${A.thai} ${sp.ailment.turns} เทิร์น`); }
+    if (sp.buffSelf) parts.push(`เสริมพลังตัวเอง ${sp.buffSelf.turns} เทิร์น`);
+    if (sp.cleanse) parts.push('ล้างสถานะผิดปกติ');
+    if (sp.reviveTeam) parts.push(`ชุบชีวิตเพื่อน ${Math.round(sp.reviveTeam*100)}% HP`);
+    body = `
+      <div class="se-desc">${sp.thai} — ${sp.desc}</div>
+      <div class="se-meta">
+        <span>MP <b>${sp.mp}</b></span>
+        <span>ต้องการเลเวล <b>${node.reqLv}+</b></span>
+      </div>
+      ${parts.length ? `<ul class="se-effects">${parts.map(p=>`<li>${p}</li>`).join('')}</ul>` : ''}
+      ${rank > 0 ? '<div class="se-note">ปลดล็อกแล้ว — ตั้งค่าอัตโนมัติได้ในหน้าสถานะ</div>' : ''}`;
+  }
+
+  modal(title, body_el => {
+    body_el.innerHTML = body;
+    if (originScreen === 'tree' && rank < node.max) {
+      const btn = el('button', 'btn primary wide', chk.ok ? `ลงแต้ม (เหลือ ${pet.growthPts||0})` : chk.why);
+      btn.disabled = !chk.ok;
+      btn.onclick = () => {
+        const res = takeNode(pet, nodeId);
+        if (!res.ok) { toast(res.why); return; }
+        if (node.kind === 'skill') {
+          const sp = SPECIALS[node.skill];
+          pet.autoCast = pet.autoCast || {};
+          pet.autoCast[sp.id] = true;
+          toast(`ปลดล็อก ${sp.name}!\n${sp.desc}`);
+          log(`✦ ${pet.name} ปลดล็อก ${sp.name}`, 'win');
+        } else {
+          toast(`+${node.per} ${STAT_META[node.stat].name}`);
+        }
+        save(); closeModal(); renderTree(); renderHUD();
+      };
+      body_el.appendChild(btn);
+    }
   });
 }
 
@@ -1147,18 +1289,29 @@ function renderSafeSpot() {
   if (!z) return;
   setText('safe-name', z.name);
   setText('safe-thai', z.thai);
+  setText('npc-greet', `สวัสดี ${G.name || 'นักผจญภัย'} ให้ข้าช่วยอะไรได้บ้าง?`);
 
-  // Rest — full heal, costs nothing but advances the day counter
-  const restBtn = $('safe-rest');
+  const hurt = G.roster.filter(p => p.hp < statsOf(p).mhp).length;
+  const restBtn = $('npc-opt-rest');
   if (restBtn) {
-    const hurt = G.roster.filter(p => p.hp < statsOf(p).mhp).length;
-    restBtn.textContent = hurt ? `🔥 พักฟื้น (${hurt} ตัวบาดเจ็บ)` : '🔥 ทุกตัวสมบูรณ์แล้ว';
+    restBtn.textContent = hurt ? `พักฟื้น (${hurt} ตัวบาดเจ็บ)` : 'ทุกตัวสมบูรณ์แล้ว';
     restBtn.disabled = !hurt;
     restBtn.onclick = () => {
       G.roster.forEach(p => p.hp = statsOf(p).mhp);
       G.day++;
       save(); renderSafeSpot(); renderHUD();
       toast('พักฟื้นเรียบร้อย\nHP เต็มทุกตัว');
+    };
+  }
+
+  const shopWrap = $('safe-potions-wrap');
+  const shopBtn = $('npc-opt-shop');
+  if (shopBtn && shopWrap) {
+    shopBtn.onclick = () => {
+      const opening = shopWrap.hidden;
+      shopWrap.hidden = !opening;
+      shopBtn.textContent = opening ? 'ปิดร้านยา' : 'ซื้อ Potion';
+      if (opening) shopWrap.scrollIntoView({ behavior:'smooth', block:'nearest' });
     };
   }
 
@@ -1255,6 +1408,7 @@ function startZone(target) {
     p.spdCounter = 0;
     p.ailments = [];
     p._shield = 0;
+    p._cooldowns = {};
   });
   showScreen('battle');
   setText('battle-title', target.name);
@@ -1484,6 +1638,20 @@ function scheduleTurn(delayMs) {
   battleTimer = setTimeout(runTurn, ms);
 }
 
+// ── SPECIAL SKILL COOLDOWNS ──
+// Real wall-clock seconds (per your spec: 3-5s depending on power),
+// tracked per unit per skill id in unit._cooldowns. Reset whenever a
+// fight starts fresh (see startZone/startArena/startRaidFight).
+function specialReady(unit, sp) {
+  const cds = unit._cooldowns;
+  if (!cds || !cds[sp.id]) return true;
+  return Date.now() >= cds[sp.id];
+}
+function markSpecialUsed(unit, sp) {
+  unit._cooldowns = unit._cooldowns || {};
+  unit._cooldowns[sp.id] = Date.now() + (sp.cd || 3.5) * 1000;
+}
+
 async function runTurn() {
   if (!battle || battle.over) return;
   const ally = activeAlly();
@@ -1514,14 +1682,23 @@ async function runTurn() {
   const atkTeam = side === 'ally' ? battle.team : battle.enemies;
   const defTeam = side === 'ally' ? battle.enemies : battle.team;
 
-  const specials = unlockedSpecials(attacker).filter(sp => attacker.autoCast?.[sp.id] && canCast(attacker, sp));
+  // Only specials that are auto-cast ON, affordable, AND off cooldown
+  // are eligible. Without the cooldown check a pet would burn every
+  // point of MP on specials back-to-back instead of ever throwing a
+  // normal attack, since specials were picked with flat 55% odds every
+  // single turn regardless of how recently one was used.
+  const specials = unlockedSpecials(attacker)
+    .filter(sp => attacker.autoCast?.[sp.id] && canCast(attacker, sp) && specialReady(attacker, sp));
   const sig = signatureSkillOf(attacker);
+  const sigReady = sig && specialReady(attacker, sig);
   let usedSpecial = null;
 
   if (specials.length && Math.random() < 0.55) {
     usedSpecial = specials[Math.floor(Math.random() * specials.length)];
+    markSpecialUsed(attacker, usedSpecial);
     await castSpecial(attacker, target, usedSpecial, side, atkTeam, defTeam);
-  } else if (sig && Math.random() < 0.3) {
+  } else if (sigReady && Math.random() < 0.3) {
+    markSpecialUsed(attacker, sig);
     await castSpecial(attacker, target, sig, side, atkTeam, defTeam);
   } else {
     await basicAttack(attacker, target, side, atkTeam, defTeam);
@@ -1538,12 +1715,21 @@ async function basicAttack(attacker, target, side, atkTeam, defTeam) {
   const skills = availableSkills(attacker);
   const skill = skills[Math.floor(Math.random() * skills.length)] || { n: 'Strike', pw: 40 };
   const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false);
-  await playAttack(attacker, target, res, side);
 
   if (res.evaded) {
+    await playAttack(attacker, target, res, side);
     blog(`${target.name} หลบ ${attacker.name} ได้!`, side);
     return;
   }
+
+  // Crit on a NORMAL attack still gets the self-effect first (white
+  // circle burst), then the swing lands with the gold hit-flash on the
+  // enemy — same self-then-enemy beat as specials, just compressed
+  // since a basic swing has no separate cast phase.
+  if (res.crit) playSpellVFX('crit_self', attacker, target, side);
+  await playAttack(attacker, target, res, side);
+  playSpellVFX('impact', attacker, target, side);   // gold hit-flash, every landed normal hit
+
   target.hp = Math.max(0, target.hp - res.dmg);
   refreshBattleUnits();
   let line = `${attacker.name} → ${skill.n}`;
@@ -1655,10 +1841,43 @@ async function endOfTurnTicks(unit) {
   refreshBattleUnits();
 }
 
+// A kill's exp is priced against the ACTUAL fighter who lands the
+// killing blow, at the moment it happens — not guessed afterward from
+// whatever enemy the battle ended on. Gap rule: if your active fighter
+// out-levels the kill by more than EXP_GAP_MAX, it's farming and grants
+// nothing; the enemy being much HIGHER level than you is not penalized
+// the same way, since that's a genuinely hard fight, not easy farming.
+const EXP_GAP_MAX = 5;
+function expForKill(enemy, fighter) {
+  const gap = fighter.level - enemy.level;   // + = you outlevel the kill
+  if (gap > EXP_GAP_MAX) return 0;
+  const base = Math.round(28 * Math.pow(Math.max(1, enemy.level), 1.15));
+  const mult = (battle && battle.target && battle.target.reward && battle.target.reward.expMult) || 1;
+  return Math.round(base * mult);
+}
+
 function checkBattleEnd() {
   if (!battle) return true;
   const alliesAlive = battle.team.some(p => p.hp > 0);
   const enemiesAlive = battle.enemies.some(e => e.hp > 0);
+
+  // Credit exp for any enemy that just died THIS check, priced against
+  // whichever ally fighter is currently active (the one that would have
+  // landed the blow). Each enemy is credited once via _expCredited.
+  const fighter = activeAlly();
+  if (fighter) {
+    battle.enemies.forEach(e => {
+      if (e.hp <= 0 && !e._expCredited) {
+        e._expCredited = true;
+        const gained = expForKill(e, fighter);
+        battle.totalExp = (battle.totalExp || 0) + gained;
+        battle.expGapBlocked = battle.expGapBlocked || (gained === 0 && fighter.level - e.level > EXP_GAP_MAX);
+        const wave = (battle.run && battle.run.waves[battle.wave]) || battle.enemies;
+        const waveBitz = Math.round(6 * Math.max(1, e.level));
+        battle.totalBitz = (battle.totalBitz || 0) + waveBitz;
+      }
+    });
+  }
 
   if (!alliesAlive) { endBattle(false); return true; }
 
@@ -1726,20 +1945,17 @@ function endBattle(win) {
   let results = null;
   if (win) {
     G.wins++;
-    const gap = Math.abs((battle.enemies[0]?.level || 1) - (activeTeam()[0]?.level || 1));
-    const expEligible = gap <= 5;
-    battle.totalBitz = battle.totalBitz || Math.round((battle.target?.reward?.bitzMult || 1) * 40 * (activeTeam()[0]?.level || 1));
-    if (expEligible) {
-      battle.totalExp = battle.totalExp || Math.round((battle.target?.reward?.expMult || 1) * 30 * (battle.enemies[0]?.level || 1));
-    } else {
-      battle.totalExp = 0;
-    }
+    // totalExp/totalBitz were accumulated per-kill in checkBattleEnd as
+    // the fight happened, already gap-gated per kill — nothing to
+    // recompute here.
+    battle.totalExp = battle.totalExp || 0;
+    battle.totalBitz = battle.totalBitz || Math.round((battle.target?.reward?.bitzMult || 1) * 30 * (activeTeam()[0]?.level || 1));
     G.bitz += battle.totalBitz;
     const share = Math.floor(battle.totalExp / Math.max(1, battle.team.length));
     results = battle.team.map(p => {
       const beforeLv = p.level, beforeExp = p.exp, beforeNeed = p.expNeed;
       const beforeLoyId = loyaltyTier(p.loyalty).id;
-      const evs = expEligible ? grantExp(p, share) : [];
+      const evs = share > 0 ? grantExp(p, share) : [];
       const leveled = evs.filter(e => e.type === 'levelup').length;
       const skills = evs.filter(e => e.type === 'skill').map(e => e.name);
       evs.forEach(e => {
@@ -1755,7 +1971,9 @@ function endBattle(win) {
         maxed: p.level >= p.maxLv, leveled, skills, loyPromo,
       };
     });
-    if (!expEligible) blog(`ระดับต่างกันเกิน 5 — ไม่ได้รับ EXP`, 'sys');
+    if (battle.totalExp === 0 && battle.expGapBlocked) {
+      blog(`ระดับสูงกว่าศัตรูเกิน ${EXP_GAP_MAX} เลเวล — ไม่ได้รับ EXP`, 'sys');
+    }
     blog(`สำเร็จ! +${battle.totalExp} EXP · +${battle.totalBitz} Bitz`, 'win');
     log(`ชนะ ${battle.mode === 'hack' ? battle.target.name : 'Arena'} · +${battle.totalBitz} Bitz`, 'win');
   } else {
@@ -2353,7 +2571,7 @@ const VFX_ALIAS = {
   fire:'fire_enemy', ice:'ice_enemy', heal:'heal_self',
   holy:'circle_self', bless:'circle_self', shield:'shield_self',
   poison:'poison_enemy', charm:'charm_enemy', wind:'wind_self',
-  meteor:'meteor_enemy', pierce:'pierce_enemy', aura:'circle_self',
+  meteor:'meteor_enemy', pierce:'pierce_enemy', slash:'pierce_enemy', aura:'circle_self',
   impact:'hit_normal_enemy',
 };
 
