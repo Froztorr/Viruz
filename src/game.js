@@ -158,6 +158,7 @@ async function boot() {
     buildStarterPicker();
   }
   wireGlobalUI();
+  wireClickRipple();
 }
 
 async function save() {
@@ -207,27 +208,99 @@ async function claimStarter() {
 
 // ═══════════════ SCREENS ═══════════════
 const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care','hack','steal','tree'];
+
+// Rough navigation depth so a transition can tell "going deeper" from
+// "coming back" and slide the right direction. Screens not listed count
+// as depth 1 (same level as map). Battle/hack/steal are treated as
+// full-screen takeovers (depth 9) so they always feel like an overlay
+// sliding UP rather than sideways.
+const SCREEN_DEPTH = {
+  intro:0, map:1,
+  home:2, world:2, care:2, raid:2, shop:2,
+  clinic:3, safe:3, tree:3,
+  arena:4,
+  battle:9, hack:9, steal:9,
+};
+
+let currentScreenId = null;
+let screenTransitioning = false;
+
 function showScreen(id) {
-  SCREENS.forEach(s => {
-    const e = $('screen-' + s);
-    if (e) e.classList.toggle('on', s === id);
-  });
-  // Background video only plays on the map
-  const vid = $('bg-video');
-  if (vid) {
-    if (id === 'map') { vid.play().catch(()=>{}); }
-    else { vid.pause(); }
+  if (screenTransitioning || id === currentScreenId) {
+    // Still allow a hard switch if nothing is currently shown (boot).
+    if (currentScreenId != null) return;
   }
-  $('app').dataset.screen = id;
-  if (id === 'home')   renderHome();
-  if (id === 'clinic') renderClinic();
-  if (id === 'shop')   renderShop();
-  if (id === 'world')  renderWorld();
-  if (id === 'safe')   renderSafeSpot();
-  if (id === 'care')   renderCare();
-  if (id === 'tree')   renderTree();
-  if (id === 'raid')   renderRaidList();
-  if (id === 'map')    renderFeed();
+  const fromId = currentScreenId;
+  const fromEl = fromId ? $('screen-' + fromId) : null;
+  const toEl = $('screen-' + id);
+  if (!toEl) return;
+
+  const fromDepth = SCREEN_DEPTH[fromId] ?? 1;
+  const toDepth = SCREEN_DEPTH[id] ?? 1;
+  const goingDeeper = toDepth >= fromDepth;
+
+  const finishSwitch = () => {
+    SCREENS.forEach(s => {
+      const e = $('screen-' + s);
+      if (e) e.classList.toggle('on', s === id);
+    });
+    toEl.classList.remove('nav-in-l','nav-in-r','nav-in-up');
+    toEl.classList.add(id === 'battle' || id === 'hack' || id === 'steal' ? 'nav-in-up'
+                        : goingDeeper ? 'nav-in-r' : 'nav-in-l');
+    // Let the browser register the starting position before animating.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      toEl.classList.add('nav-settle');
+      setTimeout(() => {
+        toEl.classList.remove('nav-in-l','nav-in-r','nav-in-up','nav-settle');
+        screenTransitioning = false;
+      }, 260);
+    }));
+
+    currentScreenId = id;
+    const vid = $('bg-video');
+    if (vid) { if (id === 'map') vid.play().catch(()=>{}); else vid.pause(); }
+    $('app').dataset.screen = id;
+    if (id === 'home')   renderHome();
+    if (id === 'clinic') renderClinic();
+    if (id === 'shop')   renderShop();
+    if (id === 'world')  renderWorld();
+    if (id === 'safe')   renderSafeSpot();
+    if (id === 'care')   renderCare();
+    if (id === 'tree')   renderTree();
+    if (id === 'raid')   renderRaidList();
+    if (id === 'map')    renderFeed();
+    if (id === 'battle') playArenaEntrance();
+  };
+
+  if (!fromEl || fromEl === toEl) { finishSwitch(); return; }
+
+  screenTransitioning = true;
+  fromEl.classList.add(id === 'battle' || id === 'hack' || id === 'steal' ? 'nav-out-up'
+                        : goingDeeper ? 'nav-out-l' : 'nav-out-r');
+  setTimeout(() => {
+    fromEl.classList.remove('on','nav-out-l','nav-out-r','nav-out-up');
+    finishSwitch();
+  }, 170);
+  return;
+}
+
+// ── GLOBAL CLICK RIPPLE ──
+// Event-delegated so it covers every current and future tappable
+// element without wiring each one individually.
+function wireClickRipple() {
+  const TAPPABLE = '.btn, .qb, .zone-pin, .care-card, .loot-card, .steal-pet, ' +
+                   '.swap-card, .pet-card, .shop-card, .tree-node, .sk-btn, ' +
+                   '.potion-btn, .raid-card, .map-tab, .ts-dot';
+  document.addEventListener('pointerdown', e => {
+    const target = e.target.closest(TAPPABLE);
+    if (!target || target.disabled) return;
+    const d = document.createElement('div');
+    d.className = 'click-ripple';
+    d.style.left = e.clientX + 'px';
+    d.style.top = e.clientY + 'px';
+    document.body.appendChild(d);
+    setTimeout(() => d.remove(), 460);
+  }, { passive: true });
 }
 
 function wireGlobalUI() {
@@ -1152,7 +1225,7 @@ function startRaidFight(rival, sendPet, loot, mult) {
   blog(`ส่ง ${sendPet.name} เข้าเจาะ`, 'buff');
   renderBattle();
   startRegen();
-  scheduleTurn(900);
+  scheduleTurn(1200);
 }
 
 function startZone(target) {
@@ -1194,7 +1267,7 @@ function startZone(target) {
   if (sup.auraPct > 0) blog(`➕ บัฟซัพพอร์ต +${Math.round(sup.auraPct*100)}%`, 'buff');
   renderBattle();
   startRegen();
-  scheduleTurn(900);
+  scheduleTurn(1200);
 }
 
 function startArena() {
@@ -1227,7 +1300,7 @@ function startArena() {
   blog('เริ่มการต่อสู้ Arena', 'sys');
   renderBattle();
   startRegen();
-  scheduleTurn(900);
+  scheduleTurn(1200);
 }
 
 // Full (re)build of the battlefield DOM. Call this only when the unit
@@ -1237,6 +1310,88 @@ function startArena() {
 // paints a frame, which is why attacks used to look like nothing
 // happened. Use refreshBattleUnits() for per-turn updates instead.
 // VR2-style stage: ONE fighter per side, name plate + heart, no bars.
+// ── BATTLE ENTRANCE ──
+// Called right after showScreen('battle') has painted the DOM. Both
+// fighters start off-stage (translated + pixelated), step in with a
+// stomp, kick up a dust puff on landing, then a VS banner slams
+// through the middle before the first turn begins. Skippable on tap.
+function playArenaEntrance() {
+  const stage = $('battle-stage');
+  const allySide = $('battle-allies');
+  const foeSide = $('battle-enemies');
+  if (!stage || !allySide || !foeSide) return;
+
+  // Entrance only plays once the units exist — renderBattle() runs
+  // right after this from showScreen, so wait a tick for them to paint.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const allyUnit = allySide.querySelector('.bunit');
+    const foeUnit = foeSide.querySelector('.bunit');
+    if (!allyUnit || !foeUnit) return;
+
+    stage.classList.add('entrance-lock');   // hides HP text/plates till landed
+    allyUnit.classList.add('enter-from-l');
+    foeUnit.classList.add('enter-from-r');
+
+    let skipped = false;
+    const skip = () => {
+      if (skipped) return; skipped = true;
+      allyUnit.classList.remove('enter-from-l');
+      foeUnit.classList.remove('enter-from-r');
+      stage.classList.remove('entrance-lock');
+      vsEl.remove();
+      stage.removeEventListener('pointerdown', skip);
+    };
+    const vsEl = el('div', 'vs-slam', 'VS');
+    stage.addEventListener('pointerdown', skip, { once: true });
+
+    setTimeout(() => {
+      if (skipped) return;
+      allyUnit.classList.remove('enter-from-l');
+      foeUnit.classList.remove('enter-from-r');
+      allyUnit.classList.add('enter-land');
+      foeUnit.classList.add('enter-land');
+      dustPuff(allyUnit); dustPuff(foeUnit);
+    }, 520);
+
+    setTimeout(() => {
+      if (skipped) return;
+      stage.appendChild(vsEl);
+    }, 620);
+
+    setTimeout(() => {
+      if (skipped) return;
+      allyUnit.classList.remove('enter-land');
+      foeUnit.classList.remove('enter-land');
+      stage.classList.remove('entrance-lock');
+      vsEl.classList.add('out');
+      setTimeout(() => vsEl.remove(), 220);
+      stage.removeEventListener('pointerdown', skip);
+    }, 1050);
+  }));
+}
+
+// Small pixel dust burst at a unit's feet when it lands.
+function dustPuff(unitEl) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  if (!layer || !stage || !unitEl) return;
+  const host = stage.getBoundingClientRect();
+  const r = unitEl.getBoundingClientRect();
+  const cx = r.left - host.left + r.width / 2;
+  const cy = r.bottom - host.top - 4;
+  const puff = el('div', 'dust-puff');
+  puff.style.left = cx + 'px';
+  puff.style.top = cy + 'px';
+  let inner = '';
+  for (let i = 0; i < 6; i++) {
+    const ang = -160 - Math.random() * 200;
+    inner += `<i style="--pa:${ang}deg;--pd:${(18+Math.random()*16).toFixed(0)}px;--pdel:${(i*0.02).toFixed(2)}s"></i>`;
+  }
+  puff.innerHTML = inner;
+  layer.appendChild(puff);
+  setTimeout(() => puff.remove(), 500);
+}
+
 function renderBattle() {
   if (!battle) return;
   const side = (pet, elId, isEnemy) => {
@@ -1976,10 +2131,10 @@ function playAttack(attacker, target, res, side) {
     const img = aEl.querySelector('.bu-sprite');
     const dir = side === 'ally' ? 1 : -1;
 
-    const windMs   = 220 / battleSpeed;   // pull back
-    const lungeMs  = 190 / battleSpeed;   // drive forward
+    const windMs   = 120 / battleSpeed;   // pull back
+    const lungeMs  = 130 / battleSpeed;   // drive forward
     const stopMs   =  90 / battleSpeed;   // hit-stop freeze
-    const returnMs = 300 / battleSpeed;
+    const returnMs = 170 / battleSpeed;
 
     aEl.style.setProperty('--wind-ms',   windMs.toFixed(0) + 'ms');
     aEl.style.setProperty('--lunge-ms',  lungeMs.toFixed(0) + 'ms');
