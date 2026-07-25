@@ -169,6 +169,7 @@ async function boot() {
   }
   wireGlobalUI();
   wireDrawer();
+  startTopBarClock();
   wireClickRipple();
 }
 
@@ -218,7 +219,7 @@ async function claimStarter() {
 }
 
 // ═══════════════ SCREENS ═══════════════
-const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care','hack','steal','tree'];
+const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care','hack','steal','tree','inventory'];
 
 // Rough navigation depth so a transition can tell "going deeper" from
 // "coming back" and slide the right direction. Screens not listed count
@@ -285,6 +286,7 @@ function showScreen(id) {
     if (id === 'safe')   renderSafeSpot();
     if (id === 'care')   renderCare();
     if (id === 'tree')   renderTree();
+    if (id === 'inventory') renderInventory();
     if (id === 'raid')   renderRaidList();
     if (id === 'map')    renderFeed();
     if (id === 'battle') playArenaEntrance();
@@ -390,27 +392,20 @@ function buildMapNodes() {
       node.style.height = (n.zoneR * 2) + 'vmin';
       node.innerHTML = `<span class="node-text">${n.label}</span>`;
     } else {
-      // Pin nodes: a precise dot at the measured landmark position,
-      // with the text label offset to a clear side (n.labelDir, set
-      // per-node in data.js) so it never renders on top of the
-      // building's own signage.
-      node.innerHTML = `
-        <span class="node-pin-dot"></span>
-        <span class="node-text">${n.label}</span>`;
-      const dir = n.labelDir || 'right';
-      const offsets = {
-        right:  { lx: '16px',   ly: '-9px'  },
-        left:   { lx: 'calc(-100% - 16px)', ly: '-9px' },
-        below:  { lx: '-50%',   ly: '20px'  },
-        above:  { lx: '-50%',   ly: 'calc(-100% - 14px)' },
-      };
-      const off = offsets[dir] || offsets.right;
-      node.style.setProperty('--lx', off.lx);
-      node.style.setProperty('--ly', off.ly);
+      // Pin nodes: a precise dot at the measured landmark position.
+      node.innerHTML = `<span class="node-pin-dot"></span>`;
     }
     node.title = n.hint;
     node.onclick = () => showScreen(n.screen);
     layer.appendChild(node);
+
+    if (!isZone && n.textX != null) {
+      const label = el('div', 'map-node-label', n.label);
+      label.style.left = n.textX + '%';
+      label.style.top  = n.textY + '%';
+      label.onclick = () => showScreen(n.screen);
+      layer.appendChild(label);
+    }
   });
 }
 
@@ -427,6 +422,58 @@ function renderHUD() {
   setText('hud-power', teamPower(activeTeam()).toLocaleString());
   renderTeamStrip();
   syncQuickbar();
+  renderTopBar();
+}
+
+// ── PERSISTENT TOP BAR ──
+// Left: live clock + whichever timed activity is closest to finishing
+// (care cooldowns for now — the only source of "activity with a
+// delay" that currently exists). Right: player identity.
+let topBarTimer = null;
+function renderTopBar() {
+  const bar = $('topbar');
+  if (!bar) return;
+  bar.classList.toggle('hidden', currentScreenId === 'intro' || !currentScreenId);
+
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  setText('tb-clock', `${hh}:${mm}`);
+
+  setText('tb-name', G.name || '-');
+  setText('tb-bitz', (G.bitz || 0).toLocaleString());
+  setText('tb-pets', (G.roster || []).length);
+
+  // Find the soonest-finishing care cooldown across all pets/activities.
+  const actEl = $('tb-activity');
+  if (actEl) {
+    let soonest = null;
+    const care = G.care || {};
+    Object.keys(care).forEach(petUid => {
+      const pet = G.roster.find(p => p.uid === petUid);
+      if (!pet) return;
+      Object.keys(care[petUid]).forEach(actId => {
+        const remain = careRemaining(petUid, actId);
+        if (remain > 0 && (!soonest || remain < soonest.remain)) {
+          soonest = { remain, petName: pet.name, actId };
+        }
+      });
+    });
+    if (soonest) {
+      const mins = Math.ceil(soonest.remain / 60000);
+      const label = mins >= 60
+        ? `${Math.floor(mins / 60)} ชม. ${mins % 60} น.`
+        : `${mins} น.`;
+      actEl.innerHTML = `<span class="tb-act-icon">⏳</span>${soonest.petName} · เหลือ ${label}`;
+      actEl.hidden = false;
+    } else {
+      actEl.hidden = true;
+    }
+  }
+}
+function startTopBarClock() {
+  clearInterval(topBarTimer);
+  topBarTimer = setInterval(renderTopBar, 15000);   // refresh every 15s
 }
 
 // Highlight the quickbar button for the current screen
@@ -1217,6 +1264,54 @@ function addLoyalty(pet, amount) {
   return t;
 }
 
+// ── INVENTORY ── read-only view of owned potions/foods/toys, opened
+// from the drawer's Inventory tab.
+function renderInventory() {
+  const potBox = $('inv-potions');
+  if (potBox) {
+    potBox.innerHTML = '';
+    const owned = G.potions || {};
+    const any = POTIONS.some(p => (owned[p.id] || 0) > 0);
+    if (!any) potBox.innerHTML = `<div class="muted" style="padding:10px">ยังไม่มียา</div>`;
+    POTIONS.forEach(p => {
+      const n = owned[p.id] || 0;
+      if (!n) return;
+      const card = el('div', 'shop-card');
+      card.innerHTML = `<div class="sc-icon">${p.icon}</div><div class="sc-name">${p.name}</div>
+        <div class="sc-desc">${p.desc}</div><div class="sc-owned">มี ${n} ชิ้น</div>`;
+      potBox.appendChild(card);
+    });
+  }
+  const foodBox = $('inv-foods');
+  if (foodBox) {
+    foodBox.innerHTML = '';
+    const owned = G.foods || {};
+    const any = FOODS.some(f => (owned[f.id] || 0) > 0);
+    if (!any) foodBox.innerHTML = `<div class="muted" style="padding:10px">ยังไม่มีอาหาร</div>`;
+    FOODS.forEach(f => {
+      const n = owned[f.id] || 0;
+      if (!n) return;
+      const card = el('div', 'shop-card');
+      card.innerHTML = `<div class="sc-icon">${f.icon}</div><div class="sc-name">${f.name}</div>
+        <div class="sc-desc">${f.desc}</div><div class="sc-owned">มี ${n} ชิ้น</div>`;
+      foodBox.appendChild(card);
+    });
+  }
+  const toyBox = $('inv-toys');
+  if (toyBox) {
+    toyBox.innerHTML = '';
+    const owned = G.toys || [];
+    if (!owned.length) toyBox.innerHTML = `<div class="muted" style="padding:10px">ยังไม่มีของเล่น</div>`;
+    TOYS.forEach(t => {
+      if (!owned.includes(t.id)) return;
+      const card = el('div', 'shop-card');
+      card.innerHTML = `<div class="sc-icon">${t.icon}</div><div class="sc-name">${t.name}</div>
+        <div class="sc-desc">${t.desc}</div><div class="sc-owned">มีแล้ว</div>`;
+      toyBox.appendChild(card);
+    });
+  }
+}
+
 function renderCare() {
   const pet = G.roster.find(p => p.uid === carePetId) || activeTeam()[0] || G.roster[0];
   if (!pet) return;
@@ -1432,6 +1527,7 @@ function startRaidFight(rival, sendPet, loot, mult) {
   blog(`ส่ง ${sendPet.name} เข้าเจาะ`, 'buff');
   renderBattle();
   startRegen();
+  startSkillCooldownTicker();
   scheduleTurn(1200);
 }
 
@@ -1475,6 +1571,7 @@ function startZone(target) {
   if (sup.auraPct > 0) blog(`➕ บัฟซัพพอร์ต +${Math.round(sup.auraPct*100)}%`, 'buff');
   renderBattle();
   startRegen();
+  startSkillCooldownTicker();
   scheduleTurn(1200);
 }
 
@@ -1508,6 +1605,7 @@ function startArena() {
   blog('เริ่มการต่อสู้ Arena', 'sys');
   renderBattle();
   startRegen();
+  startSkillCooldownTicker();
   scheduleTurn(1200);
 }
 
@@ -1776,11 +1874,14 @@ async function basicAttack(attacker, target, side, atkTeam, defTeam) {
     return;
   }
 
-  // Crit on a NORMAL attack still gets the self-effect first (white
-  // circle burst), then the swing lands with the gold hit-flash on the
-  // enemy — same self-then-enemy beat as specials, just compressed
-  // since a basic swing has no separate cast phase.
-  if (res.crit) playSpellVFX('crit_self', attacker, target, side);
+  // Crit on a NORMAL attack: full self-effect plays out, THEN a full
+  // pause, THEN the swing lands with the gold hit-flash on the enemy —
+  // same self-then-enemy beat as specials.
+  if (res.crit) {
+    const critMs = playSpellVFX('crit_self', attacker, target, side);
+    await wait((critMs || 0) / battleSpeed);
+    await wait(1000 / battleSpeed);
+  }
   await playAttack(attacker, target, res, side);
   playSpellVFX('impact', attacker, target, side);   // gold hit-flash, every landed normal hit
 
@@ -1844,10 +1945,16 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
   }
   refreshBattleUnits();
 
-  // ── SMALL DELAY, THEN ENEMY-FACING RESOLUTION ──
+  // ── WAIT FOR SELF ANIMATION TO FULLY FINISH, THEN A REAL PAUSE ──
+  // Previously this only waited a capped fraction of the self-effect's
+  // duration (max ~200ms), so the enemy-side hit was firing while the
+  // self animation was still playing. Now: wait out the self clip's
+  // real duration in full, THEN a full extra second before the
+  // enemy-facing effect/damage — exactly the beat the user asked for.
   const hasEnemyEffect = (sp.pw > 0 && sp.hits > 0) || sp.ailment;
   if (hasEnemyEffect) {
-    await wait(Math.max(160, Math.min(selfVfxMs || 0, 500) * 0.4));
+    await wait((selfVfxMs || 0) / battleSpeed);
+    await wait(1000 / battleSpeed);
   }
 
   if (sp.pw > 0 && sp.hits > 0) {
@@ -2190,16 +2297,32 @@ async function playAttack(attacker, target, res, side) {
   const aEl = document.querySelector(`.bunit[data-uid="${attacker.uid}"]`);
   const tEl = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
   if (!aEl || !tEl) return;
+  // Slowed down significantly — the previous defaults (220/320/260ms)
+  // combined with a 120/130ms JS wait made the whole swing nearly
+  // imperceptible. The CSS keyframes read duration from --wind-ms/
+  // --lunge-ms/--return-ms custom properties, which were never being
+  // set from JS, so they silently used their short defaults regardless
+  // of any wait() change here — fixed by setting them explicitly so
+  // the animation and the JS timing agree.
+  const windMs = 260, lungeMs = 320, returnMs = 300;
+  aEl.style.setProperty('--wind-ms', (windMs / battleSpeed) + 'ms');
+  aEl.style.setProperty('--lunge-ms', (lungeMs / battleSpeed) + 'ms');
+  aEl.style.setProperty('--return-ms', (returnMs / battleSpeed) + 'ms');
+
+  aEl.classList.add('wind-up');
+  await wait(windMs / battleSpeed);
+  aEl.classList.remove('wind-up');
   aEl.classList.add('lunge-out');
-  await wait(120 / battleSpeed);
+  await wait(lungeMs / battleSpeed);
   aEl.classList.remove('lunge-out');
   aEl.classList.add('lunge-back');
   impactBurst(tEl, res.crit);
   if (!res.evaded) floatDamage(tEl, res);
   tEl.classList.add('hit');
-  await wait(130 / battleSpeed);
+  await wait(480 / battleSpeed);
   tEl.classList.remove('hit');
   aEl.classList.remove('lunge-back');
+  await wait(returnMs / battleSpeed);
 }
 
 function refreshBattleUnits() {
@@ -2478,10 +2601,13 @@ function renderSkillBar() {
     const on = !!pet.autoCast[sp.id];
     const afford = (pet.mp || 0) >= sp.mp;
     const b = el('button','sk-btn' + (on ? ' on' : '') + (afford ? '' : ' poor'));
+    b.dataset.petUid = pet.uid;
+    b.dataset.spId = sp.id;
     b.innerHTML = `
       <span class="sk-name">${sp.name}</span>
-      <span class="sk-mp">MP ${sp.mp}</span>
-      <span class="sk-auto">${on ? '● AUTO' : '○ ปิด'}</span>`;
+      <span class="sk-cost-cd">MP ${sp.mp} · ${(sp.cd || 3.5).toFixed(1)}s</span>
+      <span class="sk-auto">${on ? '● AUTO' : '○ ปิด'}</span>
+      <span class="sk-cd-overlay"><b class="sk-cd-num"></b></span>`;
     b.title = `${sp.thai} — ${sp.desc}`;
     b.onclick = () => {
       pet.autoCast[sp.id] = !pet.autoCast[sp.id];
@@ -2489,6 +2615,39 @@ function renderSkillBar() {
     };
     bar.appendChild(b);
   });
+  refreshSkillCooldownUI();
+}
+
+// Ticks every skill button's darken-overlay + live countdown number,
+// reading directly from the unit's _cooldowns map (set by
+// markSpecialUsed). Runs on an interval while a battle is active so
+// the number counts down smoothly rather than jumping.
+let skillCdTimer = null;
+function refreshSkillCooldownUI() {
+  const pet = activeAlly();
+  if (!pet) return;
+  document.querySelectorAll('#skill-bar .sk-btn').forEach(btn => {
+    const spId = btn.dataset.spId;
+    const until = pet._cooldowns && pet._cooldowns[spId];
+    const remainMs = until ? Math.max(0, until - Date.now()) : 0;
+    const overlay = btn.querySelector('.sk-cd-overlay');
+    const num = btn.querySelector('.sk-cd-num');
+    if (remainMs > 0) {
+      btn.classList.add('on-cooldown');
+      overlay.style.opacity = '1';
+      num.textContent = (remainMs / 1000).toFixed(1) + 's';
+    } else {
+      btn.classList.remove('on-cooldown');
+      overlay.style.opacity = '0';
+    }
+  });
+}
+function startSkillCooldownTicker() {
+  clearInterval(skillCdTimer);
+  skillCdTimer = setInterval(() => {
+    if (battle && !battle.over) refreshSkillCooldownUI();
+    else clearInterval(skillCdTimer);
+  }, 100);
 }
 
 // ── COMBAT POTIONS ──

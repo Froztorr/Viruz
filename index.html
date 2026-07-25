@@ -98,6 +98,24 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 #app{position:relative;min-height:100vh;max-width:1100px;margin:0 auto}
 
 /* ── HUD ── */
+#topbar{
+  position:sticky;top:0;z-index:70;display:flex;align-items:center;
+  justify-content:space-between;gap:8px;padding:6px 10px;
+  background:rgba(6,4,16,.94);border-bottom:1px solid var(--line2);
+  backdrop-filter:blur(6px);font-size:13px;color:var(--txt);
+  min-height:28px;
+}
+#topbar.hidden{display:none}
+.topbar-left{display:flex;align-items:center;gap:8px;min-width:0}
+#tb-clock{font-family:var(--pixel);font-size:13px;color:var(--cyan);flex:0 0 auto}
+.tb-activity{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gold);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tb-activity .tb-act-icon{flex:0 0 auto}
+.topbar-right{display:flex;align-items:center;gap:6px;flex:0 0 auto;font-size:12px}
+.tb-sep{color:var(--muted)}
+#tb-name{color:var(--txt);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tb-bitz b, .tb-pets b{color:var(--gold);font-weight:400}
+
 #hud{
   position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:10px;
   padding:9px 12px;
@@ -238,17 +256,34 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 /* ── SPECIAL SKILL BAR ── */
 #skill-bar{display:flex;gap:6px;overflow-x:auto;padding:8px 10px;
   background:var(--panel);border-top:1px solid var(--line)}
-.sk-btn{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+.sk-btn{flex:0 0 auto;position:relative;display:flex;flex-direction:column;
+  align-items:flex-start;gap:1px;overflow:hidden;
   padding:6px 10px;background:var(--panel2);border:1px solid var(--line);
   transition:.12s;min-width:92px;
   clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%)}
 .sk-btn.on{border-color:var(--gold);box-shadow:0 0 12px rgba(255,213,74,.3)}
 .sk-btn.poor{opacity:.45}
 .sk-name{font-family:var(--pixel);font-size:18px;line-height:1;color:var(--txt)}
-.sk-mp{font-size:13px;color:#7fd4ff;line-height:1.2}
+.sk-cost-cd{font-size:13px;color:#7fd4ff;line-height:1.2}
 .sk-auto{font-size:13px;color:var(--muted);line-height:1.2}
 .sk-btn.on .sk-auto{color:var(--gold)}
 .sk-empty{font-size:16px;color:var(--muted);padding:4px}
+
+/* Cooldown overlay: darkens the whole button and shows a live
+   countdown from the skill's full cooldown down to 0s, per the user's
+   spec — "darken with animation showing large number of time delay
+   from full time to 0s then back to normal again". Opacity is toggled
+   by refreshSkillCooldownUI() every 100ms while a battle is active. */
+.sk-btn.on-cooldown{pointer-events:none}
+.sk-cd-overlay{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  background:rgba(4,3,10,.82);opacity:0;transition:opacity .25s ease;
+  z-index:2;
+}
+.sk-cd-num{
+  font-family:var(--pixel);font-size:22px;color:#fff;
+  text-shadow:0 0 10px rgba(255,213,74,.6),0 2px 3px rgba(0,0,0,.8);
+}
 
 /* ── BATTLE ENTRANCE ── */
 /* Hide plates/bench until the fighters have landed, so nothing reads
@@ -485,15 +520,15 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .pf-line.buff .pf-msg{color:var(--gold)}
 .pf-empty{padding:14px;text-align:center;color:var(--muted);font-size:17px}
 
-/* ── QUICK-ACCESS BAR ── */
-#app[data-screen="intro"] #quickbar,
+/* ── QUICK-ACCESS BAR ──
+   The old #hud header bar and #quickbar are now hidden EVERYWHERE —
+   replaced by the persistent #topbar (time/activity left, name/bitz/
+   pet-count right) that shows on every screen, plus the global drawer
+   knob for navigation. #teamstrip still hides on intro/battle/map
+   since those have their own dedicated fighter/creature displays. */
+#hud, #quickbar{display:none}
 #app[data-screen="intro"] #teamstrip,
-#app[data-screen="battle"] #quickbar,
 #app[data-screen="battle"] #teamstrip,
-/* The map screen is now a fullscreen video with only the drawer knob
-   visible — no header bar, no quickbar, no team strip on top of it. */
-#app[data-screen="map"] #hud,
-#app[data-screen="map"] #quickbar,
 #app[data-screen="map"] #teamstrip{display:none}
 #quickbar{position:sticky;top:41px;z-index:59;display:flex;gap:2px;
   padding:4px 6px;background:rgba(5,6,15,.92);border-bottom:1px solid var(--line);
@@ -674,8 +709,11 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   color:var(--cyan);font-size:16px;transition:.2s;
 }
 #drawer-knob:active{background:linear-gradient(90deg,rgba(60,38,100,.9),rgba(80,50,130,.98))}
-#app[data-screen="map"] #drawer-knob{display:flex}
-#app:not([data-screen="map"]) #drawer-knob{display:none}
+/* Knob is now global — visible on every screen (town, dungeon,
+   battle, everywhere) rather than map-only. Hidden only on the intro
+   screen since there's no game state to show yet. */
+#drawer-knob{display:flex}
+#app[data-screen="intro"] #drawer-knob{display:none}
 .knob-arrow{transition:transform .25s ease}
 #drawer-panel.open ~ #drawer-knob .knob-arrow,
 body.drawer-open .knob-arrow{transform:rotate(180deg)}
@@ -709,13 +747,13 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 .drawer-section-title{font-family:var(--pixel);font-size:14px;color:var(--cyan);
   margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--line)}
 .drawer-feed{max-height:none}
-/* The DOT is anchored exactly at the landmark's measured x/y — that
-   never moves and stays pixel-accurate to the video. The TEXT LABEL is
-   a sibling positioned with its own offset (via --lx/--ly custom
-   properties, set per-node in JS) so it sits in clear space beside the
-   landmark instead of stacking directly on top of it and covering the
-   building/signage underneath. The dot itself is the precise tap
-   target; the label is just a caption pointing at it. */
+/* The DOT is anchored exactly at the landmark's measured x/y. The text
+   label is now a SEPARATE element (.map-node-label) positioned at its
+   own independently-measured coordinate — see buildMapNodes() — since
+   the two aren't a fixed offset apart. No background box behind the
+   text anymore (that dark rectangle was the complaint); readability
+   comes from a heavy text-shadow instead, same treatment as zone
+   labels already used. */
 .map-node{position:absolute;transform:translate(-50%,-50%);background:none;border:none}
 
 .map-node.pin{width:16px;height:16px}
@@ -728,13 +766,11 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
   0%,100%{box-shadow:0 0 0 4px rgba(55,230,255,.2),0 0 14px var(--cyan)}
   50%{box-shadow:0 0 0 8px rgba(55,230,255,0),0 0 20px var(--cyan)}
 }
-.map-node.pin .node-text{
-  position:absolute;
-  left:var(--lx, 16px); top:var(--ly, -6px);
-  font-family:var(--pixel);font-size:15px;letter-spacing:.4px;
-  padding:3px 8px;background:rgba(5,8,20,.85);border:1px solid var(--line2);
-  white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.8);
-  transition:.15s;pointer-events:none;
+.map-node-label{
+  position:absolute;transform:translate(-50%,-50%);z-index:3;
+  font-family:var(--pixel);font-size:16px;letter-spacing:.4px;
+  color:#fff;white-space:nowrap;pointer-events:auto;cursor:pointer;
+  text-shadow:0 0 6px rgba(0,0,0,.95),0 0 12px rgba(0,0,0,.9),0 2px 3px rgba(0,0,0,.8);
 }
 .map-node.pin:hover .node-text{border-color:var(--cyan);
   box-shadow:0 0 14px rgba(55,230,255,.35)}
@@ -1470,6 +1506,24 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
 </style>
 </head>
 <body>
+<!-- ═══ PERSISTENT TOP STATUS BAR ═══
+     Shows on every screen (unlike the old #hud which only appeared on
+     some). Left: real clock + soonest-expiring timed activity (care
+     cooldowns etc). Right: player name, Bitz, pet count. -->
+<div id="topbar">
+  <div class="topbar-left">
+    <span id="tb-clock">--:--</span>
+    <span id="tb-activity" class="tb-activity" hidden></span>
+  </div>
+  <div class="topbar-right">
+    <span id="tb-name">-</span>
+    <span class="tb-sep">·</span>
+    <span class="tb-bitz">💰 <b id="tb-bitz">0</b></span>
+    <span class="tb-sep">·</span>
+    <span class="tb-pets">🧬 <b id="tb-pets">0</b></span>
+  </div>
+</div>
+
 <div id="app" data-screen="intro">
 
   <!-- HUD + quick-access top bar -->
@@ -1525,32 +1579,22 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
          dragged/tapped, slides a menu tab out OVER the current scene —
          not a screen change, not a fullscreen expansion. The video
          keeps playing underneath. -->
-    <button id="drawer-knob" aria-label="เมนู">
-      <span class="knob-arrow">‹</span>
-    </button>
-    <div id="drawer-backdrop"></div>
-    <aside id="drawer-panel">
-      <div class="drawer-head">
-        <span class="proc-title">▮ MENU</span>
-        <button id="drawer-close">✕</button>
-      </div>
-      <div class="drawer-body">
-        <div class="drawer-hud">
-          <span class="chip">💰 <b id="drawer-bitz">0</b></span>
-          <span class="chip pw">⚡ <b id="drawer-power">0</b></span>
-        </div>
-        <div class="drawer-grid">
-          <button class="drawer-tab" onclick="VIRUZ.startArena()">
-            <span class="dt-icon">⚔️</span><span class="dt-text">Arena 3v3</span>
-          </button>
-          <button class="drawer-tab" onclick="VIRUZ.resetGame()">
-            <span class="dt-icon">🗑️</span><span class="dt-text">รีเซ็ต</span>
-          </button>
-        </div>
-        <div class="drawer-section-title">// PROCESS //</div>
-        <div id="process-feed" class="drawer-feed"></div>
-      </div>
-    </aside>
+  </section>
+
+  <!-- ═══ INVENTORY ═══ -->
+  <section id="screen-inventory" class="screen">
+    <div class="section">
+      <div class="section-title">// POTIONS //</div>
+      <div id="inv-potions" class="grid"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">// FOODS //</div>
+      <div id="inv-foods" class="grid"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">// TOYS //</div>
+      <div id="inv-toys" class="grid"></div>
+    </div>
   </section>
 
   <!-- ═══ HOME ═══ -->
@@ -1784,6 +1828,39 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
     <div id="modal-body"></div>
   </div>
 </div>
+
+<!-- ═══ GLOBAL PULL-OUT DRAWER ═══
+     Lives OUTSIDE every screen section (sibling of #app, not nested
+     inside screen-map) so it's genuinely global — present on every
+     screen, town or dungeon, not just the city map. A knob on the
+     right-middle edge slides a menu tab out OVER whatever screen is
+     currently showing. -->
+<button id="drawer-knob" aria-label="เมนู">
+  <span class="knob-arrow">‹</span>
+</button>
+<div id="drawer-backdrop"></div>
+<aside id="drawer-panel">
+  <div class="drawer-head">
+    <span class="proc-title">▮ MENU</span>
+    <button id="drawer-close">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div class="drawer-hud">
+      <span class="chip">💰 <b id="drawer-bitz">0</b></span>
+      <span class="chip pw">⚡ <b id="drawer-power">0</b></span>
+    </div>
+    <div class="drawer-grid">
+      <button class="drawer-tab" data-goto="home" id="drawer-characters">
+        <span class="dt-icon">🧬</span><span class="dt-text">Characters</span>
+      </button>
+      <button class="drawer-tab" data-goto="inventory" id="drawer-inventory">
+        <span class="dt-icon">🎒</span><span class="dt-text">Inventory</span>
+      </button>
+    </div>
+    <div class="drawer-section-title">// PROCESS //</div>
+    <div id="process-feed" class="drawer-feed"></div>
+  </div>
+</aside>
 
 <div id="toast"></div>
 

@@ -884,21 +884,24 @@ export const DEFENSE_BOTS = [
 // (a big circled area — click anywhere inside the whole building).
 // zoneR is the clickable radius as a % of the shorter screen dimension,
 // only used for 'zone' nodes.
-// labelDir: which side of the dot the text caption offsets to, so it
-// never overlaps the landmark's own signage/art. Chosen per-node based
-// on where open space actually is around each building in the video.
+// Re-measured directly from the user's second annotation pass (colored
+// dot = click target center, colored line = where the text caption
+// should render). Every landmark here uses an explicit textX/textY
+// rather than a generic direction, because the distances aren't
+// uniform (food_shop's text sits much closer to its dot than the
+// others do).
 export const MAP_NODES = [
-  { id:'warp_gate', label:'Warp Gate',    x:40.5, y:9.8,  region:'pin', labelDir:'above',
+  { id:'warp_gate', label:'Warp Gate',    x:25.5, y:20.3, textX:25.3, textY:5.0,  region:'pin',
     screen:'world', hint:'ออกผจญภัย · แผนที่โลก' },
-  { id:'clinic',    label:'Clinic',       x:65.0, y:11.5, region:'pin', labelDir:'above',
+  { id:'clinic',    label:'Clinic',       x:72.2, y:25.1, textX:77.3, textY:8.5,  region:'pin',
     screen:'clinic', hint:'รักษา VIRUZ · ฟักไข่' },
-  { id:'apartment', label:'Your Home',    x:39.6, y:45.0, region:'pin', labelDir:'right',
+  { id:'apartment', label:'Your Home',    x:54.9, y:49.6, textX:53.1, textY:33.7, region:'pin',
     screen:'home',  hint:'ฐานของคุณ · ทีม · ป้องกัน' },
-  { id:'hacking',   label:'Hacking Center', x:23.4, y:51.5, region:'zone',
+  { id:'hacking',   label:'Hacking Center', x:22.9, y:53.4, region:'zone',
     zoneR:15, screen:'raid', hint:'เจาะบ้านผู้เล่นคนอื่น' },
   { id:'tech_shop', label:'Tech Shop',    x:87.0, y:64.8, region:'zone',
     zoneR:13, screen:'shop', hint:'ไอเทม · บูสเตอร์ (ในอนาคต: คราฟต์อุปกรณ์ · การ์ดอัพเกรด)' },
-  { id:'food_shop', label:'Ramen Shop',   x:11.3, y:84.2, region:'zone',
+  { id:'food_shop', label:'Food Shop',    x:16.0, y:83.5, region:'zone',
     zoneR:14, screen:'care', hint:'ดูแล VIRUZ (ในอนาคต: ซื้อวัตถุดิบคราฟต์อาหารเพิ่มสเตตัส/ความผูกพัน)' },
 ];
 
@@ -911,7 +914,7 @@ export const TUNING = {
   // 1-2 fights, then ramping steadily so progression still has weight.
   expCurve: (lv) => Math.floor(28 * Math.pow(lv, 1.55) + lv * 12),
   statPerPoint: 3,
-  turnBaseMs: 150,   // gap BETWEEN exchanges; the attack sequence itself
+  turnBaseMs: 700,   // gap BETWEEN exchanges; the attack sequence itself
                      // (banner + wind-up + lunge + hit-stop + return) adds ~1.5s,
                      // so this stays short or the fight drags
   fleePenalty: 0.0,
