@@ -957,6 +957,117 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 .cc-cd{font-size:16px;color:var(--gold)}
 .cc-action{min-height:28px;display:flex;align-items:center;justify-content:center}
 
+/* ── CARE MINIGAME OVERLAY ──
+   A fixed full-viewport layer opened over the care screen when an
+   activity is used. Below toast(300)/click-ripple(9999) so feedback
+   still reads on top, above everything else (drawer 49-50, header
+   70, modal 200) so it plays as a modal task. */
+.care-game{position:fixed;inset:0;z-index:220;display:none;flex-direction:column;
+  background:linear-gradient(180deg,#0a0716 0%,#120b26 55%,#0a0716 100%);
+  padding:calc(10px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom))}
+.care-game.open{display:flex}
+body.care-game-open{overflow:hidden}
+
+.cg-head{display:flex;align-items:center;justify-content:space-between;
+  gap:10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.cg-title{font-family:var(--pixel);font-size:15px;color:var(--txt);line-height:1.3}
+.cg-close{flex:0 0 auto;font-family:var(--pixel);font-size:15px;width:32px;height:32px;
+  border:1px solid var(--line2);background:var(--panel2);color:var(--muted);
+  clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%)}
+.cg-close:active{color:var(--red);border-color:var(--red)}
+
+.care-game-stage{position:relative;flex:1;width:100%;overflow:hidden;
+  margin-top:6px;touch-action:none;user-select:none;-webkit-user-select:none}
+
+.cg-pet{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);
+  z-index:2;pointer-events:none;text-align:center;transition:top .2s}
+.cg-pet-sprite{width:120px;height:120px;display:block;
+  filter:drop-shadow(0 10px 16px rgba(0,0,0,.55))}
+.cg-pet.chomp .cg-pet-sprite{animation:cgChomp .3s ease-out}
+@keyframes cgChomp{0%{transform:scale(1)}40%{transform:scale(1.12) rotate(-3deg)}100%{transform:scale(1)}}
+
+.cg-foot{padding-top:10px}
+.cg-bar{height:9px;background:rgba(0,0,0,.5);border:1px solid var(--line);overflow:hidden}
+.cg-bar i{display:block;height:100%;width:0;
+  background:linear-gradient(90deg,#ff6a8a,#ff2d55);transition:width .25s}
+.cg-hint{font-size:16px;color:var(--muted);text-align:center;margin-top:6px;min-height:20px}
+
+/* — Bathing: dirt spots you brush away — */
+.dirt-spot{position:absolute;transform:translate(-50%,-50%) scale(calc(.55 + var(--grime,1)*.55));
+  width:34px;height:34px;pointer-events:none;z-index:3;
+  opacity:calc(.35 + var(--grime,1)*.65);transition:opacity .15s,transform .15s}
+.dirt-blob{display:block;width:100%;height:100%;
+  border-radius:46% 54% 58% 42%/48% 42% 58% 52%;
+  background:radial-gradient(circle at 30% 30%,rgba(120,90,40,.85),transparent 60%),
+             radial-gradient(circle at 65% 60%,rgba(70,150,90,.55),transparent 55%),
+             rgba(60,45,25,.55);
+  box-shadow:inset 0 0 8px rgba(0,0,0,.4),0 0 6px rgba(120,255,180,.15);
+  animation:dirtWobble 2.6s ease-in-out infinite}
+.dirt-spot.scrub .dirt-blob{filter:brightness(1.8)}
+.dirt-spot.gone{opacity:0 !important;transform:translate(-50%,-50%) scale(1.6) !important;
+  transition:opacity .26s,transform .26s}
+@keyframes dirtWobble{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+.scrub-spark{position:absolute;transform:translate(-50%,-50%);width:14px;height:14px;
+  border-radius:50%;pointer-events:none;z-index:4;
+  background:radial-gradient(circle,rgba(255,255,255,.9),rgba(120,255,220,.5) 60%,transparent 75%);
+  animation:scrubSparkGo .34s ease-out forwards}
+@keyframes scrubSparkGo{0%{opacity:1;transform:translate(-50%,-50%) scale(.4)}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(1.8)}}
+
+/* — Feeding: tap the food away, bite by bite — */
+.cg-food{position:absolute;left:50%;top:64%;transform:translate(-50%,-50%);z-index:3}
+.cg-food-icon{display:block;font-size:52px;line-height:1;
+  transform:scale(var(--bite,1));transition:transform .18s ease-out;
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.5))}
+.cg-food.bite .cg-food-icon{animation:foodBite .18s ease-out}
+@keyframes foodBite{0%{filter:brightness(1)}50%{filter:brightness(1.7)}100%{filter:brightness(1)}}
+.crumb-bit{position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:1px;
+  background:#e8c26a;pointer-events:none;z-index:4;
+  animation:crumbFly .5s ease-in forwards}
+@keyframes crumbFly{0%{opacity:1;transform:translate(-50%,-50%) translate(0,0)}
+  100%{opacity:0;transform:translate(-50%,-50%) translate(var(--dx),var(--dy))}}
+
+/* — Toy: Packet Ball — */
+.cg-ball{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);
+  font-size:32px;z-index:4;transition-property:left,top;
+  transition-timing-function:cubic-bezier(.3,.7,.4,1);
+  filter:drop-shadow(0 4px 6px rgba(0,0,0,.5))}
+.cg-ball.landed{animation:ballBounce .5s ease-in-out infinite}
+.cg-ball.caught{animation:ballPop .3s ease-out}
+@keyframes ballBounce{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-58%) scale(1.06)}}
+@keyframes ballPop{0%{transform:translate(-50%,-50%) scale(1.5)}100%{transform:translate(-50%,-50%) scale(1)}}
+
+/* — Toy: Laser Pointer — */
+.cg-laser{position:absolute;left:15%;top:20%;width:16px;height:16px;border-radius:50%;
+  transform:translate(-50%,-50%);z-index:4;
+  background:radial-gradient(circle,#fff,#ff2d55 55%,transparent 75%);
+  box-shadow:0 0 10px 4px rgba(255,45,85,.7);transition:left .12s linear,top .12s linear}
+.cg-laser.pounced{animation:laserPounced .25s ease-out}
+@keyframes laserPounced{0%{transform:translate(-50%,-50%) scale(1.8)}100%{transform:translate(-50%,-50%) scale(1)}}
+
+/* — Toy: Logic Cube (Simon-says) — */
+.cg-cube{position:absolute;left:50%;transform:translate(-50%,-50%) rotate(45deg);
+  width:140px;height:140px;display:grid;grid-template-columns:1fr 1fr;
+  grid-template-rows:1fr 1fr;gap:4px;z-index:4}
+.cg-cube.locked{pointer-events:none}
+.cg-face{border:2px solid var(--line2);transition:filter .15s,transform .15s}
+.cg-face-a{background:linear-gradient(135deg,#3df0ff,#1a8ea8);border-radius:16px 4px 4px 4px}
+.cg-face-b{background:linear-gradient(135deg,#ff5ce0,#a8228c);border-radius:4px 16px 4px 4px}
+.cg-face-c{background:linear-gradient(135deg,#ffcf3f,#c98a10);border-radius:4px 4px 4px 16px}
+.cg-face-d{background:linear-gradient(135deg,#4dff9e,#1c9c5c);border-radius:4px 4px 16px 4px}
+.cg-face.flash{filter:brightness(2.2);transform:scale(.9)}
+
+/* — Toy: Mini Arcade (whack-a-bug) — */
+.cg-arcade{position:absolute;left:50%;transform:translate(-50%,-50%);
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+  width:210px;height:210px;z-index:4}
+.cg-cell{background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:0;
+  transition:font-size .1s}
+.cg-cell.up{font-size:26px;animation:cellPop .15s ease-out}
+.cg-cell.hit{filter:brightness(2)}
+@keyframes cellPop{0%{font-size:0}100%{font-size:26px}}
+
 /* ── WORLD MAP ── */
 .world-sub{font-size:17px;color:var(--muted)}
 #world-tabs{display:flex;gap:8px;margin-bottom:10px}
@@ -1256,7 +1367,8 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
    we deliberately do NOT set `transform` here — .bunit/.bu-sprite
    already drive transform via scale/flip/keyframes, and a static value
    would clobber them. will-change alone triggers layer promotion. */
-.bunit, .bu-sprite, .vfx-clip, .impact-burst, .dmg-big{
+.bunit, .bu-sprite, .vfx-clip, .impact-burst, .dmg-big,
+.cg-pet-sprite, .cg-ball, .cg-laser, .dirt-spot, .scrub-spark{
   will-change: transform, opacity;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
@@ -1852,6 +1964,25 @@ img.bu-sprite.is-gif{--raster-mult:2}
       <button id="modal-close">×</button>
     </div>
     <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ═══ CARE MINIGAME OVERLAY ═══
+     Lives OUTSIDE #screen-care (sibling of #app) so it always covers
+     the full viewport regardless of which screen is underneath.
+     Opened by openCareGame() when a care activity is used — the
+     loyalty/food/cooldown payoff only lands once the minigame is
+     actually finished (finishCareGame in game.js). Closing early
+     with ✕ cancels for free; nothing was spent yet. -->
+<div id="care-game" class="care-game">
+  <div class="cg-head">
+    <span id="care-game-title" class="cg-title">—</span>
+    <button id="care-game-close" class="cg-close" aria-label="ปิด">✕</button>
+  </div>
+  <div id="care-game-stage" class="care-game-stage"></div>
+  <div class="cg-foot">
+    <div class="cg-bar"><i id="care-game-bar-fill"></i></div>
+    <div id="care-game-hint" class="cg-hint"></div>
   </div>
 </div>
 
