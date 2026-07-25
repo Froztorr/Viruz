@@ -169,6 +169,7 @@ async function boot() {
   }
   wireGlobalUI();
   wireDrawer();
+  wireCareGame();
   startTopBarClock();
   wireClickRipple();
 }
@@ -238,6 +239,7 @@ let currentScreenId = null;
 let screenTransitioning = false;
 
 function showScreen(id) {
+  closeCareGame();
   if (screenTransitioning || id === currentScreenId) {
     // Still allow a hard switch if nothing is currently shown (boot).
     if (currentScreenId != null) return;
@@ -310,7 +312,8 @@ function showScreen(id) {
 function wireClickRipple() {
   const TAPPABLE = '.btn, .qb, .zone-pin, .care-card, .loot-card, .steal-pet, ' +
                    '.swap-card, .pet-card, .shop-card, .tree-node, .sk-btn, ' +
-                   '.potion-btn, .raid-card, .map-tab, .ts-dot';
+                   '.potion-btn, .raid-card, .map-tab, .ts-dot, .cg-close, ' +
+                   '.cg-ball, .cg-laser, .cg-face, .cg-cell, .cg-food';
   document.addEventListener('pointerdown', e => {
     const target = e.target.closest(TAPPABLE);
     if (!target || target.disabled) return;
@@ -1405,14 +1408,8 @@ function careCard(act, pet) {
   } else {
     const use = el('button','btn small primary', act.kind==='toy' ? 'เล่น' : act.kind==='food' ? 'ให้กิน' : 'ทำ');
     use.onclick = () => {
-      if (act.kind === 'food') {
-        if (!((G.foods && G.foods[act.id]) > 0)) { toast('ไม่มีอาหารนี้'); return; }
-        G.foods[act.id]--;
-      }
-      addLoyalty(pet, act.loyalty);
-      markCare(pet.uid, act.id);
-      save(); renderCare(); renderHUD();
-      careFx(act.icon);
+      if (act.kind === 'food' && !((G.foods && G.foods[act.id]) > 0)) { toast('ไม่มีอาหารนี้'); return; }
+      openCareGame(act, pet);
     };
     slot.appendChild(use);
   }
@@ -1430,6 +1427,411 @@ function careFx(icon) {
     host.appendChild(d);
     setTimeout(() => d.remove(), 1200);
   }
+}
+
+// ── CARE MINIGAMES ──
+// Using a care activity no longer grants its reward on click — it
+// opens a small interactive game over the pet instead. The loyalty
+// gain, food deduction, and cooldown stamp only land once the game
+// is actually finished (finishCareGame), via the exact same path the
+// old instant-click used. Backing out early with ✕ costs nothing —
+// nothing was spent yet, so there's nothing to lose by trying.
+let CG = null; // active minigame state, or null when the overlay is closed
+
+function openCareGame(act, pet) {
+  const overlay = $('care-game'), stage = $('care-game-stage');
+  if (!overlay || !stage) { finishCareGame(act, pet); return; } // safety net
+  if (CG) closeCareGame();
+
+  stage.innerHTML = '';
+  CG = { act, pet, cleanup: [] };
+  overlay.classList.add('open');
+  document.body.classList.add('care-game-open');
+  setText('care-game-title',
+    act.kind === 'toy' ? `เล่นกับ ${pet.name}` : act.kind === 'food' ? `ป้อน ${pet.name}` : `อาบน้ำ ${pet.name}`);
+  setCareGameProgress(0);
+  setText('care-game-hint', '');
+
+  const petWrap = el('div','cg-pet');
+  petWrap.innerHTML = creatureMarkup(pet,'cg-pet-sprite float');
+  stage.appendChild(petWrap);
+  CG.petWrap = petWrap;
+
+  if (act.id === 'clean')          startBathGame(stage, act, pet);
+  else if (act.kind === 'food')    startFeedGame(stage, act, pet);
+  else if (act.id === 'toy_ball')  startBallGame(stage, act, pet);
+  else if (act.id === 'toy_laser') startLaserGame(stage, act, pet);
+  else if (act.id === 'toy_puzzle')startPuzzleGame(stage, act, pet);
+  else if (act.id === 'toy_arcade')startArcadeGame(stage, act, pet);
+  else finishCareGame(act, pet); // unknown activity id — never trap the player
+}
+
+function setCareGameProgress(pct) {
+  const bar = $('care-game-bar-fill');
+  if (bar) bar.style.width = clamp(pct, 0, 100) + '%';
+}
+
+function closeCareGame() {
+  if (CG) CG.cleanup.forEach(fn => { try { fn(); } catch (e) {} });
+  CG = null;
+  const overlay = $('care-game');
+  if (overlay) overlay.classList.remove('open');
+  document.body.classList.remove('care-game-open');
+}
+
+// Pet reacts with a little happy bounce — shared by every minigame.
+function cgReact() {
+  if (!CG || !CG.petWrap) return;
+  CG.petWrap.classList.remove('chomp');
+  void CG.petWrap.offsetWidth; // restart the animation
+  CG.petWrap.classList.add('chomp');
+}
+
+function finishCareGame(act, pet) {
+  if (act.kind === 'food') { G.foods = G.foods || {}; G.foods[act.id]--; }
+  addLoyalty(pet, act.loyalty);
+  markCare(pet.uid, act.id);
+  save(); renderCare(); renderHUD();
+  setCareGameProgress(100);
+  setText('care-game-hint', `สำเร็จ! +${act.loyalty} ❤`);
+  const stage = $('care-game-stage');
+  if (stage) cgFx(stage, act.icon);
+  setTimeout(() => { careFx(act.icon); closeCareGame(); }, 900);
+}
+
+function wireCareGame() {
+  const close = $('care-game-close');
+  if (close) close.onclick = () => closeCareGame();
+}
+
+// Little burst of the activity icon over the pet, mirrors careFx.
+function cgFx(host, icon) {
+  for (let i = 0; i < 6; i++) {
+    const d = el('div','care-particle', icon);
+    d.style.left = (30 + Math.random()*40) + '%';
+    d.style.bottom = '46%';
+    d.style.animationDelay = (i*0.07) + 's';
+    host.appendChild(d);
+    setTimeout(() => d.remove(), 1200);
+  }
+}
+
+// ── 1) BATHING — brush the dirty spots clean ──
+// Dirt spots are scattered around the pet. Holding the pointer down
+// and dragging over a spot scrubs it (throttled per-spot so a single
+// pass doesn't insta-clean it); once every spot is scrubbed away the
+// bath is done. Tapping without dragging still works, just slower.
+function startBathGame(stage, act, pet) {
+  CG.petWrap.style.top = '44%';
+  const N = 4 + Math.floor(Math.random()*3); // 4–6 spots
+  const spots = [];
+  for (let i = 0; i < N; i++) {
+    const ang = (i/N)*Math.PI*2 + Math.random()*0.6;
+    const cx = clamp(50 + Math.cos(ang)*(16+Math.random()*10), 12, 88);
+    const cy = clamp(46 + Math.sin(ang)*(12+Math.random()*10), 18, 76);
+    const d = el('div','dirt-spot','<span class="dirt-blob"></span>');
+    d.style.left = cx + '%'; d.style.top = cy + '%';
+    d.style.setProperty('--grime', 1);
+    stage.appendChild(d);
+    spots.push({ el:d, x:cx, y:cy, grime:100, lastHit:0 });
+  }
+  setText('care-game-hint', 'ลากนิ้วถูจุดสกปรกให้สะอาด');
+
+  let down = false;
+  const brushAt = (clientX, clientY) => {
+    const r = stage.getBoundingClientRect();
+    const px = ((clientX - r.left)/r.width)*100;
+    const py = ((clientY - r.top)/r.height)*100;
+    const now = performance.now();
+    let anyCleaned = false;
+    spots.forEach(s => {
+      if (s.grime <= 0) return;
+      const dx = px - s.x, dy = (py - s.y)*1.4;
+      if (Math.sqrt(dx*dx + dy*dy) > 8.5) return;
+      if (now - s.lastHit < 55) return;
+      s.lastHit = now;
+      s.grime -= 12;
+      d_setGrime(s);
+      spawnScrubSpark(stage, px, py);
+      if (s.grime <= 0) {
+        s.el.classList.add('gone');
+        setTimeout(() => s.el.remove(), 260);
+        anyCleaned = true;
+      }
+    });
+    if (anyCleaned) {
+      const remaining = spots.filter(s => s.grime > 0).length;
+      setCareGameProgress(Math.round(((N-remaining)/N)*100));
+      if (remaining === 0) {
+        setText('care-game-hint', 'สะอาดหมดจด! ✨');
+        setTimeout(() => finishCareGame(act, pet), 500);
+      }
+    }
+  };
+  function d_setGrime(s) {
+    s.el.style.setProperty('--grime', Math.max(0, s.grime)/100);
+    s.el.classList.add('scrub');
+    setTimeout(() => s.el.classList.remove('scrub'), 180);
+  }
+  const onDown = e => { down = true; brushAt(e.clientX, e.clientY); };
+  const onMove = e => { if (down) brushAt(e.clientX, e.clientY); };
+  const onUp = () => { down = false; };
+  stage.addEventListener('pointerdown', onDown);
+  stage.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  CG.cleanup.push(() => {
+    stage.removeEventListener('pointerdown', onDown);
+    stage.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+  });
+}
+function spawnScrubSpark(stage, px, py) {
+  const s = el('div','scrub-spark');
+  s.style.left = px + '%'; s.style.top = py + '%';
+  stage.appendChild(s);
+  setTimeout(() => s.remove(), 340);
+}
+
+// ── 2) FEEDING — tap the food until it's gone ──
+// Bite count scales gently with the food's tier so a Quantum Feast
+// takes a bit more work (and feels more special) than Data Crumbs.
+function startFeedGame(stage, act, pet) {
+  CG.petWrap.style.top = '46%';
+  const tierIdx = Math.max(0, FOODS.findIndex(f => f.id === act.id));
+  const bites = 5 + tierIdx;
+  let taken = 0;
+
+  const food = el('div','cg-food', `<span class="cg-food-icon">${act.icon}</span>`);
+  stage.appendChild(food);
+  setText('care-game-hint', `แตะอาหารให้ ${pet.name} กิน`);
+
+  const onTap = e => {
+    e.preventDefault();
+    taken++;
+    food.style.setProperty('--bite', Math.max(0, 1 - taken/bites));
+    food.classList.remove('bite'); void food.offsetWidth; food.classList.add('bite');
+    cgReact();
+    spawnCrumbs(food);
+    setCareGameProgress(Math.round((taken/bites)*100));
+    if (taken >= bites) {
+      food.removeEventListener('pointerdown', onTap);
+      food.remove();
+      setText('care-game-hint', 'อิ่มแล้ว! 😋');
+      setTimeout(() => finishCareGame(act, pet), 450);
+    }
+  };
+  food.addEventListener('pointerdown', onTap);
+  CG.cleanup.push(() => food.removeEventListener('pointerdown', onTap));
+}
+function spawnCrumbs(food) {
+  for (let i = 0; i < 4; i++) {
+    const c = el('div','crumb-bit');
+    c.style.setProperty('--dx', (Math.random()*60-30) + 'px');
+    c.style.setProperty('--dy', (20+Math.random()*30) + 'px');
+    c.style.animationDelay = (i*0.03) + 's';
+    food.appendChild(c);
+    setTimeout(() => c.remove(), 500);
+  }
+}
+
+// ── 3) TOY: PACKET BALL — catch what the pet throws back ──
+function startBallGame(stage, act, pet) {
+  CG.petWrap.style.top = '44%';
+  const TARGET = 5;
+  let caught = 0, phase = 'idle', timer = null;
+  const ball = el('div','cg-ball','⚽');
+  stage.appendChild(ball);
+  setText('care-game-hint', `แตะลูกบอลตอนที่ ${pet.name} โยนมาให้!`);
+
+  function throwBall() {
+    phase = 'flying';
+    ball.classList.remove('landed','caught');
+    ball.style.transitionDuration = '.55s';
+    ball.style.left = (20+Math.random()*60) + '%';
+    ball.style.top  = (25+Math.random()*40) + '%';
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      phase = 'catchable';
+      ball.classList.add('landed');
+      timer = setTimeout(returnBall, 1100);
+    }, 560);
+  }
+  function returnBall() {
+    phase = 'returning';
+    ball.classList.remove('landed');
+    ball.style.transitionDuration = '.45s';
+    ball.style.left = '50%'; ball.style.top = '44%';
+    clearTimeout(timer);
+    timer = setTimeout(() => { phase = 'idle'; timer = setTimeout(throwBall, 420); }, 460);
+  }
+  function onCatch(e) {
+    if (phase !== 'catchable') return;
+    e.preventDefault();
+    caught++;
+    ball.classList.add('caught');
+    cgReact();
+    setCareGameProgress(Math.round((caught/TARGET)*100));
+    if (caught >= TARGET) {
+      clearTimeout(timer);
+      ball.removeEventListener('pointerdown', onCatch);
+      ball.remove();
+      setText('care-game-hint', `${pet.name} พอใจมาก! 🎾`);
+      setTimeout(() => finishCareGame(act, pet), 450);
+      return;
+    }
+    returnBall();
+  }
+  ball.addEventListener('pointerdown', onCatch);
+  CG.cleanup.push(() => { clearTimeout(timer); ball.removeEventListener('pointerdown', onCatch); });
+  timer = setTimeout(throwBall, 500);
+}
+
+// ── 4) TOY: LASER POINTER — pounce on the dot before it jumps ──
+function startLaserGame(stage, act, pet) {
+  CG.petWrap.style.top = '44%';
+  const TARGET = 8;
+  let hits = 0, timer = null;
+  const dot = el('div','cg-laser');
+  stage.appendChild(dot);
+  setText('care-game-hint', `แตะจุดเลเซอร์ให้ ${pet.name} ตะปบ!`);
+
+  function jump() {
+    dot.classList.remove('pounced');
+    dot.style.left = (15+Math.random()*70) + '%';
+    dot.style.top  = (20+Math.random()*55) + '%';
+    clearTimeout(timer);
+    timer = setTimeout(jump, 780);
+  }
+  function onHit(e) {
+    e.preventDefault();
+    hits++;
+    dot.classList.add('pounced');
+    cgReact();
+    setCareGameProgress(Math.round((hits/TARGET)*100));
+    if (hits >= TARGET) {
+      clearTimeout(timer);
+      dot.removeEventListener('pointerdown', onHit);
+      dot.remove();
+      setText('care-game-hint', `${pet.name} สนุกมาก! 🔦`);
+      setTimeout(() => finishCareGame(act, pet), 450);
+      return;
+    }
+    clearTimeout(timer);
+    timer = setTimeout(jump, 260);
+  }
+  dot.addEventListener('pointerdown', onHit);
+  CG.cleanup.push(() => { clearTimeout(timer); dot.removeEventListener('pointerdown', onHit); });
+  jump();
+}
+
+// ── 5) TOY: LOGIC CUBE — Simon-says memory sequence ──
+function startPuzzleGame(stage, act, pet) {
+  CG.petWrap.style.top = '20%';
+  const TARGET_LEN = 5;
+  const FACES = ['a','b','c','d'];
+  let sequence = [], inputIdx = 0, showing = true;
+
+  const cube = el('div','cg-cube');
+  cube.style.top = '62%';
+  FACES.forEach(c => cube.appendChild(el('div', `cg-face cg-face-${c}`)));
+  stage.appendChild(cube);
+  setText('care-game-hint', 'ดูลำดับ แล้วแตะตาม');
+
+  function flash(c) {
+    const f = cube.querySelector('.cg-face-'+c);
+    if (!f) return;
+    f.classList.add('flash');
+    setTimeout(() => f.classList.remove('flash'), 340);
+  }
+  function playSequence() {
+    showing = true; inputIdx = 0;
+    cube.classList.add('locked');
+    let i = 0;
+    const step = () => {
+      if (i >= sequence.length) { showing = false; cube.classList.remove('locked'); return; }
+      flash(sequence[i]); i++;
+      setTimeout(step, 560);
+    };
+    setTimeout(step, 400);
+  }
+  function addStep() {
+    sequence.push(FACES[Math.floor(Math.random()*4)]);
+    playSequence();
+  }
+  function onTap(e) {
+    if (showing) return;
+    const f = e.target.closest('.cg-face');
+    if (!f) return;
+    const c = FACES.find(x => f.classList.contains('cg-face-'+x));
+    flash(c);
+    if (c === sequence[inputIdx]) {
+      inputIdx++;
+      if (inputIdx < sequence.length) return;
+      cgReact();
+      setCareGameProgress(Math.round((sequence.length/TARGET_LEN)*100));
+      if (sequence.length >= TARGET_LEN) {
+        cube.removeEventListener('pointerdown', onTap);
+        cube.remove();
+        setText('care-game-hint', `${pet.name} ไขได้แล้ว! 🧩`);
+        setTimeout(() => finishCareGame(act, pet), 500);
+        return;
+      }
+      setText('care-game-hint', 'เก่งมาก! ต่อไป...');
+      setTimeout(addStep, 700);
+    } else {
+      setText('care-game-hint', 'พลาด! ลองใหม่');
+      sequence = [];
+      setCareGameProgress(0);
+      setTimeout(addStep, 700);
+    }
+  }
+  cube.addEventListener('pointerdown', onTap);
+  CG.cleanup.push(() => cube.removeEventListener('pointerdown', onTap));
+  addStep();
+}
+
+// ── 6) TOY: MINI ARCADE — whack the bugs before they vanish ──
+function startArcadeGame(stage, act, pet) {
+  CG.petWrap.style.top = '20%';
+  const TARGET = 8;
+  let hits = 0, popTimer = null, active = null;
+  const grid = el('div','cg-arcade');
+  grid.style.top = '64%';
+  const cells = [];
+  for (let i = 0; i < 9; i++) { const c = el('div','cg-cell'); grid.appendChild(c); cells.push(c); }
+  stage.appendChild(grid);
+  setText('care-game-hint', 'แตะบั๊กที่โผล่มาให้ทัน!');
+
+  function pop() {
+    if (active) { active.classList.remove('up'); active.innerHTML=''; active.onpointerdown = null; }
+    active = cells[Math.floor(Math.random()*cells.length)];
+    active.classList.add('up');
+    active.innerHTML = '👾';
+    active.onpointerdown = e => {
+      e.preventDefault();
+      clearTimeout(popTimer);
+      hits++;
+      active.classList.add('hit');
+      cgReact();
+      setCareGameProgress(Math.round((hits/TARGET)*100));
+      if (hits >= TARGET) {
+        clearTimeout(popTimer);
+        cells.forEach(c => { c.onpointerdown = null; });
+        grid.remove();
+        setText('care-game-hint', `กำจัดบั๊กหมด! ${pet.name} สนุกมาก 🕹️`);
+        setTimeout(() => finishCareGame(act, pet), 500);
+        return;
+      }
+      active.classList.remove('up'); active.innerHTML = ''; active.onpointerdown = null;
+      popTimer = setTimeout(pop, 260);
+    };
+    popTimer = setTimeout(() => {
+      if (active) { active.classList.remove('up'); active.innerHTML=''; active.onpointerdown = null; }
+      pop();
+    }, 700);
+  }
+  CG.cleanup.push(() => { clearTimeout(popTimer); cells.forEach(c => { c.onpointerdown = null; }); });
+  popTimer = setTimeout(pop, 400);
 }
 
 // ── SAFE SPOT ──
