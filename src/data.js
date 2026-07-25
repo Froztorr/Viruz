@@ -6,26 +6,26 @@
 // ── ATTRIBUTES (replaces the old elemental system entirely) ──
 export const ATTR = {
   red: {
-    id: 'red', name: 'Red', icon: '⚔️', color: '#ff6a2b',
+    id: 'red', name: 'Red', icon: '⚔️', iconImg: 'assets/icons/atk.png', color: '#ff6a2b',
     glow: 'rgba(255,106,43,.45)',
     desc: 'โจมตีสูง ป้องกันต่ำ',
     mult: { atk: 1.35, def: 0.75, spd: 1.00, mhp: 0.95 },
   },
   green: {
-    id: 'green', name: 'Green', icon: '🌪️', color: '#3ddc84',
+    id: 'green', name: 'Green', icon: '🌪️', iconImg: 'assets/icons/spd.png', color: '#3ddc84',
     glow: 'rgba(61,220,132,.45)',
     desc: 'เร็วมาก มีโอกาสตีสองครั้ง',
     mult: { atk: 1.00, def: 0.75, spd: 1.40, mhp: 0.90 },
     doubleHit: 0.28,           // chance to strike twice
   },
   yellow: {
-    id: 'yellow', name: 'Yellow', icon: '🛡️', color: '#c98f1e',
+    id: 'yellow', name: 'Yellow', icon: '🛡️', iconImg: 'assets/icons/def.png', color: '#c98f1e',
     glow: 'rgba(201,143,30,.45)',
     desc: 'ป้องกันสูง แต่ช้า',
     mult: { atk: 0.85, def: 1.45, spd: 0.70, mhp: 1.25 },
   },
   white: {
-    id: 'white', name: 'White', icon: '➕', color: '#f6ecd8',
+    id: 'white', name: 'White', icon: '➕', iconImg: 'assets/icons/healer.png', color: '#f6ecd8',
     glow: 'rgba(246,236,216,.5)',
     desc: 'สายซัพพอร์ต บัฟทีมและฟื้นฟู',
     mult: { atk: 0.70, def: 0.90, spd: 0.90, mhp: 1.05 },
