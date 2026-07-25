@@ -1247,6 +1247,20 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 .swap-name{font-size:16px;text-align:center;margin-top:4px;color:var(--txt)}
 .swap-hp{font-size:16px;text-align:center;color:#ff8a9a}
 .bunit{width:92px;text-align:center;position:relative;z-index:1}
+/* ── MOBILE SMOOTHNESS: force GPU compositing ──
+   will-change promotes these frequently-animated elements to their own
+   compositor layer so the phone's GPU handles their transform/opacity
+   changes instead of the main thread repainting each frame — the main
+   lever for the phone-vs-desktop stutter gap. backface-visibility
+   prevents scale-animation flicker on some iOS Safari versions. NOTE:
+   we deliberately do NOT set `transform` here — .bunit/.bu-sprite
+   already drive transform via scale/flip/keyframes, and a static value
+   would clobber them. will-change alone triggers layer promotion. */
+.bunit, .bu-sprite, .vfx-clip, .impact-burst, .dmg-big{
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
 .bunit.dead{opacity:.25;filter:grayscale(1)}
 
 /* Attack movement: the whole unit (bar, name, sprite) slides toward
