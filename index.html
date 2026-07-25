@@ -709,14 +709,18 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 .drawer-section-title{font-family:var(--pixel);font-size:14px;color:var(--cyan);
   margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--line)}
 .drawer-feed{max-height:none}
+/* The DOT is anchored exactly at the landmark's measured x/y — that
+   never moves and stays pixel-accurate to the video. The TEXT LABEL is
+   a sibling positioned with its own offset (via --lx/--ly custom
+   properties, set per-node in JS) so it sits in clear space beside the
+   landmark instead of stacking directly on top of it and covering the
+   building/signage underneath. The dot itself is the precise tap
+   target; the label is just a caption pointing at it. */
 .map-node{position:absolute;transform:translate(-50%,-50%);background:none;border:none}
 
-/* Pin nodes: small marker dot + a text-only label (no emoji, no icon
-   box) so the artwork behind it stays visible. Tapping the text is
-   the click target — kept small and unobtrusive. */
-.map-node.pin{display:flex;flex-direction:column;align-items:center;gap:4px}
+.map-node.pin{width:16px;height:16px}
 .node-pin-dot{
-  width:12px;height:12px;border-radius:50%;
+  position:absolute;inset:0;border-radius:50%;
   background:var(--cyan);box-shadow:0 0 0 4px rgba(55,230,255,.2),0 0 14px var(--cyan);
   animation:pulse 2s infinite;
 }
@@ -725,10 +729,12 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
   50%{box-shadow:0 0 0 8px rgba(55,230,255,0),0 0 20px var(--cyan)}
 }
 .map-node.pin .node-text{
-  font-family:var(--pixel);font-size:16px;letter-spacing:.4px;
-  padding:3px 8px;background:rgba(5,8,20,.82);border:1px solid var(--line2);
+  position:absolute;
+  left:var(--lx, 16px); top:var(--ly, -6px);
+  font-family:var(--pixel);font-size:15px;letter-spacing:.4px;
+  padding:3px 8px;background:rgba(5,8,20,.85);border:1px solid var(--line2);
   white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.8);
-  transition:.15s;
+  transition:.15s;pointer-events:none;
 }
 .map-node.pin:hover .node-text{border-color:var(--cyan);
   box-shadow:0 0 14px rgba(55,230,255,.35)}
@@ -742,9 +748,14 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 }
 .map-node.zone:hover{background:rgba(55,230,255,.08)}
 .map-node.zone:active{background:rgba(55,230,255,.16)}
+/* Zone labels sit just OUTSIDE the bottom edge of the tap circle —
+   readable, but not stacked over the building's own signage the way a
+   centred label would be. */
 .map-node.zone .node-text{
-  font-family:var(--pixel);font-size:15px;letter-spacing:.4px;line-height:1.3;
-  color:#fff;text-shadow:0 0 6px rgba(0,0,0,.9),0 0 14px rgba(0,0,0,.9),0 2px 0 rgba(0,0,0,.7);
+  position:absolute;left:50%;bottom:-22px;transform:translateX(-50%);
+  font-family:var(--pixel);font-size:14px;letter-spacing:.4px;line-height:1.3;
+  color:#fff;white-space:nowrap;pointer-events:none;
+  text-shadow:0 0 6px rgba(0,0,0,.9),0 0 14px rgba(0,0,0,.9),0 2px 0 rgba(0,0,0,.7);
   padding:0 6px;text-align:center;
 }
 #map-actions{display:flex;gap:8px;flex-wrap:wrap;padding:12px}

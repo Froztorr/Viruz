@@ -390,11 +390,23 @@ function buildMapNodes() {
       node.style.height = (n.zoneR * 2) + 'vmin';
       node.innerHTML = `<span class="node-text">${n.label}</span>`;
     } else {
-      // Pin nodes keep a small marker plus the text label beside it —
-      // text only, no emoji, so the artwork underneath stays visible.
+      // Pin nodes: a precise dot at the measured landmark position,
+      // with the text label offset to a clear side (n.labelDir, set
+      // per-node in data.js) so it never renders on top of the
+      // building's own signage.
       node.innerHTML = `
         <span class="node-pin-dot"></span>
         <span class="node-text">${n.label}</span>`;
+      const dir = n.labelDir || 'right';
+      const offsets = {
+        right:  { lx: '16px',   ly: '-9px'  },
+        left:   { lx: 'calc(-100% - 16px)', ly: '-9px' },
+        below:  { lx: '-50%',   ly: '20px'  },
+        above:  { lx: '-50%',   ly: 'calc(-100% - 14px)' },
+      };
+      const off = offsets[dir] || offsets.right;
+      node.style.setProperty('--lx', off.lx);
+      node.style.setProperty('--ly', off.ly);
     }
     node.title = n.hint;
     node.onclick = () => showScreen(n.screen);

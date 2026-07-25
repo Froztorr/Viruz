@@ -884,12 +884,15 @@ export const DEFENSE_BOTS = [
 // (a big circled area — click anywhere inside the whole building).
 // zoneR is the clickable radius as a % of the shorter screen dimension,
 // only used for 'zone' nodes.
+// labelDir: which side of the dot the text caption offsets to, so it
+// never overlaps the landmark's own signage/art. Chosen per-node based
+// on where open space actually is around each building in the video.
 export const MAP_NODES = [
-  { id:'warp_gate', label:'Warp Gate',    x:40.5, y:9.8,  region:'pin',
+  { id:'warp_gate', label:'Warp Gate',    x:40.5, y:9.8,  region:'pin', labelDir:'above',
     screen:'world', hint:'ออกผจญภัย · แผนที่โลก' },
-  { id:'clinic',    label:'Clinic',       x:65.0, y:11.5, region:'pin',
+  { id:'clinic',    label:'Clinic',       x:65.0, y:11.5, region:'pin', labelDir:'above',
     screen:'clinic', hint:'รักษา VIRUZ · ฟักไข่' },
-  { id:'apartment', label:'Your Home',    x:39.6, y:45.0, region:'pin',
+  { id:'apartment', label:'Your Home',    x:39.6, y:45.0, region:'pin', labelDir:'right',
     screen:'home',  hint:'ฐานของคุณ · ทีม · ป้องกัน' },
   { id:'hacking',   label:'Hacking Center', x:23.4, y:51.5, region:'zone',
     zoneR:15, screen:'raid', hint:'เจาะบ้านผู้เล่นคนอื่น' },
