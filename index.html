@@ -205,7 +205,15 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   align-items:center;justify-content:center;gap:0;
   background:rgba(10,14,28,.95);border:2px solid rgba(255,255,255,.18);
   transition:.14s;z-index:2;padding:0}
-.tree-node.skill{width:46px;height:46px}
+.tree-node.skill{width:50px;height:50px;
+  background-size:cover;background-position:center;background-repeat:no-repeat;
+  border-color:rgba(220,60,60,.5)}
+.tree-node.skill.open,.tree-node.skill.part{border-color:#ff4444;
+  box-shadow:0 0 14px rgba(255,68,68,.4)}
+.tree-node.skill.maxed{border-color:#ff4444;
+  background-color:rgba(60,10,10,.6);box-shadow:0 0 18px rgba(255,68,68,.6)}
+.tree-node.skill.maxed .tn-icon{filter:none}
+.tree-node.skill .tn-icon{text-shadow:0 0 6px #000,0 0 3px #000}
 .tree-node.open{border-color:var(--tree-color,#3ddc84);
   box-shadow:0 0 12px rgba(255,255,255,.14)}
 .tree-node.part{border-color:var(--tree-color,#3ddc84);
@@ -481,7 +489,12 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 #app[data-screen="intro"] #quickbar,
 #app[data-screen="intro"] #teamstrip,
 #app[data-screen="battle"] #quickbar,
-#app[data-screen="battle"] #teamstrip{display:none}
+#app[data-screen="battle"] #teamstrip,
+/* The map screen is now a fullscreen video with only the drawer knob
+   visible — no header bar, no quickbar, no team strip on top of it. */
+#app[data-screen="map"] #hud,
+#app[data-screen="map"] #quickbar,
+#app[data-screen="map"] #teamstrip{display:none}
 #quickbar{position:sticky;top:41px;z-index:59;display:flex;gap:2px;
   padding:4px 6px;background:rgba(5,6,15,.92);border-bottom:1px solid var(--line);
   backdrop-filter:blur(8px);overflow-x:auto}
@@ -633,13 +646,69 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
              0 3px 0 rgba(80,45,0,.6),0 0 24px rgba(255,200,60,.55)}
 
 /* ── MAP ── */
-#screen-map{padding:0}
-#map-stage{position:relative;width:100%;overflow:hidden;
-  aspect-ratio:1197/677;background:#05060f}
+/* Fullscreen portrait map — the whole viewport, not a boxed panel.
+   The video is genuinely portrait (540x960) so it fills the screen
+   with object-fit:cover and no letterboxing, matching the reference
+   screenshot's framing exactly (that's also why the node % coords line
+   up correctly now — the old landscape aspect-ratio was squashing/
+   cropping a portrait video into a wide box, which threw every
+   measured coordinate off). */
+#screen-map{padding:0;position:fixed;inset:0;z-index:1}
+#map-stage{position:absolute;inset:0;overflow:hidden;background:#05060f}
 #bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 #map-scrim{position:absolute;inset:0;
-  background:radial-gradient(ellipse at 50% 60%,transparent 30%,rgba(5,6,15,.55) 100%)}
-#map-nodes{position:absolute;inset:0}
+  background:radial-gradient(ellipse at 50% 55%,transparent 35%,rgba(5,6,15,.5) 100%)}
+#map-nodes{position:absolute;inset:0;z-index:2}
+
+/* ── PULL-OUT DRAWER ──
+   A knob on the right-middle edge. Tapping it slides a menu tab out
+   OVER the current screen (not a screen change, not a fullscreen
+   expansion) — sized to content, not the whole viewport. */
+#drawer-knob{
+  position:fixed;right:0;top:50%;transform:translateY(-50%);
+  z-index:50;width:26px;height:64px;
+  background:linear-gradient(90deg,rgba(40,26,70,.85),rgba(60,38,100,.95));
+  border:1px solid var(--line2);border-right:none;border-radius:10px 0 0 10px;
+  box-shadow:-3px 0 12px rgba(0,0,0,.4);
+  display:flex;align-items:center;justify-content:center;
+  color:var(--cyan);font-size:16px;transition:.2s;
+}
+#drawer-knob:active{background:linear-gradient(90deg,rgba(60,38,100,.9),rgba(80,50,130,.98))}
+#app[data-screen="map"] #drawer-knob{display:flex}
+#app:not([data-screen="map"]) #drawer-knob{display:none}
+.knob-arrow{transition:transform .25s ease}
+#drawer-panel.open ~ #drawer-knob .knob-arrow,
+body.drawer-open .knob-arrow{transform:rotate(180deg)}
+
+#drawer-backdrop{position:fixed;inset:0;z-index:48;
+  background:rgba(4,5,12,.5);opacity:0;pointer-events:none;transition:opacity .22s ease}
+body.drawer-open #drawer-backdrop{opacity:1;pointer-events:auto}
+
+#drawer-panel{
+  position:fixed;top:0;right:0;bottom:0;z-index:49;
+  width:78vw;max-width:340px;
+  background:linear-gradient(180deg,rgba(26,16,50,.98),rgba(14,9,28,.99));
+  border-left:1px solid var(--line2);
+  box-shadow:-8px 0 30px rgba(0,0,0,.5);
+  transform:translateX(100%);transition:transform .28s cubic-bezier(.2,.8,.3,1);
+  display:flex;flex-direction:column;
+}
+body.drawer-open #drawer-panel{transform:translateX(0)}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;
+  padding:14px 14px 10px;border-bottom:1px solid var(--line)}
+.drawer-head .proc-title{font-family:var(--pixel);font-size:16px;color:var(--cyan)}
+#drawer-close{background:none;border:none;color:var(--muted);font-size:18px;padding:4px 8px}
+.drawer-body{flex:1;overflow-y:auto;padding:14px}
+.drawer-hud{display:flex;gap:8px;margin-bottom:14px}
+.drawer-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.drawer-tab{display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:12px 6px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:8px}
+.dt-icon{font-size:22px}
+.dt-text{font-size:12px;color:var(--txt);text-align:center}
+.drawer-section-title{font-family:var(--pixel);font-size:14px;color:var(--cyan);
+  margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--line)}
+.drawer-feed{max-height:none}
 .map-node{position:absolute;transform:translate(-50%,-50%);background:none;border:none}
 
 /* Pin nodes: small marker dot + a text-only label (no emoji, no icon
@@ -1418,19 +1487,37 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
       <div id="map-scrim"></div>
       <div id="map-nodes"></div>
     </div>
-    <div id="map-actions">
-      <button class="btn" onclick="VIRUZ.startArena()">⚔️ Arena 3v3</button>
-      <button class="btn" data-goto="raid">💀 เจาะบ้านผู้เล่นอื่น</button>
-      <button class="btn" onclick="VIRUZ.resetGame()">🗑️ รีเซ็ต</button>
-    </div>
-    <div id="process-panel">
-      <div class="process-head">
-        <span class="proc-title">▮ PROCESS</span>
-        <span class="proc-sub">ความเคลื่อนไหวล่าสุด</span>
+
+    <!-- Pull-out drawer: a knob on the right-middle edge that, when
+         dragged/tapped, slides a menu tab out OVER the current scene —
+         not a screen change, not a fullscreen expansion. The video
+         keeps playing underneath. -->
+    <button id="drawer-knob" aria-label="เมนู">
+      <span class="knob-arrow">‹</span>
+    </button>
+    <div id="drawer-backdrop"></div>
+    <aside id="drawer-panel">
+      <div class="drawer-head">
+        <span class="proc-title">▮ MENU</span>
+        <button id="drawer-close">✕</button>
       </div>
-      <div id="process-feed"></div>
-    </div>
-    <div id="map-log" class="log-panel" hidden><div id="log-box"></div></div>
+      <div class="drawer-body">
+        <div class="drawer-hud">
+          <span class="chip">💰 <b id="drawer-bitz">0</b></span>
+          <span class="chip pw">⚡ <b id="drawer-power">0</b></span>
+        </div>
+        <div class="drawer-grid">
+          <button class="drawer-tab" onclick="VIRUZ.startArena()">
+            <span class="dt-icon">⚔️</span><span class="dt-text">Arena 3v3</span>
+          </button>
+          <button class="drawer-tab" onclick="VIRUZ.resetGame()">
+            <span class="dt-icon">🗑️</span><span class="dt-text">รีเซ็ต</span>
+          </button>
+        </div>
+        <div class="drawer-section-title">// PROCESS //</div>
+        <div id="process-feed" class="drawer-feed"></div>
+      </div>
+    </aside>
   </section>
 
   <!-- ═══ HOME ═══ -->

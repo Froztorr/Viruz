@@ -399,3 +399,71 @@ wide) in 100% of them, so the number is never hidden behind a zoom.
 
 Damage numbers start at full opacity and begin rising and fading
 immediately, over 1s.
+
+
+## Balance pass 2
+
+**Low-level one-shots.** `HP_SCALE = 4` left Lv1-3 creatures with 8-23 HP
+— less than a single normal hit — so early fights had a 39-42% one-shot
+rate. `statsOf` now blends toward the uncompressed base at low level
+(`lowLvGuard`, full at Lv1 and gone by Lv13), so early pools are
+survivable without touching the tuned mid/late curve.
+
+Result across the whole progression: **0% one-shots at every level**,
+both sides needing 2-10 hits.
+
+| Level | You kill in | They kill in |
+|---|---|---|
+| Lv1 | 2 | 7 |
+| Lv5 | 6 | 7 |
+| Lv12 | 5 | 5 |
+| Lv25 | 9 | 9 |
+| Lv60 | 9 | 7 |
+| Lv95 | 9 | 10 |
+
+Deeper fights meant per-swing animation cost multiplied, so the attack
+sequence was tightened (wind-up 220->120ms, lunge 190->130ms, return
+300->170ms, turn gap 260->150ms). Runs now finish in ~12s early, ~26s
+mid, ~23s late.
+
+**Vampire facing reverted.** The head-mass heuristic used to detect sprite
+facing measured only 0.4-1.3px of skew on the butler and lord — noise,
+not a real signal. All three vampires are drawn facing right and are
+flipped to face the player, as they were originally.
+
+
+## Balance pass 3 — difficulty from stats, not HP
+
+Two problems with the previous pass:
+
+**HP inflation.** HP was the only stat scaling with level, so it grew to
+1089 by Lv100 while damage only reached 67 — fights stretched from 3
+hits at Lv1 to 17 at Lv100 and kept getting worse. `HP_LEVEL_GROWTH`
+dropped 7.5 -> 4.2, capping monster HP around 620 at Lv100.
+
+**Dead defensive stats.** Monster CRIT and EVA were frozen at 7% and 4%
+at every level — the stats existed but did nothing. Monsters now scale
+both with level (up to ~22% crit / ~15% eva at Lv100), so higher-level
+enemies are harder to hit and hit harder, rather than just having more
+health.
+
+**Level gap** now drives difficulty directly. The defender gains evasion
+and mitigation per level of advantage (capped at +18 eva / +30%
+mitigation) and loses some when outlevelled:
+
+| Foe level vs yours | Miss rate | Hits to kill |
+|---|---|---|
+| -10 | 0% | 3 |
+| 0 | 6% | 5 |
+| +5 | 10% | 8 |
+| +10 | 16% | 11 |
+| +15 | 23% | 17 |
+
+Result: hits-to-kill stays flat at 5-7 across the whole game for
+level-appropriate fights, and fight duration is a consistent 13-15s
+instead of climbing with level.
+
+Note: comparing hit counts across DIFFERENT monsters is misleading —
+Beetle (46 base HP, high DEF) and Kappa (64 base HP, lower DEF) give
+different results at the same relative level. Against a single monster
+the curve is monotonic.

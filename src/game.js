@@ -65,6 +65,13 @@ let battleSpeed = 1;
 
 // ═══════════════ DOM HELPERS ═══════════════
 const $ = id => document.getElementById(id);
+
+// Render an attribute's icon as a real image when one exists, falling
+// back to the emoji otherwise. `size` in px.
+function attrIcon(a, size = 16) {
+  if (a.iconImg) return `<img src="${a.iconImg}" class="attr-icon-img" style="width:${size}px;height:${size}px" alt="${a.name}">`;
+  return `<span class="attr-icon-emoji">${a.icon}</span>`;
+}
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -150,7 +157,10 @@ async function boot() {
     G.teamIds    = (G.teamIds || []).filter(id => ids.has(id));
     G.defenseIds = (G.defenseIds || []).filter(id => ids.has(id));
     if (!G.teamIds.length && G.roster.length) G.teamIds = [G.roster[0].uid];
-    showScreen('map');
+    // Resume where the player actually left off, not always the city.
+    const resumeScreen = G.lastScreen && ['map','world','safe','home','clinic','shop','care','raid','tree'].includes(G.lastScreen)
+      ? G.lastScreen : 'map';
+    showScreen(resumeScreen);
     renderAll();
     log('โหลดข้อมูลสำเร็จ', 'sys');
   } else {
@@ -158,6 +168,7 @@ async function boot() {
     buildStarterPicker();
   }
   wireGlobalUI();
+  wireDrawer();
   wireClickRipple();
 }
 
@@ -257,6 +268,13 @@ function showScreen(id) {
     }));
 
     currentScreenId = id;
+    // Persist "where the player is" for LOCATION screens only — never
+    // a transient state like battle/hack/steal. On next load, boot()
+    // restores here instead of always dropping the player back at the
+    // city map, so warping to Hell and closing the app keeps you in
+    // Hell until you travel back yourself.
+    const PERSISTABLE = ['map','world','safe','home','clinic','shop','care','raid','tree'];
+    if (PERSISTABLE.includes(id)) { G.lastScreen = id; save(); }
     const vid = $('bg-video');
     if (vid) { if (id === 'map') vid.play().catch(()=>{}); else vid.pause(); }
     $('app').dataset.screen = id;
@@ -301,6 +319,26 @@ function wireClickRipple() {
     document.body.appendChild(d);
     setTimeout(() => d.remove(), 460);
   }, { passive: true });
+}
+
+// ── PULL-OUT DRAWER ──
+function openDrawer() {
+  document.body.classList.add('drawer-open');
+  setText('drawer-bitz', G.bitz.toLocaleString());
+  setText('drawer-power', teamPower(activeTeam()).toLocaleString());
+  renderFeed();
+}
+function closeDrawer() { document.body.classList.remove('drawer-open'); }
+function toggleDrawer() {
+  document.body.classList.contains('drawer-open') ? closeDrawer() : openDrawer();
+}
+function wireDrawer() {
+  const knob = $('drawer-knob');
+  const backdrop = $('drawer-backdrop');
+  const closeBtn = $('drawer-close');
+  if (knob) knob.onclick = toggleDrawer;
+  if (backdrop) backdrop.onclick = closeDrawer;
+  if (closeBtn) closeBtn.onclick = closeDrawer;
 }
 
 function wireGlobalUI() {
@@ -411,7 +449,7 @@ function renderTeamStrip() {
     cell.innerHTML = `
       <div class="ts-sprite">${creatureMarkup(pet,'ts-art')}</div>
       <div class="ts-body">
-        <div class="ts-name">${pet.name} <span class="ts-attr">${a.icon}</span></div>
+        <div class="ts-name">${pet.name} <span class="ts-attr">${attrIcon(a, 15)}</span></div>
         <div class="ts-lv">Lv.${pet.level}<span class="muted">/${pet.maxLv}</span> · ${tier.icon}${tier.name}</div>
         <div class="ts-baropts">
           <span class="ts-lab">HP</span>
@@ -466,7 +504,7 @@ function petCard(pet, opts = {}) {
   const sig = signatureSkillOf(pet);
   card.innerHTML = `
     <div class="pc-top">
-      <span class="pc-attr" title="${a.desc}">${a.icon}</span>
+      <span class="pc-attr" title="${a.desc}">${attrIcon(a, 18)}</span>
       <span class="pc-rar">${r.name}</span>
     </div>
     ${creatureMarkup(pet, 'pc-sprite float')}
@@ -516,7 +554,7 @@ function openPetStatus(pet) {
       <div class="ps-head">
         ${creatureMarkup(pet, 'ps-sprite float')}
         <div class="ps-headinfo">
-          <div class="ps-rar" style="color:${r.color}">${r.name} · ${a.icon} ${a.name}</div>
+          <div class="ps-rar" style="color:${r.color}">${r.name} · ${attrIcon(a, 16)} ${a.name}</div>
           <div class="ps-lv">Lv.${pet.level}/${pet.maxLv} · EXP ${pet.exp}/${pet.expNeed}</div>
           <div class="ps-loy">${tier.icon} ${tier.name}
             <span class="pc-loy-bar" style="width:60px;display:inline-block"><i style="width:${loyProg.pct}%"></i></span>
@@ -581,7 +619,7 @@ function renderHome() {
       const a = ATTR[syn.attr];
       banner.className = 'syn-banner active';
       banner.style.setProperty('--attr', a.color);
-      banner.innerHTML = `<b>${a.icon} ${syn.label}</b> — สเตตัสทีม ×${syn.mult}`;
+      banner.innerHTML = `<b>${attrIcon(a, 15)} ${syn.label}</b> — สเตตัสทีม ×${syn.mult}`;
     } else {
       banner.className = 'syn-banner';
       banner.innerHTML = `ยังไม่มีซินเนอร์จี — จัดทีมให้มีธาตุซ้ำ 2 หรือ 3 ตัว`;
@@ -785,7 +823,7 @@ function hatchReveal(pet) {
       ${creatureMarkup(pet, 'reveal-sprite float')}
       <div class="reveal-name">${pet.name}</div>
       <div class="reveal-rar">${r.name}</div>
-      <div class="reveal-attr">${a.icon} ${a.name} — ${a.desc}</div>
+      <div class="reveal-attr">${attrIcon(a, 18)} ${a.name} — ${a.desc}</div>
       ${trait ? `<div class="reveal-trait">${trait.icon} ${trait.name} — ${trait.desc}</div>` : ''}`;
     wrap.appendChild(box);
   });
@@ -881,9 +919,10 @@ function applyItem(it, pet) {
 // ═══════════════ SCREEN: HACK ═══════════════
 // ── WORLD MAP ──
 // Looping video background with clickable pins positioned by percentage.
-let currentMapId = 'forest';
+let currentMapId = 'forest';   // synced with G.currentMapId, see renderWorld()
 
 function renderWorld() {
+  currentMapId = G.currentMapId || currentMapId;
   const map = MAPS.find(m => m.id === currentMapId) || MAPS[0];
   const vid = $('world-video');
   if (vid) {
@@ -905,7 +944,7 @@ function renderWorld() {
     tabs.innerHTML = '';
     MAPS.forEach(m => {
       const b = el('button','map-tab' + (m.id === currentMapId ? ' on' : ''), m.name);
-      b.onclick = () => { currentMapId = m.id; renderWorld(); };
+      b.onclick = () => { currentMapId = m.id; G.currentMapId = m.id; save(); renderWorld(); };
       tabs.appendChild(b);
     });
   }
@@ -1034,15 +1073,18 @@ function renderTree() {
     const maxed = rank >= n.max;
     const chk = canTakeNode(pet, n.id);
     const state = maxed ? 'maxed' : rank > 0 ? 'part' : chk.ok ? 'open' : 'locked';
-    const label = n.kind === 'stat'
-      ? `${STAT_META[n.stat].icon}`
-      : '✦';
+    // Skill nodes get the uploaded magic-circle art as a background
+    // (visually distinct from a plain stat node), with the sparkle
+    // glyph layered on top so it's still readable at small sizes.
+    const label = n.kind === 'stat' ? `${STAT_META[n.stat].icon}` : '✦';
     const sub = n.kind === 'stat'
       ? `+${n.per} ${STAT_META[n.stat].name}`
       : SPECIALS[n.skill].name;
+    const nodeStyle = `left:${n.x}%;top:${n.y}%` +
+      (n.kind === 'skill' ? `;background-image:url('assets/icons/skillnode.png')` : '');
     return `
       <button class="tree-node ${state} ${n.kind}" data-node="${n.id}"
-              style="left:${n.x}%;top:${n.y}%">
+              style="${nodeStyle}">
         <span class="tn-icon">${label}</span>
         <span class="tn-rank">${rank}/${n.max}</span>
         <span class="tn-tip">${sub}<br><i>Lv.${n.reqLv}+</i></span>

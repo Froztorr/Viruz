@@ -190,7 +190,17 @@ export function canTakeNode(pet, nodeId) {
     const parent = tree.nodes.find(n => n.id === r);
     const pr = spent[r] || 0;
     if (!parent) continue;
-    if (pr < parent.max) return { ok:false, why:`ต้องปลดล็อก ${r} ให้เต็มก่อน` };
+    // A STAT parent only needs 3/5 to open its child early — the
+    // player can then choose to keep feeding the parent to 5/5, or
+    // jump ahead and spend points on the child instead. Skill nodes
+    // still require their parent fully maxed (a partial skill node
+    // makes no sense — it's binary, unlocked or not).
+    const unlockThreshold = parent.kind === 'stat' ? Math.min(parent.max, 3) : parent.max;
+    if (pr < unlockThreshold) {
+      return { ok:false, why: parent.kind === 'stat'
+        ? `ต้องลงแต้ม ${r} อย่างน้อย ${unlockThreshold}/${parent.max} ก่อน`
+        : `ต้องปลดล็อก ${r} ให้เต็มก่อน` };
+    }
   }
   return { ok:true };
 }
@@ -329,7 +339,16 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
     return { dmg: 0, hits: 0, crit: false, evaded: true };
   }
 
-  const pw = skill.pw != null ? skill.pw : 1;
+  // Two skill authoring scales exist in this codebase: the modern one
+  // (SPECIALS in data.js) uses `pw` as a direct multiplier, 0.75-3.2.
+  // The legacy one (every SPECIES base/evo skill) used `pw` as a
+  // 0-120 "power" number from before the stat rework. Both still flow
+  // through here unnormalized, which let a species skill or signature
+  // move (pw:118) multiply ATK by 118x instead of ~1.2x — five-digit
+  // hits on a normal attack. Anything above 5 is unambiguously the old
+  // scale (no real multiplier exceeds ~3.2), so it's converted once,
+  // here, rather than hand-editing 60+ skill definitions.
+  const pw = skill.pw != null ? (skill.pw > 5 ? skill.pw / 50 : skill.pw) : 1;
   const specialMult = isSpecial ? 1.35 : 1.0;
   const variance = 0.9 + Math.random() * 0.2;
 
