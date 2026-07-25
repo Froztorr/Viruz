@@ -891,7 +891,7 @@ export const MAP_NODES = [
     screen:'clinic', hint:'รักษา VIRUZ · ฟักไข่' },
   { id:'apartment', label:'Your Home',    x:39.6, y:45.0, region:'pin',
     screen:'home',  hint:'ฐานของคุณ · ทีม · ป้องกัน' },
-  { id:'hacking',   label:'Hacking Center', x:23.4, y:56.3, region:'zone',
+  { id:'hacking',   label:'Hacking Center', x:23.4, y:51.5, region:'zone',
     zoneR:15, screen:'raid', hint:'เจาะบ้านผู้เล่นคนอื่น' },
   { id:'tech_shop', label:'Tech Shop',    x:87.0, y:64.8, region:'zone',
     zoneR:13, screen:'shop', hint:'ไอเทม · บูสเตอร์ (ในอนาคต: คราฟต์อุปกรณ์ · การ์ดอัพเกรด)' },

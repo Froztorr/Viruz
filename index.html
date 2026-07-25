@@ -1312,7 +1312,17 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
 @keyframes floatBobFlip{
   0%,100%{transform:scale(calc(var(--cr-scale,1) * -1),var(--cr-scale,1)) translateY(0)}
   50%    {transform:scale(calc(var(--cr-scale,1) * -1),var(--cr-scale,1)) translateY(-7px)}}
-#fx-layer{position:absolute;inset:0;pointer-events:none;z-index:20}
+#fx-layer{position:absolute;inset:0;pointer-events:none;z-index:20;overflow:hidden}
+/* This rule was missing entirely — playVfxAsset() sets img.style.left/
+   top in pixels via JS, but without position:absolute those properties
+   do nothing and the <img> falls into normal document flow, rendering
+   full-width at the top of the page instead of anchored near the unit.
+   That's why effects appeared to float in a black box unrelated to the
+   pet's position. */
+.vfx-clip{position:absolute;pointer-events:none;
+  image-rendering:auto;transform-origin:center center;z-index:21}
+.vfx-clip.vfx-instant-fade{animation:vfxFadeOut .5s ease-out forwards}
+@keyframes vfxFadeOut{from{opacity:1}to{opacity:0}}
 #battle-log{margin:10px 12px;background:rgba(4,6,14,.85);border:1px solid var(--line);
   padding:8px;height:110px;overflow-y:auto;font-size:13px;line-height:1.55}
 #battle-log::-webkit-scrollbar{width:4px}
@@ -1348,22 +1358,34 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
   background:rgba(2,4,10,.8);backdrop-filter:blur(4px);
   align-items:center;justify-content:center;padding:16px}
 #modal-back.on{display:flex}
-/* ── NPC SAFE-SPOT SCENE ── */
-.npc-scene{position:relative;margin-bottom:14px}
-.npc-portrait{width:100%;max-width:340px;display:block;margin:0 auto;
-  border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
-.npc-bubble{position:relative;max-width:300px;margin:-30px auto 0;
-  padding:12px 16px;background:#fff;color:#1a1420;border-radius:16px;
-  font-size:15px;line-height:1.5;text-align:center;
-  box-shadow:0 6px 18px rgba(0,0,0,.4)}
-.npc-bubble::after{content:'';position:absolute;left:50%;bottom:-9px;
-  transform:translateX(-50%);border:9px solid transparent;
-  border-top-color:#fff;border-bottom:0}
-.npc-menu{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
-.npc-opt{width:100%;text-align:center;font-family:var(--pixel);font-size:18px;
-  padding:12px;background:rgba(255,250,230,.95);color:#2a1c0a;
+/* ── NPC SAFE-SPOT SCENE ──
+   Positioned as an overlay directly on top of the portrait, matching
+   the reference screenshot: speech bubble anchored above-right of the
+   merchant's head, menu buttons stacked on the right side over the
+   market-stall area of the art — not separate full-width elements
+   below the image. All percentages are relative to .npc-scene, which
+   wraps the portrait 1:1, so this holds at any screen width. */
+.npc-scene{position:relative;margin-bottom:14px;line-height:0}
+.npc-portrait{width:100%;display:block;border-radius:6px}
+
+/* Bubble tail points down at the merchant's actual head position
+   (measured from the reference portrait: head centred ~29%/31%), so
+   the bubble body sits just above-right of it. Menu overlays the
+   market-stall area on the right side (~55-90% x, 68-88% y) where
+   your circles pointed, not a generic corner. */
+.npc-bubble{position:absolute;left:14%;top:1%;width:56%;
+  padding:10px 14px;background:#fff;color:#1a1420;border-radius:16px;
+  font-size:14px;line-height:1.4;text-align:center;
+  box-shadow:0 6px 18px rgba(0,0,0,.5);z-index:3}
+.npc-bubble::after{content:'';position:absolute;left:22%;bottom:-9px;
+  border:9px solid transparent;border-top-color:#fff;border-bottom:0}
+
+.npc-menu{position:absolute;right:3%;top:60%;width:42%;
+  display:flex;flex-direction:column;gap:8px;z-index:3}
+.npc-opt{width:100%;text-align:center;font-family:var(--pixel);font-size:14px;
+  padding:10px 6px;background:rgba(255,250,230,.96);color:#2a1c0a;
   border:2px solid #c9a54e;border-radius:8px;
-  box-shadow:0 3px 0 rgba(120,80,20,.4),0 5px 12px rgba(0,0,0,.35)}
+  box-shadow:0 3px 0 rgba(120,80,20,.4),0 5px 12px rgba(0,0,0,.4)}
 .npc-opt:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(120,80,20,.4)}
 .npc-opt:disabled{opacity:.5}
 
@@ -1641,17 +1663,20 @@ img.is-gif{image-rendering:pixelated;object-fit:contain}
       <span class="world-sub" id="safe-thai"></span>
     </div>
 
-    <!-- NPC scene: merchant portrait + greeting bubble, menu options
-         below like a dialogue tree rather than plain buttons. -->
+    <!-- NPC scene, laid out to match the reference screenshot exactly:
+         speech bubble anchored above-right of the merchant's HEAD (not
+         centred below the portrait), menu options overlaid on the
+         right side of the scene (not a separate full-width stack
+         underneath). Both sit ON TOP of the portrait as an overlay. -->
     <div class="npc-scene">
       <img class="npc-portrait" src="assets/ui/merchant.webp" alt="">
       <div class="npc-bubble">
         <span id="npc-greet">สวัสดี ให้ข้าช่วยอะไรได้บ้าง?</span>
       </div>
-    </div>
-    <div class="npc-menu">
-      <button class="npc-opt" id="npc-opt-rest"></button>
-      <button class="npc-opt" id="npc-opt-shop">ซื้อ Potion</button>
+      <div class="npc-menu">
+        <button class="npc-opt" id="npc-opt-rest"></button>
+        <button class="npc-opt" id="npc-opt-shop">ซื้อ Potion</button>
+      </div>
     </div>
 
     <div class="section" id="safe-potions-wrap" hidden>
