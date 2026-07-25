@@ -1874,12 +1874,10 @@ async function basicAttack(attacker, target, side, atkTeam, defTeam) {
     return;
   }
 
-  // Crit on a NORMAL attack: the white-out self flash and the enemy hit
-  // land TOGETHER (per feedback — no delay between them here). The
-  // self→pause→enemy sequencing is only for SKILL casts, not basic
-  // crits. Fire the whiteout, then immediately do the swing whose
-  // impact burst hits at the same beat.
-  if (res.crit) playSpellVFX('crit_self', attacker, target, side);
+  // Crit on a NORMAL attack: NO white-out self VFX anymore. Instead the
+  // attacker itself swells to 2x, tilts, and charges (handled inside
+  // playAttack via the crit-attack class), with the big impact burst
+  // landing on the enemy at the same beat.
   await playAttack(attacker, target, res, side);
   playSpellVFX('impact', attacker, target, side);   // gold hit-flash, every landed normal hit
 
@@ -1962,7 +1960,8 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
       blog(`${target.name} หลบ ${sp.name} ได้!`, side);
     } else {
       if (res.crit) {
-        playSpellVFX('crit_self', caster, target, side);
+        // No white-out VFX — the crit swell+charge on the attacker (via
+        // playAttack's crit-attack class) is the crit tell now.
         await showBanner('CRITICAL!!', 'crit');
       }
       await playAttack(caster, target, res, side);
@@ -2282,7 +2281,7 @@ function floatDamage(anchorEl, res) {
   wrap.style.left = (r.left - host.left + r.width / 2) + 'px';
   wrap.style.top = (r.top - host.top + r.height * 0.2) + 'px';
   wrap.style.setProperty('--tilt', (Math.random() * 14 - 7).toFixed(1) + 'deg');
-  wrap.innerHTML = `<span class="dmg-num">${res.dmg}${res.crit ? '!' : ''}</span>${res.hits > 1 ? `<span class="dmg-mult">× ${res.hits}</span>` : ''}`;
+  wrap.innerHTML = `<span class="dmg-num">${res.dmg}${res.crit ? '!!' : ''}</span>${res.hits > 1 ? `<span class="dmg-mult">× ${res.hits}</span>` : ''}`;
   layer.appendChild(wrap);
   setTimeout(() => wrap.remove(), 1050);
 }
@@ -2330,6 +2329,10 @@ async function playAttack(attacker, target, res, side) {
   aEl.style.setProperty('--wind-ms', (windMs / battleSpeed) + 'ms');
   aEl.style.setProperty('--lunge-ms', (lungeMs / battleSpeed) + 'ms');
   aEl.style.setProperty('--return-ms', (returnMs / battleSpeed) + 'ms');
+  // Direction the charge should travel: ally lunges right (+1), foe
+  // lunges left (-1). Crit adds the swell+tilt+charge class.
+  aEl.style.setProperty('--dir', side === 'ally' ? 1 : -1);
+  if (res.crit) aEl.classList.add('crit-attack');
 
   aEl.classList.add('wind-up');
   await wait(windMs / battleSpeed);
@@ -2344,6 +2347,7 @@ async function playAttack(attacker, target, res, side) {
   await wait(480 / battleSpeed);
   tEl.classList.remove('hit');
   aEl.classList.remove('lunge-back');
+  aEl.classList.remove('crit-attack');
   await wait(returnMs / battleSpeed);
 }
 
