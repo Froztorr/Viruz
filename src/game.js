@@ -1874,14 +1874,12 @@ async function basicAttack(attacker, target, side, atkTeam, defTeam) {
     return;
   }
 
-  // Crit on a NORMAL attack: full self-effect plays out, THEN a full
-  // pause, THEN the swing lands with the gold hit-flash on the enemy —
-  // same self-then-enemy beat as specials.
-  if (res.crit) {
-    const critMs = playSpellVFX('crit_self', attacker, target, side);
-    await wait((critMs || 0) / battleSpeed);
-    await wait(1000 / battleSpeed);
-  }
+  // Crit on a NORMAL attack: the white-out self flash and the enemy hit
+  // land TOGETHER (per feedback — no delay between them here). The
+  // self→pause→enemy sequencing is only for SKILL casts, not basic
+  // crits. Fire the whiteout, then immediately do the swing whose
+  // impact burst hits at the same beat.
+  if (res.crit) playSpellVFX('crit_self', attacker, target, side);
   await playAttack(attacker, target, res, side);
   playSpellVFX('impact', attacker, target, side);   // gold hit-flash, every landed normal hit
 
@@ -2246,8 +2244,32 @@ function impactBurst(unitEl, crit) {
   const b = el('div', 'impact-burst' + (crit ? ' crit' : ''));
   b.style.left = (r.left - host.left + r.width / 2) + 'px';
   b.style.top = (r.top - host.top + r.height * 0.5) + 'px';
+
+  // The burst was rendering EMPTY (zero-size div, nothing visible) —
+  // the inner slash/streak/spark elements the CSS styles were never
+  // being created. Build them here. Bigger than before per feedback:
+  // a prominent slash arc, several outward streaks, and a ring of
+  // sparks so a hit actually reads on screen.
+  const slash = el('div', 'slash');
+  b.appendChild(slash);
+  const streakCount = crit ? 7 : 5;
+  for (let i = 0; i < streakCount; i++) {
+    const st = el('div', 'streak');
+    const ang = (360 / streakCount) * i + (Math.random() * 20 - 10);
+    st.style.transform = `rotate(${ang}deg)`;
+    st.style.setProperty('--len', (crit ? 150 : 110) + Math.random() * 30 + 'px');
+    b.appendChild(st);
+  }
+  const sparkCount = crit ? 12 : 8;
+  for (let i = 0; i < sparkCount; i++) {
+    const sp = el('div', 'spark');
+    sp.style.setProperty('--a', (360 / sparkCount * i) + 'deg');
+    sp.style.setProperty('--d', (crit ? 90 : 60) + Math.random() * 30 + 'px');
+    b.appendChild(sp);
+  }
+
   layer.appendChild(b);
-  setTimeout(() => b.remove(), 500);
+  setTimeout(() => b.remove(), 600);
 }
 
 function floatDamage(anchorEl, res) {

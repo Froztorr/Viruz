@@ -526,11 +526,11 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
    pet-count right) that shows on every screen, plus the global drawer
    knob for navigation. #teamstrip still hides on intro/battle/map
    since those have their own dedicated fighter/creature displays. */
-#hud, #quickbar{display:none}
+#hud, #quickbar{display:none !important}
 #app[data-screen="intro"] #teamstrip,
 #app[data-screen="battle"] #teamstrip,
 #app[data-screen="map"] #teamstrip{display:none}
-#quickbar{position:sticky;top:41px;z-index:59;display:flex;gap:2px;
+#quickbar{position:sticky;top:41px;z-index:59;gap:2px;
   padding:4px 6px;background:rgba(5,6,15,.92);border-bottom:1px solid var(--line);
   backdrop-filter:blur(8px);overflow-x:auto}
 .qb{flex:1 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;
@@ -1277,8 +1277,8 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
   z-index:5;
 }
 @keyframes lungeOut{
-  0%   { transform: translateX(calc(var(--dir,1) * -14px)) scale(1.04,.97); }
-  100% { transform: translateX(calc(var(--dir,1) * 46px)) scale(1.1,.94); }
+  0%   { transform: translateX(calc(var(--dir,1) * -18px)) scale(1.06,.95); }
+  100% { transform: translateX(calc(var(--dir,1) * 72px)) scale(1.14,.9); }
 }
 @keyframes lungeBack{
   0%   { transform: translateX(calc(var(--dir,1) * 46px)) scale(1.1,.94); }
@@ -1333,11 +1333,11 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
   100% { transform: scaleX(-1) rotate(-7deg) scale(1.06,.96); }
 }
 @keyframes hitShake{
-  0%,100%{ transform:translateX(0); }
-  20%{ transform:translateX(-7px); }
-  40%{ transform:translateX(6px); }
-  60%{ transform:translateX(-4px); }
-  80%{ transform:translateX(3px); }
+  0%,100%{ transform:translateX(0) scale(1); }
+  15%{ transform:translateX(-13px) scale(1.06,.95); }
+  35%{ transform:translateX(11px) scale(.96,1.04); }
+  55%{ transform:translateX(-8px); }
+  75%{ transform:translateX(5px); }
 }
 @keyframes hitFlash{
   0%   { filter:brightness(1) drop-shadow(0 0 0 rgba(255,255,255,0)); }
