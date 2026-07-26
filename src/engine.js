@@ -58,6 +58,7 @@ export function createPet(speciesId, rarity, forcedAttr = null) {
     maxLv: RARITY[rarity].maxLv,
     hp: 0,          // set below
     whiteTrait: null,
+    equip: { payload:null, exploit:null, rootkit:null },
   };
   if (attr === 'white') {
     pet.whiteTrait = rollWeighted(WHITE_TRAIT_ROLL);
@@ -132,18 +133,36 @@ export function statsOf(pet) {
 
   // Points spent in the skill tree add flat bonuses on top.
   const tb = treeBonuses(pet);
+  // Equipped gear (payload/exploit/rootkit) adds more flat bonuses,
+  // the same way — see equipmentBonuses() below.
+  const eq = equipmentBonuses(pet);
 
   const out = {
-    atk: Math.max(1, Math.floor(raw.atk * am.atk * stageMult * loyMult) + tb.atk),
-    def: Math.max(1, Math.floor(raw.def * am.def * stageMult * loyMult) + tb.def),
-    spd: Math.max(1, Math.floor(raw.spd * am.spd * stageMult * loyMult) + tb.spd),
-    vit: Math.max(8, Math.floor(raw.vit * am.mhp * stageMult * loyMult) + tb.vit),
-    crit: Math.max(1, Math.round(raw.crit + tb.crit)),
-    eva:  Math.max(1, Math.round(raw.eva  + tb.eva)),
+    atk: Math.max(1, Math.floor(raw.atk * am.atk * stageMult * loyMult) + tb.atk + eq.atk),
+    def: Math.max(1, Math.floor(raw.def * am.def * stageMult * loyMult) + tb.def + eq.def),
+    spd: Math.max(1, Math.floor(raw.spd * am.spd * stageMult * loyMult) + tb.spd + eq.spd),
+    vit: Math.max(8, Math.floor(raw.vit * am.mhp * stageMult * loyMult) + tb.vit + eq.vit),
+    crit: Math.max(1, Math.round(raw.crit + tb.crit + eq.crit)),
+    eva:  Math.max(1, Math.round(raw.eva  + tb.eva  + eq.eva)),
     int:  Math.max(10, Math.floor(raw.int * loyMult) + tb.int),
   };
   // `mhp` kept as an alias so older call sites keep working.
   out.mhp = out.vit;
+  return out;
+}
+
+// Sum the flat stat bonuses from whatever's equipped in payload/
+// exploit/rootkit — same pattern as treeBonuses(), just a different
+// source. `int` is deliberately left out; equipment boosts combat
+// power, not MP pool.
+export function equipmentBonuses(pet) {
+  const out = { atk:0, def:0, spd:0, crit:0, eva:0, vit:0 };
+  const equip = pet && pet.equip;
+  if (!equip) return out;
+  Object.values(equip).forEach(item => {
+    if (!item || !item.stats) return;
+    Object.keys(item.stats).forEach(k => { if (k in out) out[k] += item.stats[k]; });
+  });
   return out;
 }
 
@@ -326,7 +345,7 @@ function opposedChance(mine, theirs, { cap = 0.55, k = 1.0, floor = 0.02 } = {})
   return Math.min(cap, floor + cap * (1 - Math.exp(-k * edge)));
 }
 
-export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpecial) {
+export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpecial, proc) {
   const a = combatStats(attacker, atkTeam);
   const d = combatStats(defender, defTeam);
 

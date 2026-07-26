@@ -263,12 +263,13 @@ export const SPECIES = {
     ],
   },
 
-  // ── GIF-based species ──
-  // These use real animated art from assets/sprites/<gif>/{still,attack}.gif
+  // ── Animated-sprite species ──
+  // These use real animated art from assets/sprites/<gif>/{still,attack}.webp
+  // (animated WebP — smaller and cheaper to decode than GIF; see `ext`)
   // instead of a procedural `shape`. Both kinds coexist: the renderer
   // checks for `gif` first and falls back to `shape`.
   bytehound: {
-    id:'bytehound', name:'ByteHound', gif:'dog',
+    id:'bytehound', name:'ByteHound', gif:'dog', ext:'webp',
     rarities:['normal','rare','epic'],
     base:{ atk:21, def:11, spd:12, mhp:72 },
     skills:[
@@ -281,7 +282,7 @@ export const SPECIES = {
     ],
   },
   armorhound: {
-    id:'armorhound', name:'ArmorHound', gif:'dog2',
+    id:'armorhound', name:'ArmorHound', gif:'dog2', ext:'webp',
     rarities:['rare','epic','legendary'],
     base:{ atk:20, def:17, spd:9, mhp:88 },
     skills:[
@@ -294,7 +295,7 @@ export const SPECIES = {
     ],
   },
   tabbyproc: {
-    id:'tabbyproc', name:'TabbyProc', gif:'cat',
+    id:'tabbyproc', name:'TabbyProc', gif:'cat', ext:'webp',
     rarities:['normal','rare','epic'],
     base:{ atk:22, def:10, spd:16, mhp:66 },
     skills:[
@@ -307,7 +308,7 @@ export const SPECIES = {
     ],
   },
   mysticproc: {
-    id:'mysticproc', name:'MysticProc', gif:'cat3',
+    id:'mysticproc', name:'MysticProc', gif:'cat3', ext:'webp',
     rarities:['epic','legendary','mythic'],
     base:{ atk:24, def:13, spd:14, mhp:76 },
     skills:[
@@ -662,6 +663,139 @@ export const STAT_META = {
   int:  { name:'INT',  icon:'🔮', thai:'พลังเวท (MP สูงสุด)' },
   vit:  { name:'VIT',  icon:'❤️', thai:'พลังชีวิต (HP สูงสุด)' },
 };
+
+// ── EQUIPMENT ──
+// 3 slots per pet, named after the real components of a computer
+// virus. Each slot has a flavor bias (which stats it rolls more
+// often) but isn't hard-restricted to them, so builds stay varied.
+export const EQUIP_SLOTS = {
+  payload: { id:'payload', name:'Payload', icon:'💣', thai:'เพย์โหลด',
+    desc:'ชุดคำสั่งทำลาย — เน้นโจมตี', bias:['atk','crit'] },
+  exploit: { id:'exploit', name:'Exploit', icon:'🧬', thai:'ช่องโหว่',
+    desc:'ช่องโหว่เจาะระบบ — เน้นความเร็ว', bias:['spd','crit','eva'] },
+  rootkit: { id:'rootkit', name:'Rootkit', icon:'🗝️', thai:'รูทคิต',
+    desc:'ฝังตัวลึกในระบบ — เน้นป้องกัน/พลังชีวิต', bias:['def','vit'] },
+};
+export const EQUIP_SLOT_KEYS = ['payload', 'exploit', 'rootkit'];
+
+// Grade ladder — same shape as RARITY (color/glow for UI chrome),
+// plus statMult (roll strength), dust (disenchant yield), and weight
+// (relative drop odds).
+export const EQUIP_GRADES = {
+  script:      { id:'script',      name:'Script Kiddie', thai:'สคริปต์มือใหม่',    color:'#9aa4b8', glow:'rgba(154,164,184,.3)',  statMult:1.0, dust:2,  weight:100 },
+  trojan:      { id:'trojan',      name:'Trojan',        thai:'โทรจัน',            color:'#4fc3f7', glow:'rgba(79,195,247,.4)',   statMult:1.4, dust:5,  weight:55  },
+  polymorphic: { id:'polymorphic', name:'Polymorphic',   thai:'โพลีมอร์ฟิก',       color:'#ce93d8', glow:'rgba(206,147,216,.45)', statMult:1.9, dust:12, weight:25  },
+  zeroday:     { id:'zeroday',     name:'Zero-Day',      thai:'ซีโร่เดย์',         color:'#ffd54a', glow:'rgba(255,213,74,.5)',   statMult:2.5, dust:26, weight:9   },
+  apt:         { id:'apt',         name:'A.P.T.',        thai:'ภัยคุกคามขั้นสูง',  color:'#ff5470', glow:'rgba(255,84,112,.55)',  statMult:3.3, dust:55, weight:2   },
+};
+export const EQUIP_GRADE_KEYS = ['script', 'trojan', 'polymorphic', 'zeroday', 'apt'];
+
+// Attribute-locked procs. Rolled onto roughly 1 in 4 items; the
+// effect only activates while equipped on a pet whose OWN attribute
+// matches — a green (speed) item is a speed-themed named item, not
+// something that adapts to whoever wears it.
+export const EQUIP_AFFIXES = {
+  red:    { attr:'red',    name:'Overclock',   icon:'⚔️', desc:'โจมตีแรกของการต่อสู้ คริติคอลเสมอ' },
+  green:  { attr:'green',  name:'Double Tap',  icon:'🌪️', desc:'โจมตีแรกของการต่อสู้ ตีซ้ำ 2 ครั้งเสมอ' },
+  yellow: { attr:'yellow', name:'Bastion',     icon:'🛡️', desc:'เริ่มการต่อสู้ด้วยเกราะกันดาเมจ' },
+  white:  { attr:'white',  name:'Restoration', icon:'➕', desc:'เริ่มการต่อสู้ด้วยการฟื้นฟู HP ทันที' },
+};
+
+// Grade-scaled magnitude for each affix's proc (index = EQUIP_GRADE_KEYS position).
+export const AFFIX_MAGNITUDE = {
+  yellow: [0.12, 0.16, 0.20, 0.25, 0.32],  // shield % of max HP
+  white:  [0.10, 0.14, 0.18, 0.22, 0.28],  // heal % of max HP
+  red:    [0, 0, 0, 0, 0],                  // binary proc, magnitude unused
+  green:  [0, 0, 0, 0, 0],
+};
+
+const EQUIP_NAME_PARTS = {
+  payload: ['Warhead', 'Detonator', 'Strikecode', 'Bombshell'],
+  exploit: ['Backdoor', 'Injector', 'Skeleton Key', 'Zero-Click'],
+  rootkit: ['Cloak', 'Anchor', 'Deepshell', 'Firmware'],
+};
+
+// Base per-level roll strength for each rollable stat. `int` is left
+// out — equipment boosts combat power, not MP pool.
+const EQUIP_STAT_BASE = { atk:0.9, def:0.7, spd:0.6, crit:0.7, eva:0.5, vit:3.2 };
+const EQUIP_ROLLABLE_STATS = Object.keys(EQUIP_STAT_BASE);
+
+// Chance an enemy drops equipment on death (checked once per kill).
+export const EQUIP_DROP_CHANCE = 0.32;
+
+function rollWeighted(weights) {
+  const keys = Object.keys(weights);
+  const total = keys.reduce((s, k) => s + weights[k], 0);
+  let r = Math.random() * total;
+  for (const k of keys) {
+    if (r < weights[k]) return k;
+    r -= weights[k];
+  }
+  return keys[0];
+}
+
+// Generates one equipment instance. `maxLevel` caps the level
+// requirement (e.g. the dropping enemy's level, or the player's
+// highest pet level for crafting) — equipment never asks for more
+// than that. `forcedGradeId` lets crafting skew the grade roll.
+export function rollEquipment(maxLevel, forcedGradeId) {
+  maxLevel = Math.max(1, Math.floor(maxLevel || 1));
+  const slotId = EQUIP_SLOT_KEYS[Math.floor(Math.random() * EQUIP_SLOT_KEYS.length)];
+  const slot = EQUIP_SLOTS[slotId];
+  const gradeId = forcedGradeId || rollWeighted(
+    EQUIP_GRADE_KEYS.reduce((w, k) => { w[k] = EQUIP_GRADES[k].weight; return w; }, {}));
+  const grade = EQUIP_GRADES[gradeId];
+  const lvlReq = 1 + Math.floor(Math.random() * maxLevel);
+
+  const useBias = Math.random() < 0.7 && slot.bias.length >= 2;
+  const pool = useBias ? slot.bias : EQUIP_ROLLABLE_STATS;
+  const statCount = Math.min(pool.length, 2 + (Math.random() < 0.35 ? 1 : 0));
+  const chosen = [];
+  while (chosen.length < statCount) {
+    const k = pool[Math.floor(Math.random() * pool.length)];
+    if (!chosen.includes(k)) chosen.push(k);
+  }
+  const stats = {};
+  chosen.forEach(k => {
+    const base = EQUIP_STAT_BASE[k] || 1;
+    stats[k] = Math.max(1, Math.round(base * lvlReq * grade.statMult * (0.85 + Math.random() * 0.3)));
+  });
+
+  let attr = null;
+  if (Math.random() < 0.25) attr = ATTR_KEYS[Math.floor(Math.random() * ATTR_KEYS.length)];
+
+  const namePart = EQUIP_NAME_PARTS[slotId][Math.floor(Math.random() * EQUIP_NAME_PARTS[slotId].length)];
+  const name = `${grade.name} ${namePart}`;
+
+  return {
+    uid: 'eq_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+    slotId, grade: gradeId, lvlReq, stats, attr, name,
+  };
+}
+
+// Disenchanting an item yields Dust (crafting currency); its grade
+// sets the yield. Selling yields Bitz instead, scaled by grade+level.
+export function dustValueOf(item) {
+  return (EQUIP_GRADES[item.grade] || EQUIP_GRADES.script).dust;
+}
+export function sellValueOf(item) {
+  const g = EQUIP_GRADES[item.grade] || EQUIP_GRADES.script;
+  return Math.round(g.dust * 18 * (1 + item.lvlReq * 0.08));
+}
+
+// Crafting: spend Dust on one of a few fixed recipes, each biasing
+// the grade roll upward. Slot/stats/level/affix still roll randomly
+// via rollEquipment — crafting buys better ODDS, not a guaranteed tier.
+export const CRAFT_RECIPES = [
+  { id:'quick',    name:'Quick Craft',    icon:'🔧', dust:10, weights:{ script:70, trojan:25, polymorphic:5,  zeroday:0,  apt:0 } },
+  { id:'standard', name:'Standard Craft', icon:'⚙️', dust:30, weights:{ script:35, trojan:40, polymorphic:20, zeroday:5,  apt:0 } },
+  { id:'deep',     name:'Deep Craft',     icon:'🛠️', dust:80, weights:{ script:10, trojan:25, polymorphic:35, zeroday:25, apt:5 } },
+];
+export function craftEquipment(recipeId, maxLevel) {
+  const recipe = CRAFT_RECIPES.find(r => r.id === recipeId) || CRAFT_RECIPES[0];
+  const gradeId = rollWeighted(recipe.weights);
+  return rollEquipment(maxLevel, gradeId);
+}
 
 // ── SPEED COUNTER ──
 // Each turn a unit accrues speed points based on the SPD gap with its

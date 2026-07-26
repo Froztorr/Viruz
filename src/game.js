@@ -10,7 +10,10 @@ import {
   LOYALTY_TIERS, loyaltyTier, loyaltyProgress, SIGNATURE_SKILLS,
   FOODS, TOYS, CARE_CLEAN, CARE_COOLDOWN_MS, LOYALTY_PER_WIN,
   buildLootMenu, chanceToEnemyMult, RAID_LOSS_BITZ,
-  SKILL_TREES, SPECIALS, AILMENTS, STAT_KEYS, STAT_META, treeFor } from './data.js';
+  SKILL_TREES, SPECIALS, AILMENTS, STAT_KEYS, STAT_META, treeFor,
+  EQUIP_SLOTS, EQUIP_SLOT_KEYS, EQUIP_GRADES, EQUIP_GRADE_KEYS, EQUIP_AFFIXES,
+  AFFIX_MAGNITUDE, EQUIP_DROP_CHANCE, CRAFT_RECIPES,
+  rollEquipment, craftEquipment, dustValueOf, sellValueOf } from './data.js';
 import {
   createPet, rollEgg, statsOf, combatStats, powerOf, teamPower, spawnAntiviruz,
   synergyOf, supportOf, computeDamage, turnOrder, grantExp,
@@ -18,7 +21,7 @@ import {
   teamAlive, availableSkills, clamp, loyaltyBuffs, signatureSkillOf, buildHackPuzzle, checkHackGuess,
   unlockedSpecials, canTakeNode, takeNode, treeBonuses,
   addAilment, hasAilment, clearAilments, tickAilments,
-  advanceSpeedCounter, maxMP, canCast, spendMP, restoreMP } from './engine.js';
+  advanceSpeedCounter, maxMP, canCast, spendMP, restoreMP, uid, equipmentBonuses } from './engine.js';
 import { NET } from './net.js';
 import { creatureMarkupFor, gifURL } from './sprites.js';
 
@@ -56,6 +59,8 @@ let G = {
   toys: [],         // permanently owned toy ids
   care: {},         // { petUid: { activityId: lastUsedTimestamp } }
   feed: [],         // persistent PROCESS activity records
+  equipBag: [],     // owned, unequipped gear
+  dust: 0,          // crafting currency from disenchanting gear
 };
 
 let battle = null;   // active battle state
@@ -132,6 +137,7 @@ async function boot() {
         p.growthPts = Math.max(0, (p.level || 1) - 1);
       }
       if (typeof p.mp !== 'number') p.mp = 0;
+      p.equip = p.equip || { payload:null, exploit:null, rootkit:null };
       p.shape = sp.shape || null;
       p.gif   = sp.gif   || null;
       if (!p.name) p.name = sp.name;
@@ -154,6 +160,8 @@ async function boot() {
     G.toys    = G.toys    || [];
     G.care    = G.care    || {};
     G.feed    = G.feed    || [];
+    G.equipBag = G.equipBag || [];
+    G.dust     = G.dust     || 0;
     G.teamIds    = (G.teamIds || []).filter(id => ids.has(id));
     G.defenseIds = (G.defenseIds || []).filter(id => ids.has(id));
     if (!G.teamIds.length && G.roster.length) G.teamIds = [G.roster[0].uid];
@@ -587,13 +595,18 @@ function petCard(pet, opts = {}) {
       <span class="pc-loy-bar"><i style="width:${loyProg.pct}%"></i></span>
     </div>
     ${sig ? `<div class="pc-sig" title="${sig.desc}">✦ ${sig.n}</div>` : ''}
+    <button class="pc-equip" title="อุปกรณ์">🧩</button>
     <button class="pc-info" title="สถานะ">ℹ</button>`;
   if (opts.onClick) card.onclick = () => opts.onClick(pet);
-  // The info button always opens the status window, independent of
-  // whatever the card's main click does (team swap, defense pick, etc).
+  // The info/equip buttons always open their own window, independent
+  // of whatever the card's main click does (team swap, defense pick).
   card.querySelector('.pc-info').onclick = (ev) => {
     ev.stopPropagation();
     openPetStatus(pet);
+  };
+  card.querySelector('.pc-equip').onclick = (ev) => {
+    ev.stopPropagation();
+    openPetEquip(pet);
   };
   return card;
 }
@@ -665,6 +678,83 @@ function openPetStatus(pet) {
     const treeBtn = el('button', 'btn wide', '🌳 ไปที่ผังสกิล');
     treeBtn.onclick = () => { closeModal(); treePetId = pet.uid; showScreen('tree'); };
     body.appendChild(treeBtn);
+  });
+}
+
+// ── PET EQUIPMENT WINDOW ──
+// 3 slots — payload/exploit/rootkit. Tapping a filled slot unequips
+// it back to the bag; tapping an empty one opens a picker of bag
+// items that fit (right slot, level requirement met).
+function equipStatLine(item) {
+  return Object.keys(item.stats).map(k => `${STAT_META[k].icon}+${item.stats[k]}`).join(' ');
+}
+function openPetEquip(pet) {
+  modal(`🧩 อุปกรณ์ — ${pet.name}`, body => {
+    const wrap = el('div', 'eq-slots');
+    EQUIP_SLOT_KEYS.forEach(slotId => {
+      const slot = EQUIP_SLOTS[slotId];
+      const item = pet.equip && pet.equip[slotId];
+      const row = el('div', 'eq-slot-row');
+      if (item) {
+        const g = equipGradeMeta(item);
+        row.style.setProperty('--grade', g.color);
+        row.innerHTML = `
+          <div class="eq-slot-icon">${slot.icon}</div>
+          <div class="eq-slot-info">
+            <div class="eq-slot-name" style="color:${g.color}">${item.name}</div>
+            <div class="eq-slot-sub">${slot.name} · Lv.${item.lvlReq}${item.attr ? ` · ${ATTR[item.attr].icon} ${EQUIP_AFFIXES[item.attr].name}` : ''}</div>
+            <div class="eq-slot-stats">${equipStatLine(item)}</div>
+          </div>
+          <button class="btn small">ถอด</button>`;
+        row.querySelector('button').onclick = () => { unequipItem(pet, slotId); openPetEquip(pet); };
+      } else {
+        row.innerHTML = `
+          <div class="eq-slot-icon empty">${slot.icon}</div>
+          <div class="eq-slot-info">
+            <div class="eq-slot-name muted">${slot.name} — ว่าง</div>
+            <div class="eq-slot-sub">${slot.desc}</div>
+          </div>
+          <button class="btn small primary">ใส่</button>`;
+        row.querySelector('button').onclick = () => openEquipPicker(pet, slotId);
+      }
+      wrap.appendChild(row);
+    });
+    body.appendChild(wrap);
+    const hint = el('div', 'muted', `กระเป๋าอุปกรณ์: ${(G.equipBag||[]).length} ชิ้น — จัดการ/ขาย/สลาย ได้ที่คลัง`);
+    hint.style.cssText = 'text-align:center;font-size:13px;margin-top:10px';
+    body.appendChild(hint);
+  });
+}
+function openEquipPicker(pet, slotId) {
+  modal(`เลือก ${EQUIP_SLOTS[slotId].name}`, body => {
+    const options = (G.equipBag || [])
+      .filter(it => it.slotId === slotId && it.lvlReq <= pet.level)
+      .sort((a,b) => EQUIP_GRADE_KEYS.indexOf(b.grade) - EQUIP_GRADE_KEYS.indexOf(a.grade));
+    if (!options.length) {
+      body.innerHTML = `<div class="muted" style="padding:14px;text-align:center">ไม่มีอุปกรณ์ที่ใส่ได้ตอนนี้<br>(ต้องเลเวลถึง หรือดรอปจากศัตรูก่อน)</div>`;
+    } else {
+      const list = el('div', 'eq-picker-list');
+      options.forEach(item => {
+        const g = equipGradeMeta(item);
+        const row = el('div', 'eq-slot-row');
+        row.style.setProperty('--grade', g.color);
+        row.innerHTML = `
+          <div class="eq-slot-icon">${EQUIP_SLOTS[item.slotId].icon}</div>
+          <div class="eq-slot-info">
+            <div class="eq-slot-name" style="color:${g.color}">${item.name}</div>
+            <div class="eq-slot-sub">Lv.${item.lvlReq}${item.attr ? ` · ${ATTR[item.attr].icon} ${EQUIP_AFFIXES[item.attr].name}` : ''}</div>
+            <div class="eq-slot-stats">${equipStatLine(item)}</div>
+          </div>
+          <button class="btn small primary">ใส่</button>`;
+        row.querySelector('button').onclick = () => { equipItem(pet, item); openPetEquip(pet); };
+        list.appendChild(row);
+      });
+      body.appendChild(list);
+    }
+    const back = el('button', 'btn wide', '← กลับ');
+    back.style.marginTop = '10px';
+    back.onclick = () => openPetEquip(pet);
+    body.appendChild(back);
   });
 }
 
@@ -1313,6 +1403,70 @@ function renderInventory() {
       toyBox.appendChild(card);
     });
   }
+  renderEquipBag();
+  renderCraft();
+}
+
+// Item cards in the equipment bag — each can be sold for Bitz or
+// dusted (disenchanted) into Dust, the crafting currency below.
+function renderEquipBag() {
+  const box = $('inv-equip');
+  if (!box) return;
+  box.innerHTML = '';
+  const bag = G.equipBag || [];
+  if (!bag.length) {
+    box.innerHTML = `<div class="muted" style="padding:10px">ยังไม่มีอุปกรณ์ — ดรอปจากศัตรู หรือคราฟต์เองด้านล่าง</div>`;
+    return;
+  }
+  const sorted = [...bag].sort((a,b) => EQUIP_GRADE_KEYS.indexOf(b.grade) - EQUIP_GRADE_KEYS.indexOf(a.grade));
+  sorted.forEach(item => {
+    const g = equipGradeMeta(item);
+    const slot = EQUIP_SLOTS[item.slotId];
+    const card = el('div', 'shop-card eq-card');
+    card.style.setProperty('--grade', g.color);
+    card.innerHTML = `
+      <div class="sc-icon">${slot.icon}</div>
+      <div class="sc-name" style="color:${g.color}">${item.name}</div>
+      <div class="sc-desc">${slot.name} · Lv.${item.lvlReq}${item.attr ? ` · ${ATTR[item.attr].icon} ${EQUIP_AFFIXES[item.attr].name}` : ''}<br>${equipStatLine(item)}</div>
+      <div class="eq-card-btns">
+        <button class="btn small" data-act="sell">💰 ${sellValueOf(item)}</button>
+        <button class="btn small" data-act="dust">🧬 ${dustValueOf(item)}</button>
+      </div>`;
+    card.querySelector('[data-act="sell"]').onclick = () => { sellEquip(item); renderEquipBag(); };
+    card.querySelector('[data-act="dust"]').onclick = () => { dustEquip(item); renderEquipBag(); renderCraft(); };
+    box.appendChild(card);
+  });
+}
+
+// Spend Dust on one of a few fixed recipes to self-craft a random
+// piece of gear — better recipes skew toward higher grades but never
+// guarantee one; slot/stats/level/affix still roll randomly.
+function renderCraft() {
+  setText('craft-dust', G.dust || 0);
+  const box = $('inv-craft');
+  if (!box) return;
+  box.innerHTML = '';
+  const maxLevel = Math.max(1, ...G.roster.map(p => p.level || 1));
+  CRAFT_RECIPES.forEach(r => {
+    const afford = (G.dust || 0) >= r.dust;
+    const card = el('div', 'shop-card');
+    card.innerHTML = `<div class="sc-icon">${r.icon}</div><div class="sc-name">${r.name}</div>
+      <div class="sc-desc">โอกาสได้เกรดสูงขึ้นตามด่าน</div><div class="sc-cost">🧬 ${r.dust} Dust</div>`;
+    const btn = el('button', 'btn small' + (afford ? ' primary' : ''), afford ? 'คราฟต์' : 'Dust ไม่พอ');
+    if (!afford) btn.disabled = true;
+    btn.onclick = () => {
+      if ((G.dust || 0) < r.dust) { toast('Dust ไม่พอ'); return; }
+      G.dust -= r.dust;
+      const item = craftEquipment(r.id, maxLevel);
+      G.equipBag = G.equipBag || [];
+      G.equipBag.push(item);
+      save();
+      toast(`✨ ได้ ${item.name}!`);
+      renderCraft(); renderEquipBag();
+    };
+    card.appendChild(btn);
+    box.appendChild(card);
+  });
 }
 
 function renderCare() {
@@ -1927,6 +2081,7 @@ function startRaidFight(rival, sendPet, loot, mult) {
   clearBattleLog();
   blog(`บุกเข้าบ้าน ${rival.name}!`, 'sys');
   blog(`ส่ง ${sendPet.name} เข้าเจาะ`, 'buff');
+  applyBattleStartEquip(battle.team);
   renderBattle();
   startRegen();
   startSkillCooldownTicker();
@@ -1971,6 +2126,7 @@ function startZone(target) {
   if (syn.label) blog(`${ATTR[syn.attr].icon} ${syn.label} — สเตตัส ×${syn.mult}`, 'buff');
   const sup = supportOf(team);
   if (sup.auraPct > 0) blog(`➕ บัฟซัพพอร์ต +${Math.round(sup.auraPct*100)}%`, 'buff');
+  applyBattleStartEquip(battle.team);
   renderBattle();
   startRegen();
   startSkillCooldownTicker();
@@ -2005,6 +2161,7 @@ function startArena() {
   setText('battle-wave', 'แมตช์เดี่ยว');
   clearBattleLog();
   blog('เริ่มการต่อสู้ Arena', 'sys');
+  applyBattleStartEquip(battle.team);
   renderBattle();
   startRegen();
   startSkillCooldownTicker();
@@ -2098,6 +2255,213 @@ function dustPuff(unitEl) {
   puff.innerHTML = inner;
   layer.appendChild(puff);
   setTimeout(() => puff.remove(), 500);
+}
+
+// ── ENEMY DEATH: shatter into pixel shards ──
+// Works for both raster (img) and procedural (inline SVG) sprites
+// because it clones the whole sprite-wrap element rather than reading
+// pixels — a grid of small "viewport" cells each show one slice of a
+// full-size clone via overflow:hidden, then fly outward and fade.
+async function explodeUnit(unitEl) {
+  return new Promise(resolve => {
+    const layer = $('fx-layer');
+    const stage = $('battle-stage');
+    const spriteWrap = unitEl && unitEl.querySelector('.bu-sprite-wrap');
+    if (!layer || !stage || !spriteWrap) { if (unitEl) unitEl.remove(); resolve(); return; }
+
+    const host = stage.getBoundingClientRect();
+    const r = spriteWrap.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4) { unitEl.remove(); resolve(); return; }
+
+    unitEl.classList.add('exploding'); // instantly hides the real sprite (CSS)
+
+    const GRID = 4;
+    const shardW = r.width / GRID, shardH = r.height / GRID;
+    const burst = el('div', 'explode-burst');
+    burst.style.left = (r.left - host.left) + 'px';
+    burst.style.top  = (r.top  - host.top)  + 'px';
+    burst.style.width  = r.width + 'px';
+    burst.style.height = r.height + 'px';
+
+    for (let gy = 0; gy < GRID; gy++) {
+      for (let gx = 0; gx < GRID; gx++) {
+        const shard = el('div', 'explode-shard');
+        shard.style.left = (gx * shardW) + 'px';
+        shard.style.top  = (gy * shardH) + 'px';
+        shard.style.width  = shardW + 'px';
+        shard.style.height = shardH + 'px';
+        const clone = spriteWrap.cloneNode(true);
+        clone.className = 'explode-clone';
+        clone.style.left = (-gx * shardW) + 'px';
+        clone.style.top  = (-gy * shardH) + 'px';
+        clone.style.width  = r.width + 'px';
+        clone.style.height = r.height + 'px';
+        shard.appendChild(clone);
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 34 + Math.random() * 60;
+        shard.style.setProperty('--ex', (Math.cos(angle) * dist).toFixed(0) + 'px');
+        shard.style.setProperty('--ey', (Math.sin(angle) * dist - 16).toFixed(0) + 'px');
+        shard.style.setProperty('--er', (Math.random() * 300 - 150).toFixed(0) + 'deg');
+        shard.style.animationDelay = (Math.random() * 60) + 'ms';
+        burst.appendChild(shard);
+      }
+    }
+    layer.appendChild(burst);
+    setTimeout(() => {
+      burst.remove();
+      unitEl.remove();
+      resolve();
+    }, 620);
+  });
+}
+
+// ── Next enemy steps up: same slide-in/land beat as the opening arena
+// entrance, but foe-only (ally side and the VS slam are untouched). ──
+async function playFoeEntrance(unitEl) {
+  return new Promise(resolve => {
+    const stage = $('battle-stage');
+    if (!stage || !unitEl) { resolve(); return; }
+    stage.classList.add('foe-entrance-lock');
+    unitEl.classList.add('enter-from-r');
+    setTimeout(() => {
+      unitEl.classList.remove('enter-from-r');
+      unitEl.classList.add('enter-land');
+      dustPuff(unitEl);
+    }, 420);
+    setTimeout(() => {
+      unitEl.classList.remove('enter-land');
+      stage.classList.remove('foe-entrance-lock');
+      resolve();
+    }, 760);
+  });
+}
+
+// Orchestrates one foe's death → the next foe's entrance. Called from
+// checkBattleEnd() whenever the enemy currently shown on screen no
+// longer matches the battle's active foe (i.e. it just died and
+// battle.enemies has another one ready). `nextPet` may be null when
+// the whole encounter is being cleared (last enemy of a wave/dungeon).
+async function playFoeDeathTransition(deadPet, nextPet) {
+  const wrap = $('battle-enemies');
+  if (!wrap) return;
+  const deadEl = wrap.querySelector('.bunit');
+  if (deadEl) await explodeUnit(deadEl);
+  if (!nextPet) return;
+  renderBattleSide(nextPet, 'battle-enemies', true);
+  const newEl = wrap.querySelector('.bunit');
+  if (newEl) await playFoeEntrance(newEl);
+}
+
+// ═══════════════ EQUIPMENT: battle procs ═══════════════
+// Returns { item, affix } for the equipped item (if any) whose attr
+// affinity matches this pet's OWN attribute, or null. A green (speed)
+// item is a speed-themed named item — it only procs on a green pet.
+function equipAffixOf(pet) {
+  if (!pet || !pet.equip) return null;
+  for (const slotId of EQUIP_SLOT_KEYS) {
+    const item = pet.equip[slotId];
+    if (item && item.attr === pet.attr) {
+      const affix = EQUIP_AFFIXES[item.attr];
+      if (affix) return { item, affix };
+    }
+  }
+  return null;
+}
+
+// Yellow (Bastion) and White (Restoration) fire once, right as a
+// fighter steps onto the field. Red/Green are checked later, on that
+// fighter's first attack — see firstStrikeProc() below.
+function applyBattleStartEquip(team) {
+  (team || []).forEach(pet => {
+    if (!pet) return;
+    pet._firstStrikeUsed = false;
+    if (pet.hp <= 0) return;
+    const info = equipAffixOf(pet);
+    if (!info) return;
+    const gi = EQUIP_GRADE_KEYS.indexOf(info.item.grade);
+    const mag = (AFFIX_MAGNITUDE[info.affix.attr] || [])[gi] || 0;
+    if (mag <= 0) return;
+    if (info.affix.attr === 'yellow') {
+      pet._shield = Math.max(pet._shield || 0, mag);
+      pet._shieldTurns = Math.max(pet._shieldTurns || 0, 99);
+      blog(`🛡️ ${pet.name} — ${info.affix.name}: เกราะ ${Math.round(mag*100)}%`, 'buff');
+    } else if (info.affix.attr === 'white') {
+      const mx = statsOf(pet).vit;
+      const heal = Math.floor(mx * mag);
+      pet.hp = Math.min(mx, pet.hp + heal);
+      blog(`➕ ${pet.name} — ${info.affix.name}: ฟื้น ${heal} HP`, 'buff');
+    }
+  });
+}
+
+// Red (Overclock) / Green (Double Tap) — consumed on the fighter's
+// first ACTUAL attack roll of the battle (basic or special), not on
+// non-damaging specials. Returns a computeDamage() proc override, or
+// null if this pet has no such affix or already used it this battle.
+function firstStrikeProc(attacker) {
+  if (!attacker || attacker._firstStrikeUsed) return null;
+  const info = equipAffixOf(attacker);
+  if (!info) return null;
+  if (info.affix.attr === 'red') {
+    attacker._firstStrikeUsed = true;
+    blog(`⚔️ ${attacker.name} — ${info.affix.name}!`, 'buff');
+    return { forceCrit: true };
+  }
+  if (info.affix.attr === 'green') {
+    attacker._firstStrikeUsed = true;
+    blog(`🌪️ ${attacker.name} — ${info.affix.name}!`, 'buff');
+    return { forceHits: 2 };
+  }
+  return null;
+}
+
+// ═══════════════ EQUIPMENT: drops, sell, dust, craft ═══════════════
+// Rolled once per newly-credited enemy kill (see checkBattleEnd).
+// Capped at the dropping enemy's own level, per spec.
+function rollEquipDrop(enemy) {
+  if (!enemy || Math.random() >= EQUIP_DROP_CHANCE) return;
+  const item = rollEquipment(Math.max(1, enemy.level || 1));
+  G.equipBag = G.equipBag || [];
+  G.equipBag.push(item);
+  const slot = EQUIP_SLOTS[item.slotId];
+  toast(`🎁 ${item.name} (Lv.${item.lvlReq})`);
+  blog(`${slot.icon} ดรอปอุปกรณ์: ${item.name}`, 'win');
+}
+
+function equipGradeMeta(item) { return EQUIP_GRADES[item.grade] || EQUIP_GRADES.script; }
+
+// Equip `item` (from G.equipBag) onto `pet`'s slot. Whatever was
+// there before goes back into the bag — nothing is ever destroyed by
+// swapping.
+function equipItem(pet, item) {
+  if (!pet || !item) return;
+  pet.equip = pet.equip || { payload:null, exploit:null, rootkit:null };
+  const prev = pet.equip[item.slotId];
+  G.equipBag = (G.equipBag || []).filter(x => x.uid !== item.uid);
+  if (prev) G.equipBag.push(prev);
+  pet.equip[item.slotId] = item;
+  save();
+}
+function unequipItem(pet, slotId) {
+  if (!pet || !pet.equip) return;
+  const item = pet.equip[slotId];
+  if (!item) return;
+  pet.equip[slotId] = null;
+  G.equipBag = G.equipBag || [];
+  G.equipBag.push(item);
+  save();
+}
+function sellEquip(item) {
+  G.equipBag = (G.equipBag || []).filter(x => x.uid !== item.uid);
+  G.bitz += sellValueOf(item);
+  save();
+  toast(`💰 ขาย ${item.name} +${sellValueOf(item)} Bitz`);
+}
+function dustEquip(item) {
+  G.equipBag = (G.equipBag || []).filter(x => x.uid !== item.uid);
+  G.dust = (G.dust || 0) + dustValueOf(item);
+  save();
+  toast(`🧬 สลาย ${item.name} +${dustValueOf(item)} Dust`);
 }
 
 // ═══════════════ LOG / TOAST / MODAL ═══════════════
@@ -2211,7 +2575,7 @@ async function runTurn() {
   const ally = activeAlly();
   const foe = activeFoe();
   if (!ally) { promptSwap(); return; }
-  if (!foe) { checkBattleEnd(); return; }
+  if (!foe) { await checkBattleEnd(); return; }
 
   const goesFirst = battle.phase === 'ally' ? ally : foe;
   const other = battle.phase === 'ally' ? foe : ally;
@@ -2221,7 +2585,7 @@ async function runTurn() {
   if (hasAilment(goesFirst, 'freeze')) {
     blog(`❄️ ${goesFirst.name} ถูกแช่แข็ง ขยับไม่ได้`, side);
     await endOfTurnTicks(goesFirst);
-    if (checkBattleEnd()) return;
+    if (await checkBattleEnd()) return;
     scheduleTurn();
     return;
   }
@@ -2261,14 +2625,14 @@ async function runTurn() {
   await endOfTurnTicks(attacker);
   await endOfTurnTicks(target);
 
-  if (checkBattleEnd()) return;
+  if (await checkBattleEnd()) return;
   scheduleTurn();
 }
 
 async function basicAttack(attacker, target, side, atkTeam, defTeam) {
   const skills = availableSkills(attacker);
   const skill = skills[Math.floor(Math.random() * skills.length)] || { n: 'Strike', pw: 40 };
-  const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false);
+  const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false, firstStrikeProc(attacker));
 
   if (res.evaded) {
     await playAttack(attacker, target, res, side);
@@ -2356,7 +2720,7 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
   }
 
   if (sp.pw > 0 && sp.hits > 0) {
-    const res = computeDamage(caster, atkTeam, target, defTeam, sp, true);
+    const res = computeDamage(caster, atkTeam, target, defTeam, sp, true, firstStrikeProc(caster));
     if (res.evaded) {
       await showBanner('MISS!', 'miss');
       blog(`${target.name} หลบ ${sp.name} ได้!`, side);
@@ -2416,7 +2780,7 @@ function expForKill(enemy, fighter) {
   return Math.round(base * mult);
 }
 
-function checkBattleEnd() {
+async function checkBattleEnd() {
   if (!battle) return true;
   const alliesAlive = battle.team.some(p => p.hp > 0);
   const enemiesAlive = battle.enemies.some(e => e.hp > 0);
@@ -2435,6 +2799,7 @@ function checkBattleEnd() {
         const wave = (battle.run && battle.run.waves[battle.wave]) || battle.enemies;
         const waveBitz = Math.round(6 * Math.max(1, e.level));
         battle.totalBitz = (battle.totalBitz || 0) + waveBitz;
+        rollEquipDrop(e);
       }
     });
   }
@@ -2442,17 +2807,34 @@ function checkBattleEnd() {
   if (!alliesAlive) { endBattle(false); return true; }
 
   if (!enemiesAlive) {
-    // Wave clear — advance to the next wave, or finish the run.
+    // Wave clear — explode the last enemy standing, then either bring
+    // in the next wave's first foe with the same entrance beat, or end
+    // the run.
+    await playFoeDeathTransition(battle.enemies.find(e => e.hp <= 0) || battle.enemies[0], null);
     if (battle.mode === 'hack' && battle.wave + 1 < battle.run.waveCount) {
       battle.wave++;
       battle.enemies = battle.run.waves[battle.wave];
       battle.phase = 'ally';
       setText('battle-wave', `คลื่น ${battle.wave + 1} / ${battle.run.waveCount}`);
-      renderBattle();
+      renderBattleSide(activeAlly(), 'battle-allies', false);
+      renderBattleSide(activeFoe(),  'battle-enemies', true);
+      const newFoeEl = document.querySelector('#battle-enemies .bunit');
+      if (newFoeEl) await playFoeEntrance(newFoeEl);
+      renderBench(); renderPotionBar(); renderSkillBar();
       return false;
     }
     endBattle(true);
     return true;
+  }
+
+  // Mid-wave: more than one enemy in this encounter — if the foe shown
+  // on screen isn't the current active foe anymore, it just died and
+  // there's another one alive to bring in.
+  const shownEl = document.querySelector('#battle-enemies .bunit');
+  const nextFoe = activeFoe();
+  if (shownEl && nextFoe && shownEl.dataset.uid !== nextFoe.uid) {
+    const deadPet = battle.enemies.find(e => e.uid === shownEl.dataset.uid);
+    await playFoeDeathTransition(deadPet, nextFoe);
   }
   return false;
 }
@@ -2955,56 +3337,57 @@ function finishRaid(win, loot) {
   renderAll();
 }
 
+function renderBattleSide(pet, elId, isEnemy) {
+  const wrap = $(elId);
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (!pet) return;
+  const unit = el('div','bunit');
+  unit.dataset.uid = pet.uid;
+  unit.dataset.side = isEnemy ? 'foe' : 'ally';
+  unit.style.setProperty('--float-delay', (Math.random() * 1.6).toFixed(2) + 's');
+  if (pet.hp <= 0) unit.classList.add('dead');
+  const badges = (pet.ailments || []).map(a => {
+    const A = AILMENTS[a.id];
+    return A ? `<span class="ail-badge" title="${A.thai} (${a.turns})">${A.icon}</span>` : '';
+  }).join('');
+  // FACING: sprites are authored facing either way. The player's side
+  // must look right, the enemy side must look left. `faces` says how the
+  // art was drawn, so we only flip when it disagrees with the side.
+  const drawnFaces = pet.faces || (pet.gif ? 'right' : 'right');
+  const wantFaces  = isEnemy ? 'left' : 'right';
+  const needFlip   = drawnFaces !== wantFaces;
+
+  // SIZE: scale by the creature's expected physical size.
+  const sc = pet.scale || 1;
+
+  unit.style.setProperty('--cr-scale', sc);
+  unit.innerHTML = `
+    ${badges ? `<div class="ail-badges">${badges}</div>` : ''}
+    <div class="bu-sprite-wrap">
+      ${creatureMarkup(pet, 'bu-sprite float' + (needFlip ? ' flip' : ''))}
+    </div>`;
+  wrap.appendChild(unit);
+
+  // Name plate lives outside the sprite so it never moves with a lunge
+  const plate = $(isEnemy ? 'plate-foe' : 'plate-ally');
+  if (plate) {
+    const mpMax = statsOf(pet).int;
+    const mpPct = Math.round((pet.mp || 0) / Math.max(1, mpMax) * 100);
+    const spdPct = Math.round(Math.min(1, pet.spdCounter || 0) * 100);
+    plate.innerHTML = `
+      <div class="np-name">${pet.name}</div>
+      <div class="np-lv">Lv.${pet.level}</div>
+      <div class="np-hp"><span class="np-heart">♥</span><b>${Math.max(0,pet.hp)}</b></div>
+      ${!isEnemy ? `<div class="np-mp">MP<span class="mp-bar"><i style="width:${mpPct}%"></i></span>${pet.mp||0}</div>` : ''}
+      ${spdPct > 0 ? `<div class="spd-pip">⚡ ${spdPct}%</div>` : ''}`;
+  }
+}
+
 function renderBattle() {
   if (!battle) return;
-  const side = (pet, elId, isEnemy) => {
-    const wrap = $(elId);
-    wrap.innerHTML = '';
-    if (!pet) return;
-    const s = statsOf(pet);
-    const unit = el('div','bunit');
-    unit.dataset.uid = pet.uid;
-    unit.dataset.side = isEnemy ? 'foe' : 'ally';
-    unit.style.setProperty('--float-delay', (Math.random() * 1.6).toFixed(2) + 's');
-    if (pet.hp <= 0) unit.classList.add('dead');
-    const badges = (pet.ailments || []).map(a => {
-      const A = AILMENTS[a.id];
-      return A ? `<span class="ail-badge" title="${A.thai} (${a.turns})">${A.icon}</span>` : '';
-    }).join('');
-    // FACING: sprites are authored facing either way. The player's side
-    // must look right, the enemy side must look left. `faces` says how the
-    // art was drawn, so we only flip when it disagrees with the side.
-    const drawnFaces = pet.faces || (pet.gif ? 'right' : 'right');
-    const wantFaces  = isEnemy ? 'left' : 'right';
-    const needFlip   = drawnFaces !== wantFaces;
-
-    // SIZE: scale by the creature's expected physical size.
-    const sc = pet.scale || 1;
-
-    unit.style.setProperty('--cr-scale', sc);
-    unit.innerHTML = `
-      ${badges ? `<div class="ail-badges">${badges}</div>` : ''}
-      <div class="bu-sprite-wrap">
-        ${creatureMarkup(pet, 'bu-sprite float' + (needFlip ? ' flip' : ''))}
-      </div>`;
-    wrap.appendChild(unit);
-
-    // Name plate lives outside the sprite so it never moves with a lunge
-    const plate = $(isEnemy ? 'plate-foe' : 'plate-ally');
-    if (plate) {
-      const mpMax = statsOf(pet).int;
-      const mpPct = Math.round((pet.mp || 0) / Math.max(1, mpMax) * 100);
-      const spdPct = Math.round(Math.min(1, pet.spdCounter || 0) * 100);
-      plate.innerHTML = `
-        <div class="np-name">${pet.name}</div>
-        <div class="np-lv">Lv.${pet.level}</div>
-        <div class="np-hp"><span class="np-heart">♥</span><b>${Math.max(0,pet.hp)}</b></div>
-        ${!isEnemy ? `<div class="np-mp">MP<span class="mp-bar"><i style="width:${mpPct}%"></i></span>${pet.mp||0}</div>` : ''}
-        ${spdPct > 0 ? `<div class="spd-pip">⚡ ${spdPct}%</div>` : ''}`;
-    }
-  };
-  side(activeAlly(), 'battle-allies', false);
-  side(activeFoe(),  'battle-enemies', true);
+  renderBattleSide(activeAlly(), 'battle-allies', false);
+  renderBattleSide(activeFoe(),  'battle-enemies', true);
   renderBench();
   renderPotionBar();
   renderSkillBar();
