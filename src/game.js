@@ -106,7 +106,6 @@ async function boot() {
     // Map retired ids onto their closest replacement so existing
     // saves keep their roster instead of being silently wiped.
     const LEGACY_SPECIES = {
-      dog:'bytehound', dog2:'armorhound', cat:'tabbyproc', cat3:'mysticproc',
       slimebyte:'blobyte', aquagolem:'clampr', flamegolem:'spikeling',
       darkbat:'echowing', stormwing:'jetsquid',
     };
@@ -318,7 +317,7 @@ function showScreen(id) {
 // Event-delegated so it covers every current and future tappable
 // element without wiring each one individually.
 function wireClickRipple() {
-  const TAPPABLE = '.btn, .qb, .zone-pin, .care-card, .loot-card, .steal-pet, ' +
+  const TAPPABLE = '.btn, .qb, .zone-pin, .care-ring-btn, .loot-card, .steal-pet, ' +
                    '.swap-card, .pet-card, .shop-card, .tree-node, .sk-btn, ' +
                    '.potion-btn, .raid-card, .map-tab, .ts-dot, .cg-close, ' +
                    '.cg-ball, .cg-laser, .cg-face, .cg-cell, .cg-food';
@@ -1486,65 +1485,109 @@ function renderCare() {
     });
   }
 
+  genCareBackground(pet);
+
   const tier = loyaltyTier(pet.loyalty);
   const prog = loyaltyProgress(pet.loyalty);
-  const head = $('care-head');
-  if (head) {
-    head.innerHTML = `
+  const center = $('care-center');
+  if (center) {
+    center.innerHTML = `
       <div class="care-portrait">${creatureMarkup(pet,'care-sprite float')}</div>
       <div class="care-info">
         <div class="care-name">${pet.name} <span class="muted">Lv.${pet.level}</span></div>
-        <div class="care-tier">${tier.icon} ${tier.name} <i>${tier.thai}</i></div>
+        <div class="care-tier">${tier.icon} ${tier.name}</div>
         <div class="loy-bar"><i style="width:${prog.pct}%"></i></div>
-        <div class="care-next">${prog.next
-          ? `อีก ${prog.need} แต้มถึง ${prog.next.name}`
-          : 'ความผูกพันสูงสุดแล้ว'}</div>
-        ${tier.perk ? `<div class="care-perk">✦ ${tier.perk}</div>` : ''}
       </div>`;
   }
 
-  // activities
+  // Activities — a free clean + owned foods + owned toys, scattered
+  // in a ring around the stage border instead of a listed grid.
   const acts = $('care-acts');
   if (!acts) return;
   acts.innerHTML = '';
-
-  // free cleaning
-  acts.appendChild(careCard({
+  const btns = [];
+  btns.push(careRingBtn({
     id: CARE_CLEAN.id, icon: CARE_CLEAN.icon, name: CARE_CLEAN.name,
     desc: CARE_CLEAN.desc, loyalty: CARE_CLEAN.loyalty, kind: 'free',
   }, pet));
-
-  // owned foods
   FOODS.forEach(f => {
     const owned = (G.foods && G.foods[f.id]) || 0;
-    acts.appendChild(careCard({ ...f, kind:'food', owned }, pet));
+    btns.push(careRingBtn({ ...f, kind:'food', owned }, pet));
   });
-  // owned toys
   TOYS.forEach(t => {
     const owned = (G.toys || []).includes(t.id);
-    acts.appendChild(careCard({ ...t, kind:'toy', owned: owned ? 1 : 0 }, pet));
+    btns.push(careRingBtn({ ...t, kind:'toy', owned: owned ? 1 : 0 }, pet));
+  });
+  btns.forEach(b => acts.appendChild(b));
+  layoutCareRing(btns);
+}
+
+// ── LIVING-AREA BACKGROUND ──
+// Purely visual — a backdrop themed to the pet's attribute, randomly
+// re-scattered every time the screen renders so it feels alive
+// rather than static wallpaper.
+const CARE_THEMES = {
+  red:    { bg:['#4a1408','#2a0d08','#1a0604'], props:['🔥','🌋','⚡','💥','🪨'] },
+  green:  { bg:['#0d3b2a','#07241d','#04120e'], props:['🍃','🌿','🌪️','✨','🍀'] },
+  yellow: { bg:['#3c2a08','#241a06','#150e03'], props:['⚙️','🔩','🛡️','🧱','🔧'] },
+  white:  { bg:['#2c2440','#1c1826','#100d18'], props:['✨','🌸','💫','➕','🕊️'] },
+};
+function genCareBackground(pet) {
+  const bg = $('care-bg');
+  if (!bg) return;
+  const theme = CARE_THEMES[pet.attr] || CARE_THEMES.red;
+  bg.style.background =
+    `radial-gradient(ellipse 90% 70% at 50% 38%, ${theme.bg[0]}, ${theme.bg[1]} 65%, ${theme.bg[2]} 100%)`;
+  bg.innerHTML = '';
+  const N = 10 + Math.floor(Math.random() * 5); // 10-14 props, fresh each render
+  for (let i = 0; i < N; i++) {
+    const prop = el('div', 'care-prop', theme.props[Math.floor(Math.random()*theme.props.length)]);
+    // Keep a clear zone around the center so props never sit on the pet.
+    let x, y;
+    do { x = 6 + Math.random()*88; y = 8 + Math.random()*84; }
+    while (Math.hypot(x-50, (y-46)*1.3) < 22);
+    prop.style.left = x + '%';
+    prop.style.top = y + '%';
+    prop.style.setProperty('--sz', (16 + Math.random()*20).toFixed(0) + 'px');
+    prop.style.setProperty('--rot', (Math.random()*40-20).toFixed(0) + 'deg');
+    prop.style.opacity = (0.35 + Math.random()*0.4).toFixed(2);
+    prop.style.animationDelay = (Math.random()*3).toFixed(2) + 's';
+    bg.appendChild(prop);
+  }
+}
+
+// Scattered (not a perfectly even ring) placement around the stage
+// border, pet centered. Base angle spacing keeps buttons from
+// overlapping; jitter on top keeps it from looking like a rigid,
+// mechanical dial.
+function layoutCareRing(buttons) {
+  const n = buttons.length;
+  if (!n) return;
+  const baseStep = 360 / n;
+  buttons.forEach((b, i) => {
+    const jitterA = (Math.random() - 0.5) * baseStep * 0.5;
+    const ang = (i * baseStep + jitterA - 90) * Math.PI / 180; // start pointing up
+    const rx = 40 + (Math.random()*6 - 3);
+    const ry = 37 + (Math.random()*6 - 3);
+    const x = clamp(50 + Math.cos(ang) * rx, 8, 92);
+    const y = clamp(50 + Math.sin(ang) * ry, 10, 90);
+    b.style.left = x + '%';
+    b.style.top  = y + '%';
   });
 }
 
-function careCard(act, pet) {
+function careRingBtn(act, pet) {
   const ready = careReady(pet.uid, act.id);
-  const card = el('div','care-card' + (ready ? '' : ' cooling'));
-  const stock = act.kind === 'food'
-    ? `<div class="cc-stock">มี ${act.owned} ชิ้น</div>`
-    : act.kind === 'toy'
-      ? `<div class="cc-stock">${act.owned ? 'เป็นเจ้าของแล้ว' : 'ยังไม่มี'}</div>`
-      : `<div class="cc-stock">ฟรี</div>`;
-  card.innerHTML = `
-    <div class="cc-icon">${act.icon}</div>
-    <div class="cc-name">${act.name}</div>
-    <div class="cc-loy">+${act.loyalty} ❤</div>
-    ${stock}
-    <div class="cc-action"></div>`;
-
-  const slot = card.querySelector('.cc-action');
-  if (act.kind !== 'free' && !act.owned) {
-    const buy = el('button','btn small', `ซื้อ ${act.cost}`);
-    buy.onclick = () => {
+  const needBuy = act.kind !== 'free' && !act.owned;
+  const btn = el('button', 'care-ring-btn' + (needBuy ? ' need-buy' : ready ? ' ready' : ' cooling'));
+  btn.title = act.name;
+  let badge;
+  if (needBuy) badge = `<span class="crb-badge buy">${act.cost}</span>`;
+  else if (!ready) badge = `<span class="crb-badge cd">${fmtCooldown(careRemaining(pet.uid, act.id))}</span>`;
+  else badge = `<span class="crb-badge loy">+${act.loyalty}</span>`;
+  btn.innerHTML = `<span class="crb-icon">${act.icon}</span>${badge}`;
+  btn.onclick = () => {
+    if (needBuy) {
       if (G.bitz < act.cost) { toast('Bitz ไม่พอ'); return; }
       G.bitz -= act.cost;
       if (act.kind === 'food') {
@@ -1555,24 +1598,19 @@ function careCard(act, pet) {
         if (!G.toys.includes(act.id)) G.toys.push(act.id);
       }
       save(); renderCare(); renderHUD();
-    };
-    slot.appendChild(buy);
-  } else if (!ready) {
-    slot.innerHTML = `<span class="cc-cd">⏳ ${fmtCooldown(careRemaining(pet.uid, act.id))}</span>`;
-  } else {
-    const use = el('button','btn small primary', act.kind==='toy' ? 'เล่น' : act.kind==='food' ? 'ให้กิน' : 'ทำ');
-    use.onclick = () => {
-      if (act.kind === 'food' && !((G.foods && G.foods[act.id]) > 0)) { toast('ไม่มีอาหารนี้'); return; }
-      openCareGame(act, pet);
-    };
-    slot.appendChild(use);
-  }
-  return card;
+      toast(`✅ ซื้อ ${act.name} แล้ว`);
+      return;
+    }
+    if (!ready) { toast(`⏳ รออีก ${fmtCooldown(careRemaining(pet.uid, act.id))}`); return; }
+    if (act.kind === 'food' && !((G.foods && G.foods[act.id]) > 0)) { toast('ไม่มีอาหารนี้'); return; }
+    openCareGame(act, pet);
+  };
+  return btn;
 }
 
 // Little burst of the activity icon as feedback
 function careFx(icon) {
-  const host = $('care-head');
+  const host = $('care-center');
   if (!host) return;
   for (let i = 0; i < 6; i++) {
     const d = el('div','care-particle', icon);
@@ -2009,16 +2047,20 @@ function renderSafeSpot() {
     };
   }
 
+  const npcScene = $('safe-npc-scene');
   const shopWrap = $('safe-potions-wrap');
   const shopBtn = $('npc-opt-shop');
-  if (shopBtn && shopWrap) {
-    shopBtn.onclick = () => {
-      const opening = shopWrap.hidden;
-      shopWrap.hidden = !opening;
-      shopBtn.textContent = opening ? 'ปิดร้านยา' : 'ซื้อ Potion';
-      if (opening) shopWrap.scrollIntoView({ behavior:'smooth', block:'nearest' });
-    };
-  }
+  const openShop = () => {
+    if (npcScene) npcScene.hidden = true;
+    if (shopWrap) shopWrap.hidden = false;
+  };
+  const closeShop = () => {
+    if (npcScene) npcScene.hidden = false;
+    if (shopWrap) shopWrap.hidden = true;
+  };
+  if (shopBtn) shopBtn.onclick = openShop;
+  const backBtn = $('safe-potions-back');
+  if (backBtn) backBtn.onclick = closeShop;
 
   // Potion shop
   const shop = $('safe-potions');

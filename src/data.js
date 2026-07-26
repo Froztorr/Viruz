@@ -263,63 +263,6 @@ export const SPECIES = {
     ],
   },
 
-  // ── Animated-sprite species ──
-  // These use real animated art from assets/sprites/<gif>/{still,attack}.webp
-  // (animated WebP — smaller and cheaper to decode than GIF; see `ext`)
-  // instead of a procedural `shape`. Both kinds coexist: the renderer
-  // checks for `gif` first and falls back to `shape`.
-  bytehound: {
-    id:'bytehound', name:'ByteHound', gif:'dog', ext:'webp',
-    rarities:['normal','rare','epic'],
-    base:{ atk:21, def:11, spd:12, mhp:72 },
-    skills:[
-      { n:'Packet Bite', pw:38, special:false },
-      { n:'Firewall Fang', pw:58, special:true, reqLv:3, desc:'เจาะไฟร์วอลล์ x1.5' },
-    ],
-    evos:[ null,
-      { label:'Guard',  mult:1.5, reqLv:20, skill:{ n:'Sentry Howl', pw:78,  special:true, reqLv:20, desc:'เห่าเตือนภัย x1.8' } },
-      { label:'Warden', mult:2.0, reqLv:50, skill:{ n:'Kernel Maul', pw:104, special:true, reqLv:50, desc:'ขย้ำเคอร์เนล x2' } },
-    ],
-  },
-  armorhound: {
-    id:'armorhound', name:'ArmorHound', gif:'dog2', ext:'webp',
-    rarities:['rare','epic','legendary'],
-    base:{ atk:20, def:17, spd:9, mhp:88 },
-    skills:[
-      { n:'Shield Rush', pw:42, special:false },
-      { n:'Plated Charge', pw:62, special:true, reqLv:3, desc:'พุ่งชนเกราะ x1.5' },
-    ],
-    evos:[ null,
-      { label:'Bulwark', mult:1.5, reqLv:20, skill:{ n:'Aegis Slam', pw:82,  special:true, reqLv:20, desc:'ทุบอีจิส x1.8' } },
-      { label:'Paladin', mult:2.0, reqLv:50, skill:{ n:'Last Stand', pw:110, special:true, reqLv:50, desc:'ยืนหยัดครั้งสุดท้าย x2' } },
-    ],
-  },
-  tabbyproc: {
-    id:'tabbyproc', name:'TabbyProc', gif:'cat', ext:'webp',
-    rarities:['normal','rare','epic'],
-    base:{ atk:22, def:10, spd:16, mhp:66 },
-    skills:[
-      { n:'Claw Script', pw:36, special:false },
-      { n:'Pounce Exploit', pw:56, special:true, reqLv:3, desc:'จู่โจมช่องโหว่ x1.5' },
-    ],
-    evos:[ null,
-      { label:'Prowler', mult:1.5, reqLv:20, skill:{ n:'Shadow Dash', pw:76,  special:true, reqLv:20, desc:'พุ่งเงา x1.8' } },
-      { label:'Stalker', mult:2.0, reqLv:50, skill:{ n:'Zero Day',    pw:100, special:true, reqLv:50, desc:'ช่องโหว่ศูนย์วัน x2' } },
-    ],
-  },
-  mysticproc: {
-    id:'mysticproc', name:'MysticProc', gif:'cat3', ext:'webp',
-    rarities:['epic','legendary','mythic'],
-    base:{ atk:24, def:13, spd:14, mhp:76 },
-    skills:[
-      { n:'Arcane Ping', pw:40, special:false },
-      { n:'Spirit Flux', pw:64, special:true, reqLv:3, desc:'กระแสวิญญาณ x1.5' },
-    ],
-    evos:[ null,
-      { label:'Oracle',    mult:1.5, reqLv:20, skill:{ n:'Nine Tails',   pw:86,  special:true, reqLv:20, desc:'เก้าหาง x1.8' } },
-      { label:'Ascendant', mult:2.0, reqLv:50, skill:{ n:'Total Recall', pw:118, special:true, reqLv:50, desc:'เรียกคืนทั้งระบบ x2' } },
-    ],
-  },
 };
 export const SPECIES_KEYS = Object.keys(SPECIES);
 
