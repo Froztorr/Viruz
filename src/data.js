@@ -726,6 +726,19 @@ function pickEquipIcon(slotId, effectId, gradeId) {
   return variants[Math.floor(Math.random() * variants.length)];
 }
 
+// For items saved before the icon system existed. Only ever ADDS an
+// icon — never touches stats/effectId/grade, so it can't change what
+// an existing item actually does. A legacy Payload item that predates
+// the effects rework (stats instead of effectId) has no valid key to
+// look up an icon for and is left exactly as it was; Exploit/Rootkit
+// items always have a grade, so those backfill cleanly every time.
+export function backfillEquipIcon(item) {
+  if (!item || item.icon) return item;
+  const icon = pickEquipIcon(item.slotId, item.effectId, item.grade);
+  if (icon) item.icon = icon;
+  return item;
+}
+
 export function rollEquipment(maxLevel, forcedGradeId) {
   maxLevel = Math.max(1, Math.floor(maxLevel || 1));
   const slotId = EQUIP_SLOT_KEYS[Math.floor(Math.random() * EQUIP_SLOT_KEYS.length)];
@@ -1004,19 +1017,12 @@ export const DEFENSE_BOTS = [
 ];
 
 // ── CITY MAP HOTSPOTS ──
-// Percentages relative to the video frame, so it scales on any screen.
-// Coordinates measured from the marked reference screenshot (same
-// 1080x1920 frame as assets/video/city2.mp4). `region` is either
-// 'pin' (small arrow-pointed spot — click the text label) or 'zone'
-// (a big circled area — click anywhere inside the whole building).
-// zoneR is the clickable radius as a % of the shorter screen dimension,
-// only used for 'zone' nodes.
 // Re-measured directly from the user's second annotation pass (colored
 // dot = click target center, colored line = where the text caption
 // should render). Every landmark here uses an explicit textX/textY
 // rather than a generic direction, because the distances aren't
-// uniform (food_shop's text sits much closer to its dot than the
-// others do).
+// uniform. Every node's clickable area is now a large invisible
+// circle (zoneR, in vmin) centred on x/y — see buildMapNodes().
 export const MAP_NODES = [
   { id:'warp_gate', label:'Warp Gate',    x:25.5, y:20.3, textX:25.3, textY:5.0,  zoneR:14,
     screen:'world', hint:'ออกผจญภัย · แผนที่โลก' },
@@ -1024,14 +1030,15 @@ export const MAP_NODES = [
     screen:'clinic', hint:'รักษา VIRUZ · ฟักไข่' },
   { id:'apartment', label:'Your Home',    x:54.9, y:49.6, textX:53.1, textY:33.7, zoneR:14,
     screen:'home',  hint:'ฐานของคุณ · ทีม · ป้องกัน' },
-  // textX kept equal to x (no horizontal move) — textY shifted up by
-  // the requested amount (~37.8px/cm against a ~800px reference
-  // viewport height): hacking 4cm≈19pp, tech/food 3cm≈14pp.
-  { id:'hacking',   label:'Hacking Center', x:22.9, y:53.4, textX:22.9, textY:34.4, zoneR:15,
+  // textX kept equal to x (no horizontal move) — textY shifted up
+  // from the landmark by (~37.8px/cm against a ~800px reference
+  // viewport height): hacking net 3cm, tech/food net 2cm (each eased
+  // back down 1cm from the first pass).
+  { id:'hacking',   label:'Hacking Center', x:22.9, y:53.4, textX:22.9, textY:39.1, zoneR:15,
     screen:'raid', hint:'เจาะบ้านผู้เล่นคนอื่น' },
-  { id:'tech_shop', label:'Tech Shop',    x:87.0, y:64.8, textX:87.0, textY:50.8, zoneR:13,
+  { id:'tech_shop', label:'Tech Shop',    x:87.0, y:64.8, textX:87.0, textY:55.5, zoneR:13,
     screen:'shop', hint:'ไอเทม · บูสเตอร์ (ในอนาคต: คราฟต์อุปกรณ์ · การ์ดอัพเกรด)' },
-  { id:'food_shop', label:'Food Shop',    x:16.0, y:83.5, textX:16.0, textY:69.5, zoneR:14,
+  { id:'food_shop', label:'Food Shop',    x:16.0, y:83.5, textX:16.0, textY:74.2, zoneR:14,
     screen:'care', hint:'ดูแล VIRUZ (ในอนาคต: ซื้อวัตถุดิบคราฟต์อาหารเพิ่มสเตตัส/ความผูกพัน)' },
 ];
 

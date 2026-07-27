@@ -13,7 +13,7 @@ import {
   SKILL_TREES, SPECIALS, AILMENTS, STAT_KEYS, STAT_META, treeFor,
   EQUIP_SLOTS, EQUIP_SLOT_KEYS, EQUIP_GRADES, EQUIP_GRADE_KEYS,
   PAYLOAD_EFFECTS, PAYLOAD_EFFECT_KEYS, EQUIP_DROP_CHANCE, CRAFT_RECIPES,
-  rollEquipment, craftEquipment, dustValueOf, sellValueOf } from './data.js';
+  rollEquipment, craftEquipment, dustValueOf, sellValueOf, backfillEquipIcon } from './data.js';
 import {
   createPet, rollEgg, statsOf, combatStats, powerOf, teamPower, spawnAntiviruz,
   synergyOf, supportOf, computeDamage, turnOrder, grantExp,
@@ -138,6 +138,7 @@ async function boot() {
       }
       if (typeof p.mp !== 'number') p.mp = 0;
       p.equip = p.equip || { payload:null, exploit:null, rootkit:null };
+      EQUIP_SLOT_KEYS.forEach(sk => { if (p.equip[sk]) backfillEquipIcon(p.equip[sk]); });
       p.shape = sp.shape || null;
       p.gif   = sp.gif   || null;
       if (!p.name) p.name = sp.name;
@@ -161,6 +162,7 @@ async function boot() {
     G.care    = G.care    || {};
     G.feed    = G.feed    || [];
     G.equipBag = G.equipBag || [];
+    G.equipBag.forEach(backfillEquipIcon);
     G.dust     = G.dust     || 0;
     G.teamIds    = (G.teamIds || []).filter(id => ids.has(id));
     G.defenseIds = (G.defenseIds || []).filter(id => ids.has(id));
@@ -170,6 +172,7 @@ async function boot() {
       ? G.lastScreen : 'map';
     showScreen(resumeScreen);
     renderAll();
+    save();
     log('โหลดข้อมูลสำเร็จ', 'sys');
   } else {
     showScreen('intro');
