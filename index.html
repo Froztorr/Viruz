@@ -553,12 +553,9 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
    The old #hud header bar and #quickbar are now hidden EVERYWHERE —
    replaced by the persistent #topbar (time/activity left, name/bitz/
    pet-count right) that shows on every screen, plus the global drawer
-   knob for navigation. #teamstrip still hides on intro/battle/map
-   since those have their own dedicated fighter/creature displays. */
+   knob for navigation. Team status now lives inside the drawer
+   (see .drawer-team) instead of a dedicated top strip. */
 #hud, #quickbar{display:none !important}
-#app[data-screen="intro"] #teamstrip,
-#app[data-screen="battle"] #teamstrip,
-#app[data-screen="map"] #teamstrip{display:none}
 #quickbar{position:sticky;top:41px;z-index:59;gap:2px;
   padding:4px 6px;background:rgba(5,6,15,.92);border-bottom:1px solid var(--line);
   backdrop-filter:blur(8px);overflow-x:auto}
@@ -573,17 +570,12 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .qb.on span{color:var(--cyan)}
 
 /* ── PERSISTENT TEAM STRIP ── */
-#teamstrip{position:relative;display:flex;align-items:center;gap:5px;
-  padding:8px;background:linear-gradient(180deg,rgba(38,24,72,.9),rgba(20,13,42,.92));
-  border-bottom:2px solid rgba(0,0,0,.5);
-  box-shadow:0 2px 0 rgba(165,107,255,.18),0 6px 16px rgba(0,0,0,.4)}
-.ts-arrow{flex:0 0 auto;width:26px;height:64px;font-size:20px;
-  background:var(--panel2);border:1px solid var(--line);color:var(--muted);
-  border-radius:5px}
-.ts-arrow:hover{border-color:var(--cyan);color:var(--cyan)}
-#ts-viewport{flex:1;overflow:hidden}
-#ts-track{display:flex;transition:transform .25s ease}
-.ts-cell{flex:0 0 100%;display:flex;gap:10px;align-items:center;
+/* Team status now lives in the drawer as a plain vertical list (see
+   renderDrawerTeam) instead of a persistent swipeable top strip —
+   the per-pet row styling (.ts-*) is unchanged, just stacked instead
+   of paged one-at-a-time. */
+.drawer-team{display:flex;flex-direction:column;gap:10px;margin-bottom:4px}
+.ts-cell{display:flex;gap:10px;align-items:center;
   border-left:4px solid var(--attr);padding-left:9px;
   filter:drop-shadow(0 0 8px color-mix(in srgb,var(--attr) 40%,transparent))}
 .ts-sprite{flex:0 0 auto}
@@ -602,10 +594,6 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .ts-bar.xp i{background:linear-gradient(180deg,#ffe27a,#e8a91c);color:#ffcf3f}
 .ts-val{font-size:13px;color:var(--muted);width:56px;text-align:right}
 .ts-stats{font-size:16px;color:var(--cyan);margin-top:2px}
-#ts-dots{position:absolute;bottom:2px;left:50%;transform:translateX(-50%);
-  display:flex;gap:4px}
-.ts-dot{width:6px;height:6px;border-radius:50%;background:var(--line2);cursor:pointer}
-.ts-dot.on{background:var(--cyan)}
 
 
 /* ── SCREENS ── */
@@ -785,44 +773,23 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
    labels already used. */
 .map-node{position:absolute;transform:translate(-50%,-50%);background:none;border:none}
 
-.map-node.pin{width:16px;height:16px}
-.node-pin-dot{
-  position:absolute;inset:0;border-radius:50%;
-  background:var(--cyan);box-shadow:0 0 0 4px rgba(55,230,255,.2),0 0 14px var(--cyan);
-  animation:pulse 2s infinite;
-}
-@keyframes pulse{
-  0%,100%{box-shadow:0 0 0 4px rgba(55,230,255,.2),0 0 14px var(--cyan)}
-  50%{box-shadow:0 0 0 8px rgba(55,230,255,0),0 0 20px var(--cyan)}
-}
 .map-node-label{
   position:absolute;transform:translate(-50%,-50%);z-index:3;
   font-family:var(--pixel);font-size:16px;letter-spacing:.4px;
   color:#fff;white-space:nowrap;pointer-events:auto;cursor:pointer;
   text-shadow:0 0 6px rgba(0,0,0,.95),0 0 12px rgba(0,0,0,.9),0 2px 3px rgba(0,0,0,.8);
 }
-.map-node.pin:hover .node-text{border-color:var(--cyan);
-  box-shadow:0 0 14px rgba(55,230,255,.35)}
 
-/* Zone nodes: the click target IS the whole circled building — a
-   transparent tap area sized to match the building, with just the
-   label text floating at its centre. Nothing boxy drawn over the art. */
+/* Every node's click target IS the whole invisible circle, sized to
+   the landmark (see zoneR in MAP_NODES) — a transparent tap area, no
+   dot or box drawn over the art. Labels are separate .map-node-label
+   elements positioned independently via textX/textY. */
 .map-node.zone{
   border-radius:50%;display:flex;align-items:center;justify-content:center;
   transition:.15s;
 }
 .map-node.zone:hover{background:rgba(55,230,255,.08)}
 .map-node.zone:active{background:rgba(55,230,255,.16)}
-/* Zone labels sit just OUTSIDE the bottom edge of the tap circle —
-   readable, but not stacked over the building's own signage the way a
-   centred label would be. */
-.map-node.zone .node-text{
-  position:absolute;left:50%;bottom:-22px;transform:translateX(-50%);
-  font-family:var(--pixel);font-size:14px;letter-spacing:.4px;line-height:1.3;
-  color:#fff;white-space:nowrap;pointer-events:none;
-  text-shadow:0 0 6px rgba(0,0,0,.9),0 0 14px rgba(0,0,0,.9),0 2px 0 rgba(0,0,0,.7);
-  padding:0 6px;text-align:center;
-}
 #map-actions{display:flex;gap:8px;flex-wrap:wrap;padding:12px}
 #map-log{margin:0 12px 12px}
 
@@ -905,6 +872,7 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 }
 .shop-card:hover{border-color:var(--magenta);box-shadow:0 0 16px rgba(255,79,216,.2)}
 .sc-icon{font-size:30px;margin-bottom:5px}
+.sc-icon .eq-icon-img{width:36px;height:36px;display:block;margin:0 auto}
 .sc-name{font-family:var(--pixel);font-size:18px;margin-bottom:5px}
 .sc-desc{font-size:17px;color:var(--muted);line-height:1.45;margin-bottom:6px;min-height:34px}
 .sc-cost{font-size:13px;color:var(--gold);margin-bottom:7px}
@@ -968,24 +936,53 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
   0%,100%{transform:translate(-50%,-50%) rotate(var(--rot,0deg)) translateY(0)}
   50%{transform:translate(-50%,-50%) rotate(var(--rot,0deg)) translateY(-6px)}}
 
-.care-center{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);
-  z-index:2;text-align:center;pointer-events:none}
-.care-sprite{width:128px;height:128px;display:block;margin:0 auto;
-  filter:drop-shadow(0 14px 18px rgba(0,0,0,.5))}
-.care-info{margin-top:6px;padding:8px 14px;background:rgba(10,7,20,.72);
-  border:1px solid var(--line2);backdrop-filter:blur(3px);
-  display:inline-block;min-width:150px}
+/* Info panel stays put near the top of the stage — it must never
+   wander with the pet, or the loyalty bar would be unreadable. */
+.care-info-fixed{position:absolute;left:50%;top:5%;transform:translateX(-50%);
+  z-index:2;text-align:center;pointer-events:none;
+  padding:8px 14px;background:rgba(10,7,20,.72);
+  border:1px solid var(--line2);backdrop-filter:blur(3px);min-width:150px}
 .care-name{font-size:15px;margin-bottom:2px}
 .care-tier{font-size:13px;color:var(--muted);margin-bottom:5px}
 .loy-bar{height:7px;background:rgba(0,0,0,.5);border:1px solid var(--line);overflow:hidden}
 .loy-bar i{display:block;height:100%;
   background:linear-gradient(90deg,#ff6a8a,#ff2d55);transition:width .4s}
+
+/* The pet itself — positioned via inline left/top% by the wander
+   state machine (startCareWander/wanderStep in JS), so it's never
+   fully static the way a plain float-in-place bob would be. */
+.care-pet-wander{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);
+  z-index:2;text-align:center;pointer-events:none;
+  transition:left 1.4s ease-in-out,top 1.4s ease-in-out}
+.care-pet-wander.face-l{transform:translate(-50%,-50%) scaleX(-1)}
+.care-sprite{width:128px;height:128px;display:block;margin:0 auto;
+  filter:drop-shadow(0 14px 18px rgba(0,0,0,.5))}
+/* A little bob while walking so it doesn't glide like a ghost. */
+.care-pet-wander.wandering .care-sprite{animation:careWalkBob .4s ease-in-out infinite}
+@keyframes careWalkBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+/* Bigger celebratory hop when a care action finishes. */
+.care-pet-wander.happy .care-sprite{animation:careHappyHop .7s ease-out}
+@keyframes careHappyHop{
+  0%{transform:translateY(0) rotate(0deg)}
+  25%{transform:translateY(-22px) rotate(-8deg)}
+  50%{transform:translateY(0) rotate(6deg)}
+  75%{transform:translateY(-10px) rotate(-4deg)}
+  100%{transform:translateY(0) rotate(0deg)}}
+
 .care-particle{position:absolute;bottom:10px;left:50%;font-size:20px;pointer-events:none;
   animation:careFloat 1.2s ease-out forwards}
 @keyframes careFloat{
   0%{opacity:0;transform:translateY(0) scale(.5)}
   25%{opacity:1;transform:translateY(-18px) scale(1.15)}
   100%{opacity:0;transform:translateY(-70px) scale(.9)}}
+
+/* Ambient mess prop — no stat, no failure state, just a visual nag
+   that the existing Clean minigame sweeps away (see clearWaste()). */
+.care-waste{position:absolute;transform:translate(-50%,-50%);font-size:22px;
+  z-index:1;filter:saturate(1.4) hue-rotate(60deg);
+  animation:wasteGlitch 1.8s ease-in-out infinite}
+.care-waste.gone{opacity:0;transition:opacity .25s}
+@keyframes wasteGlitch{0%,100%{opacity:.85}50%{opacity:.55}}
 
 /* Ring of small circular activity buttons scattered around the
    stage's border, positioned via inline left/top% from JS. */
@@ -1000,12 +997,48 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 .care-ring-btn.ready:active{transform:translate(-50%,-50%) scale(.9)}
 .care-ring-btn.cooling{opacity:.5}
 .care-ring-btn.need-buy{border-color:var(--gold)}
+/* Pulses while the ambient mess prop is present — the "alert" from
+   the spec, without a separate always-visible icon. */
+.care-ring-btn.needs-clean{animation:needsCleanPulse 1s ease-in-out infinite}
+@keyframes needsCleanPulse{
+  0%,100%{box-shadow:0 0 8px rgba(120,255,180,.3)}
+  50%{box-shadow:0 0 18px 4px rgba(120,255,180,.65)}}
 .crb-badge{position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);
   font-size:11px;padding:1px 6px;white-space:nowrap;
   background:rgba(10,7,20,.92);border:1px solid var(--line2)}
 .crb-badge.loy{color:#ff6a8a}
 .crb-badge.buy{color:var(--gold)}
 .crb-badge.cd{color:var(--muted)}
+
+/* ── PET DETAIL OVERLAY ──
+   Below the generic modal(200) so the equip-item picker (which uses
+   the generic modal) still layers correctly on top of this. Above
+   everything else (drawer, header, care minigame at 220... actually
+   keep this one BELOW care-game too, they never show at once). */
+.pet-detail{position:fixed;inset:0;z-index:150;display:none;flex-direction:column;
+  background:linear-gradient(180deg,#0a0716 0%,#120b26 55%,#0a0716 100%);
+  padding:calc(10px + env(safe-area-inset-top)) 14px calc(12px + env(safe-area-inset-bottom))}
+.pet-detail.open{display:flex}
+body.pet-detail-open{overflow:hidden}
+
+.pd-head{display:flex;align-items:center;justify-content:space-between;
+  gap:10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+#pd-title{font-family:var(--pixel);font-size:18px;color:var(--txt)}
+
+.pd-tabs{display:flex;gap:6px;margin:8px 0}
+.pd-tab{flex:1;padding:7px 4px;font-size:14px;text-align:center;
+  background:var(--panel2);border:1px solid var(--line2);color:var(--muted)}
+.pd-tab.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 10px rgba(61,240,255,.3)}
+
+.pd-viewport{flex:1;overflow:hidden}
+.pd-track{display:flex;height:100%;transition:transform .25s ease}
+.pd-page{flex:0 0 100%;overflow-y:auto;padding:4px 2px;-webkit-overflow-scrolling:touch}
+
+.pd-team-btn{margin-top:14px}
+.pd-team-btn.danger{border-color:var(--red);color:var(--red)}
+
+.pd-tree-title{font-family:var(--pixel);font-size:16px;margin-bottom:8px;text-align:center}
+.pd-tree-title i{font-style:normal;font-size:13px;margin-left:4px}
 
 /* ── CARE MINIGAME OVERLAY ──
    A fixed full-viewport layer opened over the care screen when an
@@ -1030,7 +1063,7 @@ body.care-game-open{overflow:hidden}
   margin-top:6px;touch-action:none;user-select:none;-webkit-user-select:none}
 
 .cg-pet{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);
-  z-index:2;pointer-events:none;text-align:center;transition:top .2s}
+  z-index:2;pointer-events:none;text-align:center;transition:top .2s,left .65s ease-in-out}
 .cg-pet-sprite{width:120px;height:120px;display:block;
   filter:drop-shadow(0 10px 16px rgba(0,0,0,.55))}
 .cg-pet.chomp .cg-pet-sprite{animation:cgChomp .3s ease-out}
@@ -1647,6 +1680,12 @@ img.bu-sprite.is-gif{--raster-mult:2}
   display:flex;align-items:center;justify-content:center;
   background:var(--panel2);border:1px solid var(--line)}
 .eq-slot-icon.empty{opacity:.4}
+.eq-icon-img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;
+  filter:drop-shadow(0 0 3px var(--eq-glow,transparent)) drop-shadow(0 0 6px var(--eq-glow,transparent))}
+.eq-icon-img.grade-radiant{animation:gradeRadiant 1.8s ease-in-out infinite}
+@keyframes gradeRadiant{
+  0%,100%{filter:drop-shadow(0 0 4px var(--eq-glow,transparent)) drop-shadow(0 0 8px var(--eq-glow,transparent))}
+  50%{filter:drop-shadow(0 0 9px var(--eq-glow,transparent)) drop-shadow(0 0 18px var(--eq-glow,transparent))}}
 .eq-slot-info{flex:1;min-width:0}
 .eq-slot-name{font-family:var(--pixel);font-size:16px}
 .eq-slot-name.muted{color:var(--muted)}
@@ -1755,14 +1794,6 @@ img.bu-sprite.is-gif{--raster-mult:2}
     <button class="qb" data-goto="shop"  title="ร้านค้า">🛒<span>ร้าน</span></button>
   </nav>
 
-  <!-- Persistent active-team strip: one pet, swipe/scroll for the others -->
-  <div id="teamstrip">
-    <button class="ts-arrow" id="ts-prev">‹</button>
-    <div id="ts-viewport"><div id="ts-track"></div></div>
-    <button class="ts-arrow" id="ts-next">›</button>
-    <div id="ts-dots"></div>
-  </div>
-
   <!-- ═══ INTRO ═══ -->
   <section id="screen-intro" class="screen on">
     <div class="intro-title">VIRUZ PET</div>
@@ -1822,7 +1853,7 @@ img.bu-sprite.is-gif{--raster-mult:2}
     <div class="screen-head">
       <button class="back-btn" data-goto="map">← กลับ</button>
       <h2>🏠 ฐานของคุณ</h2>
-      <button class="btn small" data-goto="tree" style="margin-left:auto">🌳 ผังสกิล</button>
+      <button class="btn small" id="home-tree-btn" style="margin-left:auto">🌳 ผังสกิล</button>
       <button class="btn small primary" data-goto="care">💗 ดูแล</button>
     </div>
 
@@ -1898,23 +1929,6 @@ img.bu-sprite.is-gif{--raster-mult:2}
   </section>
 
   <!-- ═══ SKILL TREE ═══ -->
-  <section id="screen-tree" class="screen">
-    <div class="screen-head">
-      <button class="back-btn" data-goto="home">← กลับ</button>
-      <h2>🌳 <span id="tree-name">—</span></h2>
-      <span class="world-sub" id="tree-thai"></span>
-    </div>
-    <div id="tree-picker"></div>
-    <div class="tree-bar">
-      <span class="tree-pts">แต้มเติบโต: <b id="tree-pts">0</b></span>
-      <div id="tree-stats" class="tree-stats"></div>
-    </div>
-    <div id="tree-canvas"></div>
-    <p class="muted" style="margin-top:10px;font-size:11px">
-      แตะโหนดเพื่อลงแต้ม · ต้องปลดโหนดก่อนหน้าให้เต็มก่อน · ✦ = สกิลพิเศษ
-    </p>
-  </section>
-
   <!-- ═══ CARE / TAMAGOTCHI ═══ -->
   <section id="screen-care" class="screen">
     <div class="screen-head">
@@ -1930,7 +1944,8 @@ img.bu-sprite.is-gif{--raster-mult:2}
          edges (see layoutCareRing) instead of a listed grid. -->
     <div id="care-stage" class="care-stage">
       <div id="care-bg" class="care-bg"></div>
-      <div id="care-center" class="care-center"></div>
+      <div id="care-info" class="care-info-fixed"></div>
+      <div id="care-pet" class="care-pet-wander"></div>
       <div id="care-acts" class="care-ring"></div>
     </div>
   </section>
@@ -2055,6 +2070,41 @@ img.bu-sprite.is-gif{--raster-mult:2}
   </div>
 </div>
 
+<!-- ═══ PET DETAIL WINDOW ═══
+     Opened by openPetDetail() when a pet card is tapped on ฐานของคุณ.
+     Three horizontally-swipeable pages — Stats / Equipment / Skill
+     Tree — replacing the old separate status modal, equip modal, and
+     standalone tree screen. Add/remove-from-team now lives as a big
+     button on the Stats page instead of firing straight off the tap. -->
+<div id="pet-detail" class="pet-detail">
+  <div class="pd-head">
+    <span id="pd-title">—</span>
+    <button id="pd-close" class="cg-close" aria-label="ปิด">✕</button>
+  </div>
+  <div class="pd-tabs">
+    <button class="pd-tab on" data-page="0">สถานะ</button>
+    <button class="pd-tab" data-page="1">อุปกรณ์</button>
+    <button class="pd-tab" data-page="2">ผังสกิล</button>
+  </div>
+  <div id="pd-viewport" class="pd-viewport">
+    <div id="pd-track" class="pd-track">
+      <div class="pd-page" id="pd-page-stats"></div>
+      <div class="pd-page" id="pd-page-equip"></div>
+      <div class="pd-page" id="pd-page-tree">
+        <div class="pd-tree-title">🌳 <span id="tree-name">—</span> <i id="tree-thai" class="muted"></i></div>
+        <div class="tree-bar">
+          <span class="tree-pts">แต้มเติบโต: <b id="tree-pts">0</b></span>
+          <div id="tree-stats" class="tree-stats"></div>
+        </div>
+        <div id="tree-canvas"></div>
+        <p class="muted" style="margin-top:10px;font-size:11px">
+          แตะโหนดเพื่อลงแต้ม · ต้องปลดโหนดก่อนหน้าให้เต็มก่อน · ✦ = สกิลพิเศษ
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ CARE MINIGAME OVERLAY ═══
      Lives OUTSIDE #screen-care (sibling of #app) so it always covers
      the full viewport regardless of which screen is underneath.
@@ -2102,6 +2152,8 @@ img.bu-sprite.is-gif{--raster-mult:2}
         <span class="dt-icon">🎒</span><span class="dt-text">Inventory</span>
       </button>
     </div>
+    <div class="drawer-section-title">// ทีมออกรบ //</div>
+    <div id="drawer-team" class="drawer-team"></div>
     <div class="drawer-section-title">// PROCESS //</div>
     <div id="process-feed" class="drawer-feed"></div>
   </div>

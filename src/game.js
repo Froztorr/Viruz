@@ -11,8 +11,8 @@ import {
   FOODS, TOYS, CARE_CLEAN, CARE_COOLDOWN_MS, LOYALTY_PER_WIN,
   buildLootMenu, chanceToEnemyMult, RAID_LOSS_BITZ,
   SKILL_TREES, SPECIALS, AILMENTS, STAT_KEYS, STAT_META, treeFor,
-  EQUIP_SLOTS, EQUIP_SLOT_KEYS, EQUIP_GRADES, EQUIP_GRADE_KEYS, EQUIP_AFFIXES,
-  AFFIX_MAGNITUDE, EQUIP_DROP_CHANCE, CRAFT_RECIPES,
+  EQUIP_SLOTS, EQUIP_SLOT_KEYS, EQUIP_GRADES, EQUIP_GRADE_KEYS,
+  PAYLOAD_EFFECTS, PAYLOAD_EFFECT_KEYS, EQUIP_DROP_CHANCE, CRAFT_RECIPES,
   rollEquipment, craftEquipment, dustValueOf, sellValueOf } from './data.js';
 import {
   createPet, rollEgg, statsOf, combatStats, powerOf, teamPower, spawnAntiviruz,
@@ -61,6 +61,7 @@ let G = {
   feed: [],         // persistent PROCESS activity records
   equipBag: [],     // owned, unequipped gear
   dust: 0,          // crafting currency from disenchanting gear
+  careWaste: false, // ambient mess flag on the care screen's living area
 };
 
 let battle = null;   // active battle state
@@ -165,7 +166,7 @@ async function boot() {
     G.defenseIds = (G.defenseIds || []).filter(id => ids.has(id));
     if (!G.teamIds.length && G.roster.length) G.teamIds = [G.roster[0].uid];
     // Resume where the player actually left off, not always the city.
-    const resumeScreen = G.lastScreen && ['map','world','safe','home','clinic','shop','care','raid','tree'].includes(G.lastScreen)
+    const resumeScreen = G.lastScreen && ['map','world','safe','home','clinic','shop','care','raid'].includes(G.lastScreen)
       ? G.lastScreen : 'map';
     showScreen(resumeScreen);
     renderAll();
@@ -177,6 +178,7 @@ async function boot() {
   wireGlobalUI();
   wireDrawer();
   wireCareGame();
+  wirePetDetail();
   startTopBarClock();
   wireClickRipple();
 }
@@ -227,7 +229,7 @@ async function claimStarter() {
 }
 
 // ═══════════════ SCREENS ═══════════════
-const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care','hack','steal','tree','inventory'];
+const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care','hack','steal','inventory'];
 
 // Rough navigation depth so a transition can tell "going deeper" from
 // "coming back" and slide the right direction. Screens not listed count
@@ -247,6 +249,8 @@ let screenTransitioning = false;
 
 function showScreen(id) {
   closeCareGame();
+  closePetDetail();
+  if (id !== 'care') stopCareWander();
   if (screenTransitioning || id === currentScreenId) {
     // Still allow a hard switch if nothing is currently shown (boot).
     if (currentScreenId != null) return;
@@ -283,7 +287,7 @@ function showScreen(id) {
     // restores here instead of always dropping the player back at the
     // city map, so warping to Hell and closing the app keeps you in
     // Hell until you travel back yourself.
-    const PERSISTABLE = ['map','world','safe','home','clinic','shop','care','raid','tree'];
+    const PERSISTABLE = ['map','world','safe','home','clinic','shop','care','raid'];
     if (PERSISTABLE.includes(id)) { G.lastScreen = id; save(); }
     const vid = $('bg-video');
     if (vid) { if (id === 'map') vid.play().catch(()=>{}); else vid.pause(); }
@@ -294,7 +298,6 @@ function showScreen(id) {
     if (id === 'world')  renderWorld();
     if (id === 'safe')   renderSafeSpot();
     if (id === 'care')   renderCare();
-    if (id === 'tree')   renderTree();
     if (id === 'inventory') renderInventory();
     if (id === 'raid')   renderRaidList();
     if (id === 'map')    renderFeed();
@@ -319,7 +322,7 @@ function showScreen(id) {
 function wireClickRipple() {
   const TAPPABLE = '.btn, .qb, .zone-pin, .care-ring-btn, .loot-card, .steal-pet, ' +
                    '.swap-card, .pet-card, .shop-card, .tree-node, .sk-btn, ' +
-                   '.potion-btn, .raid-card, .map-tab, .ts-dot, .cg-close, ' +
+                   '.potion-btn, .raid-card, .map-tab, .cg-close, ' +
                    '.cg-ball, .cg-laser, .cg-face, .cg-cell, .cg-food';
   document.addEventListener('pointerdown', e => {
     const target = e.target.closest(TAPPABLE);
@@ -351,6 +354,11 @@ function wireDrawer() {
   if (knob) knob.onclick = toggleDrawer;
   if (backdrop) backdrop.onclick = closeDrawer;
   if (closeBtn) closeBtn.onclick = closeDrawer;
+
+  // Same convention for the generic modal — click the dark backdrop
+  // (not the content box itself) to dismiss it.
+  const modalBack = $('modal-back');
+  if (modalBack) modalBack.onclick = (e) => { if (e.target === modalBack) closeModal(); };
 }
 
 function wireGlobalUI() {
@@ -359,22 +367,6 @@ function wireGlobalUI() {
   });
   $('start-btn').onclick = claimStarter;
 
-  // team strip nav
-  const tp = $('ts-prev'), tn = $('ts-next');
-  if (tp) tp.onclick = () => stripStep(-1);
-  if (tn) tn.onclick = () => stripStep(1);
-  // swipe on touch
-  const vp = $('ts-viewport');
-  if (vp) {
-    let x0 = null;
-    vp.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, {passive:true});
-    vp.addEventListener('touchend', e => {
-      if (x0 == null) return;
-      const dx = e.changedTouches[0].clientX - x0;
-      if (Math.abs(dx) > 40) stripStep(dx < 0 ? 1 : -1);
-      x0 = null;
-    }, {passive:true});
-  }
   document.querySelectorAll('.speed-btn').forEach(b => {
     b.onclick = () => {
       battleSpeed = Number(b.dataset.speed);
@@ -389,33 +381,26 @@ function buildMapNodes() {
   const layer = $('map-nodes');
   layer.innerHTML = '';
   MAP_NODES.forEach(n => {
-    const isZone = n.region === 'zone';
-    const node = el('button', 'map-node' + (isZone ? ' zone' : ' pin'));
+    // Every node's clickable area is now the invisible circle itself
+    // (sized in vmin so it scales with the video), centred on the
+    // measured landmark position — clicking anywhere within it works,
+    // not just a small dot. The label is a separately positioned
+    // element (textX/textY), independent of the circle's size.
+    const node = el('button', 'map-node zone');
     node.style.left = n.x + '%';
     node.style.top  = n.y + '%';
-    if (isZone) {
-      // A zone node's clickable area is the circle itself (sized in
-      // vmin so it scales with the video), positioned centred on the
-      // measured region — clicking ANYWHERE on the building works,
-      // not just a small pin.
-      node.style.width  = (n.zoneR * 2) + 'vmin';
-      node.style.height = (n.zoneR * 2) + 'vmin';
-      node.innerHTML = `<span class="node-text">${n.label}</span>`;
-    } else {
-      // Pin nodes: a precise dot at the measured landmark position.
-      node.innerHTML = `<span class="node-pin-dot"></span>`;
-    }
+    const r = n.zoneR || 14;
+    node.style.width  = (r * 2) + 'vmin';
+    node.style.height = (r * 2) + 'vmin';
     node.title = n.hint;
     node.onclick = () => showScreen(n.screen);
     layer.appendChild(node);
 
-    if (!isZone && n.textX != null) {
-      const label = el('div', 'map-node-label', n.label);
-      label.style.left = n.textX + '%';
-      label.style.top  = n.textY + '%';
-      label.onclick = () => showScreen(n.screen);
-      layer.appendChild(label);
-    }
+    const label = el('div', 'map-node-label', n.label);
+    label.style.left = (n.textX != null ? n.textX : n.x) + '%';
+    label.style.top  = (n.textY != null ? n.textY : n.y) + '%';
+    label.onclick = () => showScreen(n.screen);
+    layer.appendChild(label);
   });
 }
 
@@ -430,7 +415,7 @@ function renderHUD() {
   setText('hud-bitz', G.bitz.toLocaleString());
   setText('hud-name', G.name);
   setText('hud-power', teamPower(activeTeam()).toLocaleString());
-  renderTeamStrip();
+  renderDrawerTeam();
   syncQuickbar();
   renderTopBar();
 }
@@ -496,17 +481,15 @@ function syncQuickbar() {
 // ── PERSISTENT TEAM STRIP ──
 // Shows one active-team pet at a time; arrows/dots/scroll cycle through
 // the (up to 3) team members. Lives under the HUD on every main screen.
-let stripIdx = 0;
-function renderTeamStrip() {
-  const track = $('ts-track');
-  const strip = $('teamstrip');
-  if (!track || !strip) return;
+function renderDrawerTeam() {
+  const list = $('drawer-team');
+  if (!list) return;
   const team = activeTeam();
-  if (!team.length) { strip.style.display = 'none'; return; }
-  strip.style.display = '';
-  stripIdx = Math.max(0, Math.min(stripIdx, team.length - 1));
-
-  track.innerHTML = '';
+  list.innerHTML = '';
+  if (!team.length) {
+    list.innerHTML = `<div class="muted" style="padding:8px">ยังไม่มีทีมออกรบ</div>`;
+    return;
+  }
   team.forEach(pet => {
     const s = statsOf(pet);
     const tier = loyaltyTier(pet.loyalty);
@@ -532,26 +515,8 @@ function renderTeamStrip() {
         </div>
         <div class="ts-stats">⚔${s.atk} 🛡${s.def} ⚡${s.spd}</div>
       </div>`;
-    track.appendChild(cell);
+    list.appendChild(cell);
   });
-  track.style.transform = `translateX(-${stripIdx * 100}%)`;
-
-  const dots = $('ts-dots');
-  if (dots) {
-    dots.innerHTML = '';
-    team.forEach((_, i) => {
-      const d = el('span','ts-dot' + (i === stripIdx ? ' on' : ''));
-      d.onclick = () => { stripIdx = i; renderTeamStrip(); };
-      dots.appendChild(d);
-    });
-  }
-}
-
-function stripStep(dir) {
-  const n = activeTeam().length;
-  if (!n) return;
-  stripIdx = (stripIdx + dir + n) % n;
-  renderTeamStrip();
 }
 
 function petCard(pet, opts = {}) {
@@ -601,20 +566,80 @@ function petCard(pet, opts = {}) {
   // of whatever the card's main click does (team swap, defense pick).
   card.querySelector('.pc-info').onclick = (ev) => {
     ev.stopPropagation();
-    openPetStatus(pet);
+    openPetDetail(pet, 0);
   };
   card.querySelector('.pc-equip').onclick = (ev) => {
     ev.stopPropagation();
-    openPetEquip(pet);
+    openPetDetail(pet, 1);
   };
   return card;
 }
 
-// ── PET STATUS FLOATING WINDOW ──
-// Full stat readout + every unlocked special with an auto-cast toggle.
-// Tapping a skill's name opens the same explainer window the skill
-// tree uses, so the description is identical everywhere it's shown.
-function openPetStatus(pet) {
+// ── PET DETAIL WINDOW (Stats / Equipment / Skill Tree) ──
+// Opened by tapping a pet card on ฐานของคุณ. Three horizontally
+// swipeable pages sharing one pet for the whole session — no in-modal
+// pet switcher, since the card tap already picked which pet. Replaces
+// the old separate status modal, equip modal, and tree screen.
+let PD = null; // { pet } while open, else null
+let pdPage = 0;
+
+function openPetDetail(pet, startPage) {
+  PD = { pet };
+  const overlay = $('pet-detail');
+  if (!overlay) return;
+  overlay.classList.add('open');
+  document.body.classList.add('pet-detail-open');
+  setText('pd-title', pet.name);
+  renderPdStats();
+  renderPdEquip();
+  treePetId = pet.uid;
+  renderTree();
+  goPdPage(startPage || 0, true);
+}
+function closePetDetail() {
+  const overlay = $('pet-detail');
+  if (overlay) overlay.classList.remove('open');
+  document.body.classList.remove('pet-detail-open');
+  PD = null;
+}
+function goPdPage(i, instant) {
+  const track = $('pd-track');
+  if (!track) return;
+  pdPage = Math.max(0, Math.min(2, i));
+  if (instant) track.style.transition = 'none';
+  track.style.transform = `translateX(-${pdPage * 100}%)`;
+  if (instant) { void track.offsetWidth; track.style.transition = ''; }
+  document.querySelectorAll('.pd-tab').forEach((t, idx) => t.classList.toggle('on', idx === pdPage));
+}
+function wirePetDetail() {
+  const close = $('pd-close');
+  if (close) close.onclick = closePetDetail;
+  document.querySelectorAll('.pd-tab').forEach(t => {
+    t.onclick = () => goPdPage(+t.dataset.page);
+  });
+  const overlay = $('pet-detail');
+  if (overlay) overlay.onclick = (e) => { if (e.target === overlay) closePetDetail(); };
+  const vp = $('pd-viewport');
+  if (vp) {
+    let x0 = null;
+    vp.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, {passive:true});
+    vp.addEventListener('touchend', e => {
+      if (x0 == null) return;
+      const dx = e.changedTouches[0].clientX - x0;
+      if (Math.abs(dx) > 40) goPdPage(pdPage + (dx < 0 ? 1 : -1));
+      x0 = null;
+    }, {passive:true});
+  }
+  const treeBtn = $('home-tree-btn');
+  if (treeBtn) treeBtn.onclick = () => {
+    const pet = petById(treePetId) || activeTeam()[0] || G.roster[0];
+    if (pet) openPetDetail(pet, 2);
+  };
+}
+
+// ── Page 1: Stats — full readout + specials + the team toggle ──
+function renderPdStats() {
+  const pet = PD.pet;
   const a = ATTR[pet.attr];
   const r = RARITY[pet.rarity];
   const s = statsOf(pet);
@@ -622,107 +647,132 @@ function openPetStatus(pet) {
   const loyProg = loyaltyProgress(pet.loyalty);
   const tree = treeFor(pet.attr);
   const specials = unlockedSpecials(pet);
+  const page = $('pd-page-stats');
+  if (!page) return;
 
-  modal(`${pet.name}`, body => {
-    body.innerHTML = `
-      <div class="ps-head">
-        ${creatureMarkup(pet, 'ps-sprite float')}
-        <div class="ps-headinfo">
-          <div class="ps-rar" style="color:${r.color}">${r.name} · ${attrIcon(a, 16)} ${a.name}</div>
-          <div class="ps-lv">Lv.${pet.level}/${pet.maxLv} · EXP ${pet.exp}/${pet.expNeed}</div>
-          <div class="ps-loy">${tier.icon} ${tier.name}
-            <span class="pc-loy-bar" style="width:60px;display:inline-block"><i style="width:${loyProg.pct}%"></i></span>
-          </div>
+  page.innerHTML = `
+    <div class="ps-head">
+      ${creatureMarkup(pet, 'ps-sprite float')}
+      <div class="ps-headinfo">
+        <div class="ps-rar" style="color:${r.color}">${r.name} · ${attrIcon(a, 16)} ${a.name}</div>
+        <div class="ps-lv">Lv.${pet.level}/${pet.maxLv} · EXP ${pet.exp}/${pet.expNeed}</div>
+        <div class="ps-loy">${tier.icon} ${tier.name}
+          <span class="pc-loy-bar" style="width:60px;display:inline-block"><i style="width:${loyProg.pct}%"></i></span>
         </div>
       </div>
-      <div class="ps-stats">
-        ${STAT_KEYS.map(k => {
-          const meta = STAT_META[k];
-          const val = (k === 'crit' || k === 'eva') ? s[k] + '%' : s[k];
-          return `<span class="ps-stat"><i>${meta.icon}</i>${meta.name}<b>${val}</b></span>`;
-        }).join('')}
-      </div>
-      <div class="ps-skills-title">// สกิลพิเศษ //</div>
-      <div class="ps-skills"></div>`;
+    </div>
+    <div class="ps-stats">
+      ${STAT_KEYS.map(k => {
+        const meta = STAT_META[k];
+        const val = (k === 'crit' || k === 'eva') ? s[k] + '%' : s[k];
+        return `<span class="ps-stat"><i>${meta.icon}</i>${meta.name}<b>${val}</b></span>`;
+      }).join('')}
+    </div>
+    <div class="ps-skills-title">// สกิลพิเศษ //</div>
+    <div class="ps-skills"></div>
+    <button class="btn wide pd-team-btn" id="pd-team-btn"></button>`;
 
-    const list = body.querySelector('.ps-skills');
-    if (!specials.length) {
-      list.innerHTML = `<div class="muted" style="padding:8px">ยังไม่ปลดล็อกสกิลพิเศษ — ไปที่ผังสกิล</div>`;
-    }
-    pet.autoCast = pet.autoCast || {};
-    specials.forEach(sp => {
-      const on = !!pet.autoCast[sp.id];
-      const row = el('div', 'ps-skill-row');
-      row.innerHTML = `
-        <button class="ps-skill-name">✦ ${sp.name}</button>
-        <label class="ps-toggle">
-          <input type="checkbox" ${on ? 'checked' : ''}>
-          <span>${on ? 'อัตโนมัติ' : 'ปิด'}</span>
-        </label>`;
-      row.querySelector('.ps-skill-name').onclick = () => {
-        // find the node that unlocked this skill so the explainer can
-        // show the same content the tree shows
-        const node = tree.nodes.find(n => n.kind === 'skill' && n.skill === sp.id);
-        if (node) openSkillExplainer(pet, tree, node.id, 'status');
-      };
-      const cb = row.querySelector('input');
-      cb.onchange = () => {
-        pet.autoCast[sp.id] = cb.checked;
-        row.querySelector('.ps-toggle span').textContent = cb.checked ? 'อัตโนมัติ' : 'ปิด';
-        save();
-      };
-      list.appendChild(row);
-    });
-
-    const treeBtn = el('button', 'btn wide', '🌳 ไปที่ผังสกิล');
-    treeBtn.onclick = () => { closeModal(); treePetId = pet.uid; showScreen('tree'); };
-    body.appendChild(treeBtn);
+  const list = page.querySelector('.ps-skills');
+  if (!specials.length) {
+    list.innerHTML = `<div class="muted" style="padding:8px">ยังไม่ปลดล็อกสกิลพิเศษ — ดูที่หน้าผังสกิล</div>`;
+  }
+  pet.autoCast = pet.autoCast || {};
+  specials.forEach(sp => {
+    const on = !!pet.autoCast[sp.id];
+    const row = el('div', 'ps-skill-row');
+    row.innerHTML = `
+      <button class="ps-skill-name">✦ ${sp.name}</button>
+      <label class="ps-toggle">
+        <input type="checkbox" ${on ? 'checked' : ''}>
+        <span>${on ? 'อัตโนมัติ' : 'ปิด'}</span>
+      </label>`;
+    row.querySelector('.ps-skill-name').onclick = () => {
+      const node = tree.nodes.find(n => n.kind === 'skill' && n.skill === sp.id);
+      if (node) openSkillExplainer(pet, tree, node.id, 'status');
+    };
+    const cb = row.querySelector('input');
+    cb.onchange = () => {
+      pet.autoCast[sp.id] = cb.checked;
+      row.querySelector('.ps-toggle span').textContent = cb.checked ? 'อัตโนมัติ' : 'ปิด';
+      save();
+    };
+    list.appendChild(row);
   });
+
+  refreshPdTeamBtn();
+}
+function refreshPdTeamBtn() {
+  const btn = $('pd-team-btn');
+  if (!btn || !PD) return;
+  const inTeam = G.teamIds.includes(PD.pet.uid);
+  btn.textContent = inTeam ? '➖ นำออกจากทีม' : '➕ เพิ่มเข้าทีม';
+  btn.classList.toggle('primary', !inTeam);
+  btn.classList.toggle('danger', inTeam);
+  btn.onclick = () => {
+    if (inTeam) removeFromTeam(PD.pet.uid);
+    else addToTeam(PD.pet.uid);
+    refreshPdTeamBtn();
+  };
 }
 
-// ── PET EQUIPMENT WINDOW ──
-// 3 slots — payload/exploit/rootkit. Tapping a filled slot unequips
-// it back to the bag; tapping an empty one opens a picker of bag
-// items that fit (right slot, level requirement met).
+// ── Page 2: Equipment — same 3 slots as before, now embedded ──
+// Generated pixel art when the item has one (rollEquipment() picks a
+// random variant per roll — see EQUIP_ICONS in data.js), else falls
+// back to the slot's emoji glyph (older saved items, or an empty slot).
+// Grade glow — no new art needed, EQUIP_GRADES already carries a glow
+// color per tier. Script/Trojan/Polymorphic get a static glow scaled
+// to their own alpha; Zero-Day (Epic) and A.P.T. (Legendary) — the
+// top 2 of 5 grades — additionally pulse, so only the genuinely rare
+// drops feel like they're radiating.
+const RADIANT_GRADES = ['zeroday', 'apt'];
+function equipIconHtml(item, fallbackEmoji) {
+  if (!item || !item.icon) return fallbackEmoji;
+  const g = EQUIP_GRADES[item.grade] || EQUIP_GRADES.script;
+  const radiant = RADIANT_GRADES.includes(item.grade);
+  return `<img src="${item.icon}" class="eq-icon-img${radiant ? ' grade-radiant' : ''}" style="--eq-glow:${g.glow}" alt="">`;
+}
 function equipStatLine(item) {
-  return Object.keys(item.stats).map(k => `${STAT_META[k].icon}+${item.stats[k]}`).join(' ');
+  if (item.effectId) {
+    const eff = PAYLOAD_EFFECTS[item.effectId];
+    return eff ? `${eff.icon} ${eff.name} — ${eff.desc}` : '';
+  }
+  return Object.keys(item.stats || {}).map(k => `${STAT_META[k].icon}+${item.stats[k]}`).join(' ');
 }
-function openPetEquip(pet) {
-  modal(`🧩 อุปกรณ์ — ${pet.name}`, body => {
-    const wrap = el('div', 'eq-slots');
-    EQUIP_SLOT_KEYS.forEach(slotId => {
-      const slot = EQUIP_SLOTS[slotId];
-      const item = pet.equip && pet.equip[slotId];
-      const row = el('div', 'eq-slot-row');
-      if (item) {
-        const g = equipGradeMeta(item);
-        row.style.setProperty('--grade', g.color);
-        row.innerHTML = `
-          <div class="eq-slot-icon">${slot.icon}</div>
-          <div class="eq-slot-info">
-            <div class="eq-slot-name" style="color:${g.color}">${item.name}</div>
-            <div class="eq-slot-sub">${slot.name} · Lv.${item.lvlReq}${item.attr ? ` · ${ATTR[item.attr].icon} ${EQUIP_AFFIXES[item.attr].name}` : ''}</div>
-            <div class="eq-slot-stats">${equipStatLine(item)}</div>
-          </div>
-          <button class="btn small">ถอด</button>`;
-        row.querySelector('button').onclick = () => { unequipItem(pet, slotId); openPetEquip(pet); };
-      } else {
-        row.innerHTML = `
-          <div class="eq-slot-icon empty">${slot.icon}</div>
-          <div class="eq-slot-info">
-            <div class="eq-slot-name muted">${slot.name} — ว่าง</div>
-            <div class="eq-slot-sub">${slot.desc}</div>
-          </div>
-          <button class="btn small primary">ใส่</button>`;
-        row.querySelector('button').onclick = () => openEquipPicker(pet, slotId);
-      }
-      wrap.appendChild(row);
-    });
-    body.appendChild(wrap);
-    const hint = el('div', 'muted', `กระเป๋าอุปกรณ์: ${(G.equipBag||[]).length} ชิ้น — จัดการ/ขาย/สลาย ได้ที่คลัง`);
-    hint.style.cssText = 'text-align:center;font-size:13px;margin-top:10px';
-    body.appendChild(hint);
+function renderPdEquip() {
+  const pet = PD.pet;
+  const page = $('pd-page-equip');
+  if (!page) return;
+  page.innerHTML = '';
+  const wrap = el('div', 'eq-slots');
+  EQUIP_SLOT_KEYS.forEach(slotId => {
+    const slot = EQUIP_SLOTS[slotId];
+    const item = pet.equip && pet.equip[slotId];
+    const row = el('div', 'eq-slot-row');
+    if (item) {
+      const g = equipGradeMeta(item);
+      row.style.setProperty('--grade', g.color);
+      row.innerHTML = `
+        <div class="eq-slot-icon">${equipIconHtml(item, slot.icon)}</div>
+          <div class="eq-slot-stats">${equipStatLine(item)}</div>
+        </div>
+        <button class="btn small">ถอด</button>`;
+      row.querySelector('button').onclick = () => { unequipItem(pet, slotId); renderPdEquip(); };
+    } else {
+      row.innerHTML = `
+        <div class="eq-slot-icon empty">${slot.icon}</div>
+        <div class="eq-slot-info">
+          <div class="eq-slot-name muted">${slot.name} — ว่าง</div>
+          <div class="eq-slot-sub">${slot.desc}</div>
+        </div>
+        <button class="btn small primary">ใส่</button>`;
+      row.querySelector('button').onclick = () => openEquipPicker(pet, slotId);
+    }
+    wrap.appendChild(row);
   });
+  page.appendChild(wrap);
+  const hint = el('div', 'muted', `กระเป๋าอุปกรณ์: ${(G.equipBag||[]).length} ชิ้น — จัดการ/ขาย/สลาย ได้ที่คลัง`);
+  hint.style.cssText = 'text-align:center;font-size:13px;margin-top:10px';
+  page.appendChild(hint);
 }
 function openEquipPicker(pet, slotId) {
   modal(`เลือก ${EQUIP_SLOTS[slotId].name}`, body => {
@@ -738,21 +788,21 @@ function openEquipPicker(pet, slotId) {
         const row = el('div', 'eq-slot-row');
         row.style.setProperty('--grade', g.color);
         row.innerHTML = `
-          <div class="eq-slot-icon">${EQUIP_SLOTS[item.slotId].icon}</div>
+          <div class="eq-slot-icon">${equipIconHtml(item, EQUIP_SLOTS[item.slotId].icon)}</div>
           <div class="eq-slot-info">
             <div class="eq-slot-name" style="color:${g.color}">${item.name}</div>
-            <div class="eq-slot-sub">Lv.${item.lvlReq}${item.attr ? ` · ${ATTR[item.attr].icon} ${EQUIP_AFFIXES[item.attr].name}` : ''}</div>
+            <div class="eq-slot-sub">Lv.${item.lvlReq}</div>
             <div class="eq-slot-stats">${equipStatLine(item)}</div>
           </div>
           <button class="btn small primary">ใส่</button>`;
-        row.querySelector('button').onclick = () => { equipItem(pet, item); openPetEquip(pet); };
+        row.querySelector('button').onclick = () => { equipItem(pet, item); closeModal(); renderPdEquip(); };
         list.appendChild(row);
       });
       body.appendChild(list);
     }
     const back = el('button', 'btn wide', '← กลับ');
     back.style.marginTop = '10px';
-    back.onclick = () => openPetEquip(pet);
+    back.onclick = () => closeModal();
     body.appendChild(back);
   });
 }
@@ -795,7 +845,7 @@ function renderHome() {
   for (let i = 0; i < 3; i++) {
     const pet = team[i];
     if (pet) {
-      const c = petCard(pet, { onClick: p => removeFromTeam(p.uid) });
+      const c = petCard(pet, { onClick: p => openPetDetail(p, 0) });
       c.classList.add('in-team');
       slots.appendChild(c);
     } else {
@@ -811,7 +861,7 @@ function renderHome() {
     const inTeam = G.teamIds.includes(pet.uid);
     const c = petCard(pet, {
       selected: inTeam,
-      onClick: p => inTeam ? removeFromTeam(p.uid) : addToTeam(p.uid),
+      onClick: p => openPetDetail(p, 0),
     });
     roster.appendChild(c);
   });
@@ -1424,9 +1474,9 @@ function renderEquipBag() {
     const card = el('div', 'shop-card eq-card');
     card.style.setProperty('--grade', g.color);
     card.innerHTML = `
-      <div class="sc-icon">${slot.icon}</div>
+      <div class="sc-icon">${equipIconHtml(item, slot.icon)}</div>
       <div class="sc-name" style="color:${g.color}">${item.name}</div>
-      <div class="sc-desc">${slot.name} · Lv.${item.lvlReq}${item.attr ? ` · ${ATTR[item.attr].icon} ${EQUIP_AFFIXES[item.attr].name}` : ''}<br>${equipStatLine(item)}</div>
+      <div class="sc-desc">${slot.name} · Lv.${item.lvlReq}<br>${equipStatLine(item)}</div>
       <div class="eq-card-btns">
         <button class="btn small" data-act="sell">💰 ${sellValueOf(item)}</button>
         <button class="btn small" data-act="dust">🧬 ${dustValueOf(item)}</button>
@@ -1471,6 +1521,7 @@ function renderCraft() {
 function renderCare() {
   const pet = G.roster.find(p => p.uid === carePetId) || activeTeam()[0] || G.roster[0];
   if (!pet) return;
+  const petChanged = carePetId !== pet.uid;
   carePetId = pet.uid;
 
   // pet picker
@@ -1489,37 +1540,44 @@ function renderCare() {
 
   const tier = loyaltyTier(pet.loyalty);
   const prog = loyaltyProgress(pet.loyalty);
-  const center = $('care-center');
-  if (center) {
-    center.innerHTML = `
-      <div class="care-portrait">${creatureMarkup(pet,'care-sprite float')}</div>
-      <div class="care-info">
-        <div class="care-name">${pet.name} <span class="muted">Lv.${pet.level}</span></div>
-        <div class="care-tier">${tier.icon} ${tier.name}</div>
-        <div class="loy-bar"><i style="width:${prog.pct}%"></i></div>
-      </div>`;
+  const info = $('care-info');
+  if (info) {
+    info.innerHTML = `
+      <div class="care-name">${pet.name} <span class="muted">Lv.${pet.level}</span></div>
+      <div class="care-tier">${tier.icon} ${tier.name}</div>
+      <div class="loy-bar"><i style="width:${prog.pct}%"></i></div>`;
+  }
+  const petEl = $('care-pet');
+  if (petEl) {
+    petEl.innerHTML = creatureMarkup(pet, 'care-sprite float');
+    if (petChanged) { petEl.style.left = '50%'; petEl.style.top = '52%'; }
   }
 
   // Activities — a free clean + owned foods + owned toys, scattered
   // in a ring around the stage border instead of a listed grid.
   const acts = $('care-acts');
-  if (!acts) return;
-  acts.innerHTML = '';
-  const btns = [];
-  btns.push(careRingBtn({
-    id: CARE_CLEAN.id, icon: CARE_CLEAN.icon, name: CARE_CLEAN.name,
-    desc: CARE_CLEAN.desc, loyalty: CARE_CLEAN.loyalty, kind: 'free',
-  }, pet));
-  FOODS.forEach(f => {
-    const owned = (G.foods && G.foods[f.id]) || 0;
-    btns.push(careRingBtn({ ...f, kind:'food', owned }, pet));
-  });
-  TOYS.forEach(t => {
-    const owned = (G.toys || []).includes(t.id);
-    btns.push(careRingBtn({ ...t, kind:'toy', owned: owned ? 1 : 0 }, pet));
-  });
-  btns.forEach(b => acts.appendChild(b));
-  layoutCareRing(btns);
+  if (acts) {
+    acts.innerHTML = '';
+    const btns = [];
+    btns.push(careRingBtn({
+      id: CARE_CLEAN.id, icon: CARE_CLEAN.icon, name: CARE_CLEAN.name,
+      desc: CARE_CLEAN.desc, loyalty: CARE_CLEAN.loyalty, kind: 'free',
+    }, pet));
+    FOODS.forEach(f => {
+      const owned = (G.foods && G.foods[f.id]) || 0;
+      btns.push(careRingBtn({ ...f, kind:'food', owned }, pet));
+    });
+    TOYS.forEach(t => {
+      const owned = (G.toys || []).includes(t.id);
+      btns.push(careRingBtn({ ...t, kind:'toy', owned: owned ? 1 : 0 }, pet));
+    });
+    btns.forEach(b => acts.appendChild(b));
+    layoutCareRing(btns);
+  }
+
+  refreshWasteIndicator();
+  startCareWander();
+  checkWasteSpawn();
 }
 
 // ── LIVING-AREA BACKGROUND ──
@@ -1580,6 +1638,7 @@ function careRingBtn(act, pet) {
   const ready = careReady(pet.uid, act.id);
   const needBuy = act.kind !== 'free' && !act.owned;
   const btn = el('button', 'care-ring-btn' + (needBuy ? ' need-buy' : ready ? ' ready' : ' cooling'));
+  btn.dataset.act = act.id;
   btn.title = act.name;
   let badge;
   if (needBuy) badge = `<span class="crb-badge buy">${act.cost}</span>`;
@@ -1608,9 +1667,100 @@ function careRingBtn(act, pet) {
   return btn;
 }
 
+// ── AUTONOMOUS WANDER ──
+// The pet is never fully static: while idle it picks a random point
+// within the stage, walks there over a CSS transition, waits a beat,
+// and repeats. Paused (not stopped) whenever a care minigame overlay
+// is open or the care screen isn't the active one, so it never
+// animates uselessly behind something else — see the guard at the
+// top of wanderStep().
+let careWander = null; // { timer } or null when torn down entirely
+function startCareWander() {
+  if (careWander) return; // already running — renderCare() re-runs often
+  careWander = { timer: null };
+  scheduleWanderStep(900 + Math.random() * 800);
+}
+function stopCareWander() {
+  if (careWander && careWander.timer) clearTimeout(careWander.timer);
+  careWander = null;
+}
+function scheduleWanderStep(delay) {
+  if (!careWander) return;
+  clearTimeout(careWander.timer);
+  careWander.timer = setTimeout(wanderStep, delay != null ? delay : 2200 + Math.random() * 2600);
+}
+function wanderStep() {
+  if (!careWander) return;
+  // Don't move the pet while it's off-screen behind a minigame
+  // overlay, or while some other screen is showing.
+  const overlayOpen = CG != null || ($('care-game') && $('care-game').classList.contains('open'));
+  const petEl = $('care-pet');
+  if (currentScreenId !== 'care' || overlayOpen || !petEl) { scheduleWanderStep(1200); return; }
+  checkWasteSpawn();
+  const x = 20 + Math.random() * 58;
+  const y = 30 + Math.random() * 46;
+  petEl.classList.add('wandering');
+  const facingLeft = parseFloat(petEl.style.left || '50') > x;
+  petEl.classList.toggle('face-l', facingLeft);
+  petEl.style.left = x + '%';
+  petEl.style.top = y + '%';
+  setTimeout(() => { if (petEl) petEl.classList.remove('wandering'); }, 1300);
+  scheduleWanderStep();
+}
+
+// ── AMBIENT WASTE / MESS ──
+// No new stat, no failure state — just a "glitch grime" prop that
+// occasionally appears in the living area as a visual nag. The
+// existing Clean activity's ring button pulses while it's present;
+// finishing any Clean run (the minigame you already have) sweeps it
+// away, whether or not that particular clean was "for" the mess.
+// Uses a persisted timestamp rather than an in-memory timer, so it
+// isn't reset every time renderCare() re-runs (which is often) and
+// survives navigating away or reloading.
+function checkWasteSpawn() {
+  if (G.careWaste) return;
+  if (!G.wasteNextAt) { G.wasteNextAt = Date.now() + 45000 + Math.random()*60000; save(); return; }
+  if (Date.now() >= G.wasteNextAt) {
+    G.careWaste = true;
+    G.wasteNextAt = null;
+    save();
+    refreshWasteIndicator();
+  }
+}
+function spawnWasteProp() {
+  const bg = $('care-bg');
+  if (!bg || bg.querySelector('.care-waste')) return;
+  const prop = el('div', 'care-waste', '🟢');
+  let x, y;
+  do { x = 10 + Math.random()*80; y = 12 + Math.random()*76; }
+  while (Math.hypot(x-50, (y-46)*1.3) < 20);
+  prop.style.left = x + '%';
+  prop.style.top = y + '%';
+  bg.appendChild(prop);
+}
+function refreshWasteIndicator() {
+  const btn = document.querySelector('.care-ring-btn[data-act="clean"]');
+  if (btn) btn.classList.toggle('needs-clean', !!G.careWaste);
+  if (!G.careWaste) {
+    const w = document.querySelector('.care-waste');
+    if (w) w.remove();
+  } else if (!document.querySelector('.care-waste')) {
+    spawnWasteProp();
+  }
+}
+function clearWaste() {
+  if (!G.careWaste) return;
+  G.careWaste = false;
+  save();
+  const w = document.querySelector('.care-waste');
+  if (w) { w.classList.add('gone'); setTimeout(() => w.remove(), 260); }
+  refreshWasteIndicator();
+  checkWasteSpawn();
+}
+
 // Little burst of the activity icon as feedback
 function careFx(icon) {
-  const host = $('care-center');
+  const host = $('care-pet');
   if (!host) return;
   for (let i = 0; i < 6; i++) {
     const d = el('div','care-particle', icon);
@@ -1681,6 +1831,7 @@ function cgReact() {
 
 function finishCareGame(act, pet) {
   if (act.kind === 'food') { G.foods = G.foods || {}; G.foods[act.id]--; }
+  if (act.id === CARE_CLEAN.id) clearWaste();
   addLoyalty(pet, act.loyalty);
   markCare(pet.uid, act.id);
   save(); renderCare(); renderHUD();
@@ -1688,7 +1839,16 @@ function finishCareGame(act, pet) {
   setText('care-game-hint', `สำเร็จ! +${act.loyalty} ❤`);
   const stage = $('care-game-stage');
   if (stage) cgFx(stage, act.icon);
-  setTimeout(() => { careFx(act.icon); closeCareGame(); }, 900);
+  setTimeout(() => {
+    careFx(act.icon);
+    closeCareGame();
+    const petEl = $('care-pet');
+    if (petEl) {
+      petEl.classList.remove('happy'); void petEl.offsetWidth;
+      petEl.classList.add('happy');
+      setTimeout(() => petEl.classList.remove('happy'), 700);
+    }
+  }, 900);
 }
 
 function wireCareGame() {
@@ -1788,32 +1948,42 @@ function spawnScrubSpark(stage, px, py) {
 // Bite count scales gently with the food's tier so a Quantum Feast
 // takes a bit more work (and feels more special) than Data Crumbs.
 function startFeedGame(stage, act, pet) {
-  CG.petWrap.style.top = '46%';
   const tierIdx = Math.max(0, FOODS.findIndex(f => f.id === act.id));
   const bites = 5 + tierIdx;
   let taken = 0;
 
+  // Food lands off to one side; the pet walks over to stand beside
+  // it (CSS transition on .cg-pet's left/top) before eating begins.
+  const foodX = 28 + Math.random() * 44, foodY = 58;
   const food = el('div','cg-food', `<span class="cg-food-icon">${act.icon}</span>`);
+  food.style.left = foodX + '%'; food.style.top = foodY + '%';
   stage.appendChild(food);
-  setText('care-game-hint', `แตะอาหารให้ ${pet.name} กิน`);
+  setText('care-game-hint', `${pet.name} เดินไปหาอาหาร...`);
 
-  const onTap = e => {
-    e.preventDefault();
-    taken++;
-    food.style.setProperty('--bite', Math.max(0, 1 - taken/bites));
-    food.classList.remove('bite'); void food.offsetWidth; food.classList.add('bite');
-    cgReact();
-    spawnCrumbs(food);
-    setCareGameProgress(Math.round((taken/bites)*100));
-    if (taken >= bites) {
-      food.removeEventListener('pointerdown', onTap);
-      food.remove();
-      setText('care-game-hint', 'อิ่มแล้ว! 😋');
-      setTimeout(() => finishCareGame(act, pet), 450);
-    }
-  };
-  food.addEventListener('pointerdown', onTap);
-  CG.cleanup.push(() => food.removeEventListener('pointerdown', onTap));
+  const standX = clamp(foodX + (foodX > 50 ? -10 : 10), 12, 88);
+  CG.petWrap.style.left = standX + '%';
+  CG.petWrap.style.top = '48%';
+
+  setTimeout(() => {
+    setText('care-game-hint', `แตะอาหารให้ ${pet.name} กิน`);
+    const onTap = e => {
+      e.preventDefault();
+      taken++;
+      food.style.setProperty('--bite', Math.max(0, 1 - taken/bites));
+      food.classList.remove('bite'); void food.offsetWidth; food.classList.add('bite');
+      cgReact();
+      spawnCrumbs(food);
+      setCareGameProgress(Math.round((taken/bites)*100));
+      if (taken >= bites) {
+        food.removeEventListener('pointerdown', onTap);
+        food.remove();
+        setText('care-game-hint', 'อิ่มแล้ว! 😋');
+        setTimeout(() => finishCareGame(act, pet), 450);
+      }
+    };
+    food.addEventListener('pointerdown', onTap);
+    CG.cleanup.push(() => food.removeEventListener('pointerdown', onTap));
+  }, 700);
 }
 function spawnCrumbs(food) {
   for (let i = 0; i < 4; i++) {
@@ -2398,63 +2568,65 @@ async function playFoeDeathTransition(deadPet, nextPet) {
 // Returns { item, affix } for the equipped item (if any) whose attr
 // affinity matches this pet's OWN attribute, or null. A green (speed)
 // item is a speed-themed named item — it only procs on a green pet.
-function equipAffixOf(pet) {
-  if (!pet || !pet.equip) return null;
-  for (const slotId of EQUIP_SLOT_KEYS) {
-    const item = pet.equip[slotId];
-    if (item && item.attr === pet.attr) {
-      const affix = EQUIP_AFFIXES[item.attr];
-      if (affix) return { item, affix };
-    }
-  }
-  return null;
+function payloadEffectOf(pet) {
+  const item = pet && pet.equip && pet.equip.payload;
+  if (!item || !item.effectId) return null;
+  const eff = PAYLOAD_EFFECTS[item.effectId];
+  if (!eff) return null;
+  const gi = EQUIP_GRADE_KEYS.indexOf(item.grade);
+  return { item, eff, mag: (eff.mag || [])[gi] || 0 };
 }
 
-// Yellow (Bastion) and White (Restoration) fire once, right as a
-// fighter steps onto the field. Red/Green are checked later, on that
-// fighter's first attack — see firstStrikeProc() below.
+// Just resets the first-strike flag for every fighter at battle
+// start — Overclock/Adaptive Strike are consumed on that fighter's
+// first attack, see firstStrikeProc() below. (Data Leech/Kill Reboot/
+// Toxin Injector are per-hit, handled in applyPayloadOnHit() instead.)
 function applyBattleStartEquip(team) {
-  (team || []).forEach(pet => {
-    if (!pet) return;
-    pet._firstStrikeUsed = false;
-    if (pet.hp <= 0) return;
-    const info = equipAffixOf(pet);
-    if (!info) return;
-    const gi = EQUIP_GRADE_KEYS.indexOf(info.item.grade);
-    const mag = (AFFIX_MAGNITUDE[info.affix.attr] || [])[gi] || 0;
-    if (mag <= 0) return;
-    if (info.affix.attr === 'yellow') {
-      pet._shield = Math.max(pet._shield || 0, mag);
-      pet._shieldTurns = Math.max(pet._shieldTurns || 0, 99);
-      blog(`🛡️ ${pet.name} — ${info.affix.name}: เกราะ ${Math.round(mag*100)}%`, 'buff');
-    } else if (info.affix.attr === 'white') {
-      const mx = statsOf(pet).vit;
-      const heal = Math.floor(mx * mag);
-      pet.hp = Math.min(mx, pet.hp + heal);
-      blog(`➕ ${pet.name} — ${info.affix.name}: ฟื้น ${heal} HP`, 'buff');
-    }
-  });
+  (team || []).forEach(pet => { if (pet) pet._firstStrikeUsed = false; });
 }
 
-// Red (Overclock) / Green (Double Tap) — consumed on the fighter's
-// first ACTUAL attack roll of the battle (basic or special), not on
-// non-damaging specials. Returns a computeDamage() proc override, or
-// null if this pet has no such affix or already used it this battle.
+// Overclock (guaranteed crit) / Adaptive Strike (guaranteed double
+// hit) — consumed on the fighter's first ACTUAL attack roll of the
+// battle (basic or special), not on non-damaging specials. Works for
+// any pet regardless of attribute — only the Payload slot matters.
 function firstStrikeProc(attacker) {
   if (!attacker || attacker._firstStrikeUsed) return null;
-  const info = equipAffixOf(attacker);
+  const info = payloadEffectOf(attacker);
   if (!info) return null;
-  if (info.affix.attr === 'red') {
+  if (info.item.effectId === 'overclock') {
     attacker._firstStrikeUsed = true;
-    blog(`⚔️ ${attacker.name} — ${info.affix.name}!`, 'buff');
+    blog(`⚔️ ${attacker.name} — ${info.eff.name}!`, 'buff');
     return { forceCrit: true };
   }
-  if (info.affix.attr === 'green') {
+  if (info.item.effectId === 'adaptive') {
     attacker._firstStrikeUsed = true;
-    blog(`🌪️ ${attacker.name} — ${info.affix.name}!`, 'buff');
+    blog(`🌪️ ${attacker.name} — ${info.eff.name}!`, 'buff');
     return { forceHits: 2 };
   }
   return null;
+}
+
+// Data Leech (lifesteal) / Kill Reboot (MP on kill) / Toxin Injector
+// (poison chance) — all per-hit, checked after damage lands. `target`
+// is expected to already have res.dmg subtracted from its hp.
+function applyPayloadOnHit(attacker, target, res, side) {
+  if (!res || res.evaded || !res.dmg) return;
+  const info = payloadEffectOf(attacker);
+  if (!info || info.mag <= 0) return;
+  if (info.item.effectId === 'leech') {
+    const heal = Math.max(1, Math.floor(res.dmg * info.mag));
+    const mx = statsOf(attacker).vit;
+    attacker.hp = Math.min(mx, attacker.hp + heal);
+    healPop(attacker, heal);
+    blog(`🩸 ${attacker.name} — ${info.eff.name}: +${heal} HP`, 'buff');
+  } else if (info.item.effectId === 'manaregen' && target.hp <= 0) {
+    const before = attacker.mp || 0;
+    restoreMP(attacker, Math.floor(maxMP(attacker) * info.mag));
+    if (attacker.mp > before) blog(`🔌 ${attacker.name} — ${info.eff.name}: +${attacker.mp - before} MP`, 'buff');
+  } else if (info.item.effectId === 'toxin' && target.hp > 0 && Math.random() < info.mag) {
+    addAilment(target, { ...AILMENTS.poison, turns: 2 });
+    blog(`☠️ ${target.name} ติดพิษจาก ${attacker.name}!`, side);
+  }
 }
 
 // ═══════════════ EQUIPMENT: drops, sell, dust, craft ═══════════════
@@ -2691,6 +2863,7 @@ async function basicAttack(attacker, target, side, atkTeam, defTeam) {
 
   target.hp = Math.max(0, target.hp - res.dmg);
   refreshBattleUnits();
+  applyPayloadOnHit(attacker, target, res, side);
   let line = `${attacker.name} → ${skill.n}`;
   if (res.hits > 1) line += ` ×${res.hits}`;
   if (res.crit) line += ' CRIT';
@@ -2774,6 +2947,7 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
       }
       await playAttack(caster, target, res, side);
       target.hp = Math.max(0, target.hp - res.dmg);
+      applyPayloadOnHit(caster, target, res, side);
       let line = `✦ ${caster.name} → ${sp.name}`;
       if (res.hits > 1) line += ` ×${res.hits}`;
       if (res.crit) line += ' CRIT';

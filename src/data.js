@@ -633,24 +633,29 @@ export const EQUIP_GRADES = {
 };
 export const EQUIP_GRADE_KEYS = ['script', 'trojan', 'polymorphic', 'zeroday', 'apt'];
 
-// Attribute-locked procs. Rolled onto roughly 1 in 4 items; the
-// effect only activates while equipped on a pet whose OWN attribute
-// matches — a green (speed) item is a speed-themed named item, not
-// something that adapts to whoever wears it.
-export const EQUIP_AFFIXES = {
-  red:    { attr:'red',    name:'Overclock',   icon:'⚔️', desc:'โจมตีแรกของการต่อสู้ คริติคอลเสมอ' },
-  green:  { attr:'green',  name:'Double Tap',  icon:'🌪️', desc:'โจมตีแรกของการต่อสู้ ตีซ้ำ 2 ครั้งเสมอ' },
-  yellow: { attr:'yellow', name:'Bastion',     icon:'🛡️', desc:'เริ่มการต่อสู้ด้วยเกราะกันดาเมจ' },
-  white:  { attr:'white',  name:'Restoration', icon:'➕', desc:'เริ่มการต่อสู้ด้วยการฟื้นฟู HP ทันที' },
+// Payload special effects. Payload gear never rolls stats — it rolls
+// ONE of these instead. Unlike the old system, these are NOT gated by
+// the wearer's attribute — level requirement is the only gate now.
+// Exploit and Rootkit stay pure stat-boost slots (see EQUIP_STAT_BASE
+// below); this is what distinguishes Payload from the other two.
+export const PAYLOAD_EFFECTS = {
+  leech:     { id:'leech',     name:'Data Leech',      icon:'🩸',
+    desc:'ฟื้น HP ตามเปอร์เซ็นต์ดาเมจที่สร้างทุกครั้งที่โจมตี',
+    mag:[0.08, 0.12, 0.16, 0.22, 0.30] },
+  manaregen: { id:'manaregen', name:'Kill Reboot',     icon:'🔌',
+    desc:'ฟื้น MP ทันทีเมื่อโจมตีสังหารศัตรู',
+    mag:[0.20, 0.30, 0.40, 0.55, 0.75] },
+  overclock: { id:'overclock', name:'Overclock',       icon:'⚔️',
+    desc:'โจมตีแรกของการต่อสู้ คริติคอลเสมอ',
+    mag:[0, 0, 0, 0, 0] },
+  adaptive:  { id:'adaptive',  name:'Adaptive Strike', icon:'🌪️',
+    desc:'โจมตีแรกของการต่อสู้ ตีซ้ำ 2 ครั้งเสมอ',
+    mag:[0, 0, 0, 0, 0] },
+  toxin:     { id:'toxin',     name:'Toxin Injector',  icon:'☠️',
+    desc:'มีโอกาสวางพิษให้ศัตรูเมื่อโจมตีติด',
+    mag:[0.10, 0.15, 0.20, 0.28, 0.38] },
 };
-
-// Grade-scaled magnitude for each affix's proc (index = EQUIP_GRADE_KEYS position).
-export const AFFIX_MAGNITUDE = {
-  yellow: [0.12, 0.16, 0.20, 0.25, 0.32],  // shield % of max HP
-  white:  [0.10, 0.14, 0.18, 0.22, 0.28],  // heal % of max HP
-  red:    [0, 0, 0, 0, 0],                  // binary proc, magnitude unused
-  green:  [0, 0, 0, 0, 0],
-};
+export const PAYLOAD_EFFECT_KEYS = ['leech', 'manaregen', 'overclock', 'adaptive', 'toxin'];
 
 const EQUIP_NAME_PARTS = {
   payload: ['Warhead', 'Detonator', 'Strikecode', 'Bombshell'],
@@ -659,7 +664,8 @@ const EQUIP_NAME_PARTS = {
 };
 
 // Base per-level roll strength for each rollable stat. `int` is left
-// out — equipment boosts combat power, not MP pool.
+// out — equipment boosts combat power, not MP pool. Only Exploit and
+// Rootkit ever roll these now — see rollEquipment().
 const EQUIP_STAT_BASE = { atk:0.9, def:0.7, spd:0.6, crit:0.7, eva:0.5, vit:3.2 };
 const EQUIP_ROLLABLE_STATS = Object.keys(EQUIP_STAT_BASE);
 
@@ -681,6 +687,45 @@ function rollWeighted(weights) {
 // requirement (e.g. the dropping enemy's level, or the player's
 // highest pet level for crafting) — equipment never asks for more
 // than that. `forcedGradeId` lets crafting skew the grade roll.
+// Any pet of any attribute can equip anything — level requirement is
+// the only gate.
+// Generated pixel-art icons for equipment. Payload is keyed by
+// EFFECT (its art identifies what it does — grade shows as a colored
+// frame in the UI instead, since any effect can roll any grade).
+// Exploit/Rootkit are keyed by GRADE instead, since those slots are
+// pure stat power that scales with grade. Multiple variants per key
+// are fine — a random one is picked per roll so repeated drops of
+// the same effect/grade don't all look identical.
+export const EQUIP_ICONS = {
+  payload: {
+    leech:     ['assets/equipment/payload/leech_1.png'],
+    manaregen: ['assets/equipment/payload/manaregen_1.png'],
+    overclock: ['assets/equipment/payload/overclock_1.png'],
+    adaptive:  ['assets/equipment/payload/adaptive_1.png', 'assets/equipment/payload/adaptive_2.png'],
+    toxin:     ['assets/equipment/payload/toxin_1.png', 'assets/equipment/payload/toxin_2.png', 'assets/equipment/payload/toxin_3.png'],
+  },
+  exploit: {
+    script:      ['assets/equipment/exploit/script_1.png'],
+    trojan:      ['assets/equipment/exploit/trojan_1.png', 'assets/equipment/exploit/trojan_2.png'],
+    polymorphic: ['assets/equipment/exploit/polymorphic_1.png'],
+    zeroday:     ['assets/equipment/exploit/zeroday_1.png'],
+    apt:         ['assets/equipment/exploit/apt_1.png', 'assets/equipment/exploit/apt_2.png'],
+  },
+  rootkit: {
+    script:      ['assets/equipment/rootkit/script_1.png'],
+    trojan:      ['assets/equipment/rootkit/trojan_1.png', 'assets/equipment/rootkit/trojan_2.png'],
+    polymorphic: ['assets/equipment/rootkit/polymorphic_1.png', 'assets/equipment/rootkit/polymorphic_2.png'],
+    zeroday:     ['assets/equipment/rootkit/zeroday_1.png'],
+    apt:         ['assets/equipment/rootkit/apt_1.png'],
+  },
+};
+function pickEquipIcon(slotId, effectId, gradeId) {
+  const key = slotId === 'payload' ? effectId : gradeId;
+  const variants = (EQUIP_ICONS[slotId] || {})[key];
+  if (!variants || !variants.length) return null;
+  return variants[Math.floor(Math.random() * variants.length)];
+}
+
 export function rollEquipment(maxLevel, forcedGradeId) {
   maxLevel = Math.max(1, Math.floor(maxLevel || 1));
   const slotId = EQUIP_SLOT_KEYS[Math.floor(Math.random() * EQUIP_SLOT_KEYS.length)];
@@ -690,29 +735,34 @@ export function rollEquipment(maxLevel, forcedGradeId) {
   const grade = EQUIP_GRADES[gradeId];
   const lvlReq = 1 + Math.floor(Math.random() * maxLevel);
 
-  const useBias = Math.random() < 0.7 && slot.bias.length >= 2;
-  const pool = useBias ? slot.bias : EQUIP_ROLLABLE_STATS;
-  const statCount = Math.min(pool.length, 2 + (Math.random() < 0.35 ? 1 : 0));
-  const chosen = [];
-  while (chosen.length < statCount) {
-    const k = pool[Math.floor(Math.random() * pool.length)];
-    if (!chosen.includes(k)) chosen.push(k);
+  let stats = {};
+  let effectId = null;
+  let name;
+
+  if (slotId === 'payload') {
+    effectId = PAYLOAD_EFFECT_KEYS[Math.floor(Math.random() * PAYLOAD_EFFECT_KEYS.length)];
+    name = `${grade.name} ${PAYLOAD_EFFECTS[effectId].name}`;
+  } else {
+    const useBias = Math.random() < 0.7 && slot.bias.length >= 2;
+    const pool = useBias ? slot.bias : EQUIP_ROLLABLE_STATS;
+    const statCount = Math.min(pool.length, 2 + (Math.random() < 0.35 ? 1 : 0));
+    const chosen = [];
+    while (chosen.length < statCount) {
+      const k = pool[Math.floor(Math.random() * pool.length)];
+      if (!chosen.includes(k)) chosen.push(k);
+    }
+    chosen.forEach(k => {
+      const base = EQUIP_STAT_BASE[k] || 1;
+      stats[k] = Math.max(1, Math.round(base * lvlReq * grade.statMult * (0.85 + Math.random() * 0.3)));
+    });
+    const namePart = EQUIP_NAME_PARTS[slotId][Math.floor(Math.random() * EQUIP_NAME_PARTS[slotId].length)];
+    name = `${grade.name} ${namePart}`;
   }
-  const stats = {};
-  chosen.forEach(k => {
-    const base = EQUIP_STAT_BASE[k] || 1;
-    stats[k] = Math.max(1, Math.round(base * lvlReq * grade.statMult * (0.85 + Math.random() * 0.3)));
-  });
-
-  let attr = null;
-  if (Math.random() < 0.25) attr = ATTR_KEYS[Math.floor(Math.random() * ATTR_KEYS.length)];
-
-  const namePart = EQUIP_NAME_PARTS[slotId][Math.floor(Math.random() * EQUIP_NAME_PARTS[slotId].length)];
-  const name = `${grade.name} ${namePart}`;
 
   return {
     uid: 'eq_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-    slotId, grade: gradeId, lvlReq, stats, attr, name,
+    slotId, grade: gradeId, lvlReq, stats, effectId, name,
+    icon: pickEquipIcon(slotId, effectId, gradeId),
   };
 }
 
@@ -968,18 +1018,21 @@ export const DEFENSE_BOTS = [
 // uniform (food_shop's text sits much closer to its dot than the
 // others do).
 export const MAP_NODES = [
-  { id:'warp_gate', label:'Warp Gate',    x:25.5, y:20.3, textX:25.3, textY:5.0,  region:'pin',
+  { id:'warp_gate', label:'Warp Gate',    x:25.5, y:20.3, textX:25.3, textY:5.0,  zoneR:14,
     screen:'world', hint:'ออกผจญภัย · แผนที่โลก' },
-  { id:'clinic',    label:'Clinic',       x:72.2, y:25.1, textX:77.3, textY:8.5,  region:'pin',
+  { id:'clinic',    label:'Clinic',       x:72.2, y:25.1, textX:77.3, textY:8.5,  zoneR:14,
     screen:'clinic', hint:'รักษา VIRUZ · ฟักไข่' },
-  { id:'apartment', label:'Your Home',    x:54.9, y:49.6, textX:53.1, textY:33.7, region:'pin',
+  { id:'apartment', label:'Your Home',    x:54.9, y:49.6, textX:53.1, textY:33.7, zoneR:14,
     screen:'home',  hint:'ฐานของคุณ · ทีม · ป้องกัน' },
-  { id:'hacking',   label:'Hacking Center', x:22.9, y:53.4, region:'zone',
-    zoneR:15, screen:'raid', hint:'เจาะบ้านผู้เล่นคนอื่น' },
-  { id:'tech_shop', label:'Tech Shop',    x:87.0, y:64.8, region:'zone',
-    zoneR:13, screen:'shop', hint:'ไอเทม · บูสเตอร์ (ในอนาคต: คราฟต์อุปกรณ์ · การ์ดอัพเกรด)' },
-  { id:'food_shop', label:'Food Shop',    x:16.0, y:83.5, region:'zone',
-    zoneR:14, screen:'care', hint:'ดูแล VIRUZ (ในอนาคต: ซื้อวัตถุดิบคราฟต์อาหารเพิ่มสเตตัส/ความผูกพัน)' },
+  // textX kept equal to x (no horizontal move) — textY shifted up by
+  // the requested amount (~37.8px/cm against a ~800px reference
+  // viewport height): hacking 4cm≈19pp, tech/food 3cm≈14pp.
+  { id:'hacking',   label:'Hacking Center', x:22.9, y:53.4, textX:22.9, textY:34.4, zoneR:15,
+    screen:'raid', hint:'เจาะบ้านผู้เล่นคนอื่น' },
+  { id:'tech_shop', label:'Tech Shop',    x:87.0, y:64.8, textX:87.0, textY:50.8, zoneR:13,
+    screen:'shop', hint:'ไอเทม · บูสเตอร์ (ในอนาคต: คราฟต์อุปกรณ์ · การ์ดอัพเกรด)' },
+  { id:'food_shop', label:'Food Shop',    x:16.0, y:83.5, textX:16.0, textY:69.5, zoneR:14,
+    screen:'care', hint:'ดูแล VIRUZ (ในอนาคต: ซื้อวัตถุดิบคราฟต์อาหารเพิ่มสเตตัส/ความผูกพัน)' },
 ];
 
 // ── PROGRESSION TUNING ──
