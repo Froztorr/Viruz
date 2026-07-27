@@ -818,6 +818,14 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 .pet-card.sel{border-color:var(--attr);
   box-shadow:inset 0 1px 0 var(--rim),0 0 26px var(--glow),0 6px 18px rgba(0,0,0,.5)}
 .pet-card.down{opacity:.45;filter:grayscale(.7)}
+/* team-slot card (city team roster) — cyan ring marks it as an active fighter */
+.pet-card.in-team{border-color:var(--cyan);
+  box-shadow:inset 0 1px 0 var(--rim),0 0 22px rgba(61,240,255,.45),0 6px 18px rgba(0,0,0,.5)}
+.pet-card.in-team::after{background:var(--cyan)}
+/* defense-slot card (base guard) — gold ring marks it as guarding the base */
+.pet-card.in-def{border-color:var(--gold);
+  box-shadow:inset 0 1px 0 var(--rim),0 0 22px rgba(255,207,63,.45),0 6px 18px rgba(0,0,0,.5)}
+.pet-card.in-def::after{background:var(--gold)}
 .pet-card.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
   min-height:180px;border-style:dashed;color:var(--muted)}
 .pet-card.empty.small{min-height:120px}
