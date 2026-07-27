@@ -9,6 +9,7 @@ import {
   SYNERGY, WHITE_TRAITS,
   LOYALTY_TIERS, loyaltyTier, loyaltyProgress, SIGNATURE_SKILLS,
   FOODS, TOYS, CARE_CLEAN, CARE_COOLDOWN_MS, LOYALTY_PER_WIN,
+  INGREDIENTS, MEAT_ITEM, MEAT_DROP_CHANCE, RECIPES,
   buildLootMenu, chanceToEnemyMult, RAID_LOSS_BITZ,
   SKILL_TREES, SPECIALS, AILMENTS, STAT_KEYS, STAT_META, treeFor,
   EQUIP_SLOTS, EQUIP_SLOT_KEYS, EQUIP_GRADES, EQUIP_GRADE_KEYS,
@@ -62,6 +63,7 @@ let G = {
   equipBag: [],     // owned, unequipped gear
   dust: 0,          // crafting currency from disenchanting gear
   careWaste: false, // ambient mess flag on the care screen's living area
+  ingredients: { veg:0, bun:0, meat:0 }, // veg/bun bought at Food Shop, meat hunt-only
 };
 
 let battle = null;   // active battle state
@@ -164,11 +166,12 @@ async function boot() {
     G.equipBag = G.equipBag || [];
     G.equipBag.forEach(backfillEquipIcon);
     G.dust     = G.dust     || 0;
+    G.ingredients = G.ingredients || { veg:0, bun:0, meat:0 };
     G.teamIds    = (G.teamIds || []).filter(id => ids.has(id));
     G.defenseIds = (G.defenseIds || []).filter(id => ids.has(id));
     if (!G.teamIds.length && G.roster.length) G.teamIds = [G.roster[0].uid];
     // Resume where the player actually left off, not always the city.
-    const resumeScreen = G.lastScreen && ['map','world','safe','home','clinic','shop','care','raid'].includes(G.lastScreen)
+    const resumeScreen = G.lastScreen && ['map','world','safe','home','clinic','shop','foodshop','care','raid'].includes(G.lastScreen)
       ? G.lastScreen : 'map';
     showScreen(resumeScreen);
     renderAll();
@@ -232,7 +235,7 @@ async function claimStarter() {
 }
 
 // ═══════════════ SCREENS ═══════════════
-const SCREENS = ['intro','map','home','clinic','shop','world','battle','arena','raid','safe','care','hack','steal','inventory'];
+const SCREENS = ['intro','map','home','clinic','shop','foodshop','world','battle','arena','raid','safe','care','hack','steal','inventory'];
 
 // Rough navigation depth so a transition can tell "going deeper" from
 // "coming back" and slide the right direction. Screens not listed count
@@ -290,7 +293,7 @@ function showScreen(id) {
     // restores here instead of always dropping the player back at the
     // city map, so warping to Hell and closing the app keeps you in
     // Hell until you travel back yourself.
-    const PERSISTABLE = ['map','world','safe','home','clinic','shop','care','raid'];
+    const PERSISTABLE = ['map','world','safe','home','clinic','shop','foodshop','care','raid'];
     if (PERSISTABLE.includes(id)) { G.lastScreen = id; save(); }
     const vid = $('bg-video');
     if (vid) { if (id === 'map') vid.play().catch(()=>{}); else vid.pause(); }
@@ -298,6 +301,7 @@ function showScreen(id) {
     if (id === 'home')   renderHome();
     if (id === 'clinic') renderClinic();
     if (id === 'shop')   renderShop();
+    if (id === 'foodshop') renderFoodShop();
     if (id === 'world')  renderWorld();
     if (id === 'safe')   renderSafeSpot();
     if (id === 'care')   renderCare();
@@ -638,6 +642,8 @@ function wirePetDetail() {
     const pet = petById(treePetId) || activeTeam()[0] || G.roster[0];
     if (pet) openPetDetail(pet, 2);
   };
+  const cookBtn = $('home-cook-btn');
+  if (cookBtn) cookBtn.onclick = openCookingMenu;
 }
 
 // ── Page 1: Stats — full readout + specials + the team toggle ──
@@ -1096,6 +1102,112 @@ function buyItem(it) {
   });
 }
 
+// ── FOOD SHOP ──
+// Precooked foods (bought here, same items the care screen used to
+// sell inline) and cooking ingredients (veg/bun — meat is hunt-only,
+// see rollMeatDrop, and is never sold here).
+function renderFoodShop() {
+  const pre = $('foodshop-precooked');
+  if (pre) {
+    pre.innerHTML = '';
+    FOODS.forEach(f => {
+      const owned = (G.foods && G.foods[f.id]) || 0;
+      const card = el('div','shop-card');
+      card.innerHTML = `
+        <div class="sc-icon">${f.icon}</div>
+        <div class="sc-name">${f.name}</div>
+        <div class="sc-desc">${f.desc}</div>
+        ${owned ? `<div class="sc-owned">มี ${owned} ชิ้น</div>` : ''}
+        <div class="sc-cost">${f.cost.toLocaleString()} Bitz</div>
+        <button class="btn">ซื้อ</button>`;
+      card.querySelector('button').onclick = () => buyFood(f);
+      pre.appendChild(card);
+    });
+  }
+  const ingBox = $('foodshop-ingredients');
+  if (ingBox) {
+    ingBox.innerHTML = '';
+    INGREDIENTS.forEach(i => {
+      const key = i.id.replace('ing_','');
+      const owned = (G.ingredients && G.ingredients[key]) || 0;
+      const card = el('div','shop-card');
+      card.innerHTML = `
+        <div class="sc-icon">${i.icon}</div>
+        <div class="sc-name">${i.name}</div>
+        <div class="sc-desc">${i.desc}</div>
+        <div class="sc-owned">มี ${owned} ชิ้น</div>
+        <div class="sc-cost">${i.cost.toLocaleString()} Bitz</div>
+        <button class="btn">ซื้อ</button>`;
+      card.querySelector('button').onclick = () => buyIngredient(i);
+      ingBox.appendChild(card);
+    });
+  }
+}
+function buyFood(f) {
+  if (G.bitz < f.cost) { toast('Bitz ไม่พอ'); return; }
+  G.bitz -= f.cost;
+  G.foods = G.foods || {};
+  G.foods[f.id] = (G.foods[f.id] || 0) + 1;
+  save(); renderFoodShop(); renderHUD();
+  toast(`✅ ซื้อ ${f.name} แล้ว`);
+}
+function buyIngredient(i) {
+  if (G.bitz < i.cost) { toast('Bitz ไม่พอ'); return; }
+  G.bitz -= i.cost;
+  const key = i.id.replace('ing_','');
+  G.ingredients = G.ingredients || { veg:0, bun:0, meat:0 };
+  G.ingredients[key] = (G.ingredients[key] || 0) + 1;
+  save(); renderFoodShop(); renderHUD();
+  toast(`✅ ซื้อ ${i.name} แล้ว`);
+}
+
+// ── HOMEMADE COOKING (accessed from ฐานของคุณ) ──
+function openCookingMenu() {
+  modal('👨‍🍳 ทำอาหารโฮมเมด', body => {
+    const inv = G.ingredients || { veg:0, bun:0, meat:0 };
+    const hint = el('div', 'muted',
+      `วัตถุดิบที่มี: 🥬${inv.veg||0} 🍞${inv.bun||0} 🥩${inv.meat||0}`);
+    hint.style.cssText = 'text-align:center;margin-bottom:10px;font-size:14px';
+    body.appendChild(hint);
+
+    const list = el('div', 'eq-picker-list');
+    RECIPES.forEach(r => {
+      const canCook = (r.need.veg||0) <= (inv.veg||0)
+        && (r.need.bun||0) <= (inv.bun||0)
+        && (r.need.meat||0) <= (inv.meat||0);
+      const needParts = [];
+      if (r.need.veg)  needParts.push(`🥬${r.need.veg}`);
+      if (r.need.bun)  needParts.push(`🍞${r.need.bun}`);
+      if (r.need.meat) needParts.push(`🥩${r.need.meat}`);
+      const row = el('div', 'eq-slot-row');
+      row.innerHTML = `
+        <div class="eq-slot-icon">${r.icon}</div>
+        <div class="eq-slot-info">
+          <div class="eq-slot-name">${r.name}</div>
+          <div class="eq-slot-sub">ต้องการ: ${needParts.join(' ')} · +${r.loyalty} ผูกพัน</div>
+        </div>
+        <button class="btn small${canCook ? ' primary' : ''}"${canCook ? '' : ' disabled'}>ทำ</button>`;
+      row.querySelector('button').onclick = () => { cookRecipe(r); openCookingMenu(); };
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+  });
+}
+function cookRecipe(r) {
+  const inv = G.ingredients || { veg:0, bun:0, meat:0 };
+  if ((r.need.veg||0) > (inv.veg||0) || (r.need.bun||0) > (inv.bun||0) || (r.need.meat||0) > (inv.meat||0)) {
+    toast('วัตถุดิบไม่พอ'); return;
+  }
+  inv.veg  -= (r.need.veg  || 0);
+  inv.bun  -= (r.need.bun  || 0);
+  inv.meat -= (r.need.meat || 0);
+  G.ingredients = inv;
+  G.foods = G.foods || {};
+  G.foods[r.id] = (G.foods[r.id] || 0) + 1;
+  save(); renderHUD();
+  toast(`🍳 ทำ ${r.name} สำเร็จ!`);
+}
+
 function applyItem(it, pet) {
   const s = statsOf(pet);
   if (it.type === 'hp') {
@@ -1431,9 +1543,10 @@ function renderInventory() {
   if (foodBox) {
     foodBox.innerHTML = '';
     const owned = G.foods || {};
-    const any = FOODS.some(f => (owned[f.id] || 0) > 0);
+    const allFoods = [...FOODS, ...RECIPES];
+    const any = allFoods.some(f => (owned[f.id] || 0) > 0);
     if (!any) foodBox.innerHTML = `<div class="muted" style="padding:10px">ยังไม่มีอาหาร</div>`;
-    FOODS.forEach(f => {
+    allFoods.forEach(f => {
       const n = owned[f.id] || 0;
       if (!n) return;
       const card = el('div', 'shop-card');
@@ -1566,9 +1679,12 @@ function renderCare() {
       id: CARE_CLEAN.id, icon: CARE_CLEAN.icon, name: CARE_CLEAN.name,
       desc: CARE_CLEAN.desc, loyalty: CARE_CLEAN.loyalty, kind: 'free',
     }, pet));
-    FOODS.forEach(f => {
+    // Food no longer offers a "buy" state here at all — that flow
+    // moved to the Food Shop. Only foods (precooked or homemade) the
+    // player currently has any of actually appear as ring buttons.
+    [...FOODS, ...RECIPES].forEach(f => {
       const owned = (G.foods && G.foods[f.id]) || 0;
-      btns.push(careRingBtn({ ...f, kind:'food', owned }, pet));
+      if (owned > 0) btns.push(careRingBtn({ ...f, kind:'food', owned }, pet));
     });
     TOYS.forEach(t => {
       const owned = (G.toys || []).includes(t.id);
@@ -2645,6 +2761,16 @@ function rollEquipDrop(enemy) {
   blog(`${slot.icon} ดรอปอุปกรณ์: ${item.name}`, 'win');
 }
 
+// Meat is the one cooking ingredient that can't be bought — hunting
+// is the only source, same drop-per-kill shape as equipment above.
+function rollMeatDrop(enemy) {
+  if (!enemy || Math.random() >= MEAT_DROP_CHANCE) return;
+  G.ingredients = G.ingredients || { veg:0, bun:0, meat:0 };
+  G.ingredients.meat = (G.ingredients.meat || 0) + 1;
+  toast(`${MEAT_ITEM.icon} ได้ ${MEAT_ITEM.name}`);
+  blog(`${MEAT_ITEM.icon} ดรอปวัตถุดิบ: ${MEAT_ITEM.name}`, 'win');
+}
+
 function equipGradeMeta(item) { return EQUIP_GRADES[item.grade] || EQUIP_GRADES.script; }
 
 // Equip `item` (from G.equipBag) onto `pet`'s slot. Whatever was
@@ -3019,6 +3145,7 @@ async function checkBattleEnd() {
         const waveBitz = Math.round(6 * Math.max(1, e.level));
         battle.totalBitz = (battle.totalBitz || 0) + waveBitz;
         rollEquipDrop(e);
+        rollMeatDrop(e);
       }
     });
   }

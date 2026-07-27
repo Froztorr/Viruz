@@ -476,6 +476,40 @@ export const FOODS = [
   { id:'food_feast',  name:'Quantum Feast', icon:'🍱', cost:1400, loyalty:24, desc:'มื้อพิเศษสุด +24 ความผูกพัน' },
 ];
 
+// ── HOMEMADE COOKING ──
+// Ingredients are bought at the Food Shop like anything else — except
+// meat, which is deliberately NOT purchasable there. It only drops
+// from hunting monsters, so cooking always costs a trip into battle
+// first, not just Bitz. That's the tradeoff for homemade food being
+// stronger than anything precooked.
+export const INGREDIENTS = [
+  { id:'ing_veg', name:'Data Veggies', icon:'🥬', cost:40, desc:'ผักสด — ใช้ทำอาหารโฮมเมด' },
+  { id:'ing_bun', name:'Byte Bun',     icon:'🍞', cost:35, desc:'ขนมปัง — ใช้ทำอาหารโฮมเมด' },
+];
+export const MEAT_ITEM = { id:'ing_meat', name:'Viral Meat', icon:'🥩',
+  desc:'เนื้อไวรัส — ดรอปจากการล่าสัตว์ประหลาดเท่านั้น ซื้อไม่ได้' };
+export const MEAT_DROP_CHANCE = 0.35;
+
+// Recipes cook into regular food items (they land in the same G.foods
+// bag FOODS do, and use the same care-screen feeding minigame) but
+// every one of them beats every precooked tier — the best precooked
+// food (Quantum Feast) is 24 loyalty; the cheapest recipe here already
+// clears that.
+export const RECIPES = [
+  { id:'recipe_taco',      name:'Meat Taco',              icon:'🌮',
+    need:{ veg:1, bun:1, meat:1 }, loyalty:25, desc:'ทาโก้เนื้อ — โฮมเมด +25 ความผูกพัน' },
+  { id:'recipe_sandwich',  name:'Meat Sandwich',          icon:'🥪',
+    need:{ veg:1, bun:2, meat:1 }, loyalty:27, desc:'แซนด์วิชเนื้อ — โฮมเมด +27 ความผูกพัน' },
+  { id:'recipe_burger',    name:'Meat Burger',            icon:'🍔',
+    need:{ veg:1, bun:2, meat:2 }, loyalty:30, desc:'เบอร์เกอร์เนื้อ — โฮมเมด +30 ความผูกพัน' },
+  { id:'recipe_friedrice', name:'Fried Rice',             icon:'🍛',
+    need:{ veg:2, bun:0, meat:1 }, loyalty:29, desc:'ข้าวผัดเนื้อ — โฮมเมด +29 ความผูกพัน' },
+  { id:'recipe_spaghetti', name:'Spaghetti & Meatballs',  icon:'🍝',
+    need:{ veg:2, bun:0, meat:2 }, loyalty:34, desc:'สปาเก็ตตี้ลูกชิ้น — โฮมเมด +34 ความผูกพัน' },
+  { id:'recipe_stew',      name:'Hearty Stew',            icon:'🍲',
+    need:{ veg:3, bun:0, meat:2 }, loyalty:38, desc:'สตูว์เนื้อ — โฮมเมด +38 ความผูกพัน (สูงสุด)' },
+];
+
 export const TOYS = [
   { id:'toy_ball',   name:'Packet Ball',   icon:'⚽', cost:400,  loyalty:5,  desc:'ลูกบอล +5 ความผูกพัน' },
   { id:'toy_laser',  name:'Laser Pointer', icon:'🔦', cost:1100, loyalty:10, desc:'เลเซอร์ +10 ความผูกพัน' },
@@ -1039,7 +1073,7 @@ export const MAP_NODES = [
   { id:'tech_shop', label:'Tech Shop',    x:87.0, y:64.8, textX:87.0, textY:55.5, zoneR:13,
     screen:'shop', hint:'ไอเทม · บูสเตอร์ (ในอนาคต: คราฟต์อุปกรณ์ · การ์ดอัพเกรด)' },
   { id:'food_shop', label:'Food Shop',    x:16.0, y:83.5, textX:16.0, textY:74.2, zoneR:14,
-    screen:'care', hint:'ดูแล VIRUZ (ในอนาคต: ซื้อวัตถุดิบคราฟต์อาหารเพิ่มสเตตัส/ความผูกพัน)' },
+    screen:'foodshop', hint:'ซื้ออาหารสำเร็จรูปและวัตถุดิบทำอาหาร' },
 ];
 
 // ── PROGRESSION TUNING ──
