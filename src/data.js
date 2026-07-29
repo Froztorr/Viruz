@@ -420,7 +420,46 @@ export const ANTIVIRUZ = {
   butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'right', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     },
   vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', faces:'right', scale:1.06, base:{atk:72,def:24,spd:22, mhp:130}, attr:null     },
   vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'right', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    },
+
+  // ── SECURITY GUARDS (raid defense) ──
+  // Not wild encounters — never appear in a zone `pool`, so they never
+  // show up as boss/hack fodder. Spawned only by startRaidFight() in
+  // game.js as the gate battle before a rival's own pet team, per the
+  // tier GUARD_TIERS below assigns to that rival (by level bracket).
+  // `faces` corrects each source image to how it was actually drawn —
+  // see GUARD_TIERS comment for which ones needed a flip.
+  guard_imp:   { id:'guard_imp',   name:'GuardImp',   gif:'guard_imp',   ext:'png', faces:'left',  scale:1.0,  base:{atk:24,def:18,spd:11,mhp:72},  attr:null },
+  gunner_imp:  { id:'gunner_imp',  name:'GunnerImp',  gif:'gunner_imp',  ext:'png', faces:'right', scale:1.15, base:{atk:38,def:20,spd:15,mhp:95},  attr:null },
+  tank_imp:    { id:'tank_imp',    name:'TankImp',    gif:'tank_imp',    ext:'png', faces:'left',  scale:1.35, base:{atk:46,def:32,spd:9, mhp:135}, attr:null },
+  marshal_imp: { id:'marshal_imp', name:'MarshalImp', gif:'marshal_imp', ext:'png', faces:'right', scale:1.2,  base:{atk:68,def:30,spd:20,mhp:155}, attr:null },
 };
+
+// ── RAID DEFENSE TIERS ──
+// 4 purchasable "AntiviruZ Security Package" tiers, sold at the Tech
+// Shop and gated by player level (15/30/45/60). `defId` is the
+// ANTIVIRUZ entry startRaidFight() spawns as the gate battle before a
+// rival's own pets. A rival's tier is picked from their level in
+// net.js's _generateRivals(); the player's OWN equipped tier
+// (G.guardTier) is what a future live-backend "your base was raided"
+// flow would use as the defender. `lootMult` scales buildLootMenu()'s
+// reward for beating that tier's guard — tougher gate, better payout.
+// Source art: turret/tank/marshal were drawn facing right and get
+// auto-flipped via the `faces` field above (matches the ally/enemy
+// flip convention already used everywhere else); the tank's mirrored
+// "DEFENDER-1" hull text is why that one PNG was flipped at the pixel
+// level instead — flipping the pixels the same way the CSS would
+// have also un-mirrors the text.
+export const GUARD_TIERS = [
+  { tier:1, defId:'guard_imp',   name:'Security Package I',   minLevel:15, cost:5000,   lootMult:1.0  },
+  { tier:2, defId:'gunner_imp',  name:'Security Package II',  minLevel:30, cost:15000,  lootMult:1.25 },
+  { tier:3, defId:'tank_imp',    name:'Security Package III', minLevel:45, cost:40000,  lootMult:1.55 },
+  { tier:4, defId:'marshal_imp', name:'Security Package IV',  minLevel:60, cost:100000, lootMult:2.0  },
+];
+export function guardTierForLevel(level) {
+  let t = 1;
+  for (const g of GUARD_TIERS) if (level >= g.minLevel) t = g.tier;
+  return t;
+}
 
 // ── REGION BOSSES ──
 // One wandering boss per MAP (region), not per zone. Pool = the 3
@@ -610,11 +649,14 @@ export const HACK_LOOT_KINDS = [
 
 // Compute the actual steal menu for a given target, factoring level gap.
 // hackerLv > targetLv raises %, the reverse lowers it. Never returns 0%.
-export function buildLootMenu(targetLevel, hackerLevel) {
+// `tierMult` (from the rival's GUARD_TIERS.lootMult, see startRaidFight
+// in game.js) rewards clearing a tougher security-guard gate with a
+// bigger payout, independent of the target's own level/wealth.
+export function buildLootMenu(targetLevel, hackerLevel, tierMult = 1) {
   const gap = hackerLevel - targetLevel;         // + = advantage
   const gapMod = Math.max(-30, Math.min(30, gap * 2));  // ±30 points
-  // richer targets carry more, scaled by their level
-  const wealth = 1 + targetLevel / 40;
+  // richer targets carry more, scaled by their level and guard tier
+  const wealth = (1 + targetLevel / 40) * tierMult;
   return HACK_LOOT_KINDS.map(l => {
     let chance = l.baseChance + gapMod;
     chance = Math.max(5, Math.min(100, Math.round(chance)));  // never 0

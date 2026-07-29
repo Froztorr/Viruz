@@ -893,6 +893,9 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 .sc-name{font-family:var(--pixel);font-size:18px;margin-bottom:5px}
 .sc-desc{font-size:17px;color:var(--muted);line-height:1.45;margin-bottom:6px;min-height:34px}
 .sc-cost{font-size:13px;color:var(--gold);margin-bottom:7px}
+.guard-icon{height:64px;display:flex;align-items:flex-end;justify-content:center}
+.guard-icon-sprite{max-width:100%;max-height:64px;width:auto;height:auto;image-rendering:pixelated;object-fit:contain}
+.guard-card.owned{border-color:var(--green);box-shadow:0 0 14px rgba(77,255,158,.25)}
 
 /* ── TECH LAB ── */
 .techlab-section{border-color:rgba(150,255,150,.25)}
@@ -1701,6 +1704,14 @@ img.bu-sprite.is-gif{--raster-mult:2}
    to both the ally and the enemy slot since it's keyed off the shared
    .bu-sprite class, not which side is rendering. */
 img.bu-sprite.is-art2{--raster-mult:2}
+/* object-fit:contain centers the art vertically inside the 76px box by
+   default. Raster art is rarely square (most v2 PNGs are much wider
+   than tall), so "contain" leaves empty space above AND below the
+   creature — pushing its feet up off the platform instead of onto it.
+   Anchoring to the bottom edge keeps feet flush with the ground line,
+   matching how the procedural SVG creatures already sit (they use
+   preserveAspectRatio="xMidYMax meet", bottom-anchored by default). */
+.bu-sprite.is-gif, .bu-sprite.is-art2{ object-position:50% 100%; }
 /* flip and scale must combine — a bare scaleX(-1) would wipe the scale */
 .bu-sprite.flip{transform:scale(calc(var(--cr-scale,1) * var(--raster-mult,1) * -1),calc(var(--cr-scale,1) * var(--raster-mult,1)))}
 .bu-sprite.flip.float{animation-name:floatBobFlip}
@@ -2002,6 +2013,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
       <div class="stat-line">พลังป้องกันรวม <b id="defense-power">0</b></div>
       <div id="defense-slots" class="card-row" style="margin-bottom:10px"></div>
       <div id="bot-list"></div>
+      <div id="guard-status" style="margin-top:6px"></div>
     </div>
   </section>
 
@@ -2035,6 +2047,10 @@ img.bu-sprite.is-art2{--raster-mult:2}
     <div class="section">
       <div class="section-title">// บอทป้องกันฐาน //</div>
       <div id="shop-bots" class="grid"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">// 🛡️ AntiviruZ Security Package //</div>
+      <div id="shop-guards" class="grid"></div>
     </div>
     <div class="section techlab-section">
       <div class="section-title">// 🧪 Tech Lab — วิวัฒน์ขั้นสุดท้าย //</div>

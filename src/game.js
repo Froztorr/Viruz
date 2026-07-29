@@ -6,6 +6,7 @@
 import {
   ATTR, ATTR_KEYS, RARITY, RARITY_KEYS, SPECIES, SPECIES_KEYS,
   MAPS, ZONES, zonesOfMap, zoneById, ANTIVIRUZ, EGGS, ITEMS, POTIONS, DEFENSE_BOTS, MAP_NODES, TUNING,
+  GUARD_TIERS, guardTierForLevel,
   SYNERGY, WHITE_TRAITS,
   LOYALTY_TIERS, loyaltyTier, loyaltyProgress, SIGNATURE_SKILLS,
   FOODS, TOYS, CARE_CLEAN, CARE_COOLDOWN_MS, LOYALTY_PER_WIN,
@@ -56,6 +57,7 @@ let G = {
   teamIds: [],       // up to 3 uids — the active squad
   defenseIds: [],    // up to 3 uids stationed at base
   bots: [],          // purchased defense bots
+  guardTier: 0,      // 0-4, owned AntiviruZ Security Package tier (GUARD_TIERS)
   inbox: [],
   raidHistory: [],
   potions: {},      // combat potions, bought at safe spots
@@ -938,11 +940,21 @@ function renderDefensePanel() {
         `${def.icon} ${def.name} <small>DEF ${def.power.def}</small>`));
     });
   }
+  const guardWrap = $('guard-status');
+  if (guardWrap) {
+    const tierDef = GUARD_TIERS.find(g => g.tier === G.guardTier);
+    guardWrap.innerHTML = tierDef
+      ? `<div class="bot-chip">🛡️ ${tierDef.name} <small>ATK ${ANTIVIRUZ[tierDef.defId].base.atk} · DEF ${ANTIVIRUZ[tierDef.defId].base.def}</small></div>`
+      : `<div class="muted">ยังไม่มี Security Package — ซื้อได้ที่ Tech Shop</div>`;
+  }
+  const guardTierDef = GUARD_TIERS.find(g => g.tier === G.guardTier);
+  const guardDefBase = guardTierDef ? ANTIVIRUZ[guardTierDef.defId].base : null;
   const dp = defenseTeam().reduce((s,p) => s + powerOf(p), 0) +
              G.bots.reduce((s,b) => {
                const d = DEFENSE_BOTS.find(x => x.id === b.id);
                return s + (d ? d.power.atk*2 + d.power.def*1.6 : 0);
-             }, 0);
+             }, 0) +
+             (guardDefBase ? guardDefBase.atk*2 + guardDefBase.def*1.6 : 0);
   setText('defense-power', Math.floor(dp).toLocaleString());
 }
 
@@ -1091,7 +1103,52 @@ function renderShop() {
     };
     bots.appendChild(card);
   });
+
+  renderGuardShop();
   renderTechLab();
+}
+
+// ── ANTIVIRUZ SECURITY PACKAGES ──
+// 4-tier home-defense guard, gated by player level (GUARD_TIERS in
+// data.js). Sequential upgrade path: buying tier N requires already
+// owning tier N-1 (or being at tier 0 for tier 1), costs Bitz, and
+// replaces the equipped tier — there's no reason to keep a lower one
+// once a higher one is owned. The equipped tier (G.guardTier) is also
+// what a rival's own hired guard is compared against thematically;
+// the actual guard a raider FIGHTS is the rival's own tier (see
+// startRaidFight), not the player's.
+function renderGuardShop() {
+  const wrap = $('shop-guards');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const myLv = Math.max(1, ...activeTeam().map(p => p.level), 1);
+  GUARD_TIERS.forEach(g => {
+    const def = ANTIVIRUZ[g.defId];
+    const owned = G.guardTier === g.tier;
+    const locked = myLv < g.minLevel;
+    const needsPrev = g.tier > 1 && G.guardTier < g.tier - 1;
+    const card = el('div', 'shop-card guard-card' + (owned ? ' owned' : ''));
+    card.innerHTML = `
+      <div class="sc-icon guard-icon">${creatureMarkupFor(def, ATTR.red, 'guard-icon-sprite')}</div>
+      <div class="sc-name">${g.name}</div>
+      <div class="sc-desc">${def.name} · ATK ${def.base.atk} · DEF ${def.base.def}<br>ต้องเลเวล ${g.minLevel}+</div>
+      <div class="sc-cost">${g.cost.toLocaleString()} Bitz</div>
+      <button class="btn" ${owned ? 'disabled' : ''}>${owned ? 'ประจำการอยู่' : locked ? `ปลดล็อก Lv.${g.minLevel}` : needsPrev ? 'ต้องซื้อระดับก่อนหน้า' : 'ซื้อ'}</button>`;
+    const btn = card.querySelector('button');
+    if (!owned && !locked && !needsPrev) {
+      btn.onclick = () => {
+        if (G.bitz < g.cost) { toast('Bitz ไม่พอ'); return; }
+        G.bitz -= g.cost;
+        G.guardTier = g.tier;
+        save(); renderGuardShop(); renderHUD(); renderDefensePanel();
+        log(`ซื้อ ${g.name} ป้องกันฐาน`, 'win');
+        toast(`🛡️ ${g.name} เข้าประจำการแล้ว`);
+      };
+    } else {
+      btn.disabled = true;
+    }
+    wrap.appendChild(card);
+  });
 }
 
 function buyItem(it) {
@@ -2694,17 +2751,17 @@ function renderSafeSpot() {
 }
 
 // ── RAID FIGHT ──
-// A single-pet defense battle. The enemy is the target's antiviruz
-// defenders (a themed monster stand-in), scaled by the loot multiplier.
+// A single-pet defense battle. The enemy is the rival's hired
+// AntiviruZ security guard — one of the 4 GUARD_TIERS, picked by
+// their level back in net.js's _generateRivals() (older saved rivals
+// without a guardTier fall back to computing one here).
 function startRaidFight(rival, sendPet, loot, mult) {
   // Build a defender scaled to the rival's level and the difficulty mult.
   const defLevel = Math.max(1, rival.level);
-  const pool = defLevel >= 51
-    ? ['vampire_lord','fire_golem','hobgoblin']
-    : ['stone_imp','fang_stalker','tide_warden'];
-  const defId = pool[Math.floor(Math.random() * pool.length)];
-  const foe = spawnAntiviruz(defId, defLevel);
-  foe.name = rival.name + "'s Guard";
+  const tier = rival.guardTier || guardTierForLevel(defLevel);
+  const tierDef = GUARD_TIERS.find(g => g.tier === tier) || GUARD_TIERS[0];
+  const foe = spawnAntiviruz(tierDef.defId, defLevel);
+  foe.name = `${rival.name}'s ${foe.name}`;
   // scale enemy stats by the multiplier from the chosen loot's risk
   foe.base = {
     atk: Math.round(foe.base.atk * mult),
@@ -4045,7 +4102,9 @@ function enterStealStage() {
   if (!h) return;
   showScreen('steal');
   const myLv = Math.max(1, ...activeTeam().map(p => p.level));
-  h.loot = buildLootMenu(h.rival.level, myLv);
+  const tier = h.rival.guardTier || guardTierForLevel(Math.max(1, h.rival.level));
+  const tierDef = GUARD_TIERS.find(g => g.tier === tier) || GUARD_TIERS[0];
+  h.loot = buildLootMenu(h.rival.level, myLv, tierDef.lootMult);
   setText('steal-target', h.rival.name);
   const petRow = $('steal-pets');
   petRow.innerHTML = '<div class="steal-lab">เลือก VIRUZ 1 ตัวไปเจาะ:</div>';
