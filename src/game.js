@@ -761,7 +761,15 @@ function equipIconHtml(item, fallbackEmoji) {
 function equipStatLine(item) {
   if (item.effectId) {
     const eff = PAYLOAD_EFFECTS[item.effectId];
-    return eff ? `${eff.icon} ${eff.name} — ${eff.desc}` : '';
+    if (!eff) return '';
+    // mag is per-grade (EQUIP_GRADE_KEYS index) — a Script-Kiddie Data
+    // Leech and an A.P.T. one drain very different %, but the desc
+    // text never showed which, so a look at any leech item's tooltip
+    // just said "restores HP" with no number to size it up against.
+    const gi = EQUIP_GRADE_KEYS.indexOf(item.grade);
+    const mag = (eff.mag || [])[gi] || 0;
+    const pct = mag > 0 ? ` (${Math.round(mag * 100)}%)` : '';
+    return `${eff.icon} ${eff.name}${pct} — ${eff.desc}`;
   }
   return Object.keys(item.stats || {}).map(k => `${STAT_META[k].icon}+${item.stats[k]}`).join(' ');
 }
@@ -3387,6 +3395,11 @@ function markSpecialUsed(unit, sp) {
 
 async function runTurn() {
   if (!battle || battle.over) return;
+  if (!battle._openingBuffsDone) {
+    battle._openingBuffsDone = true;
+    await runOpeningBuffs();
+    if (!battle || battle.over) return;
+  }
   const ally = activeAlly();
   const foe = activeFoe();
   if (!ally) { promptSwap(); return; }
@@ -3442,6 +3455,63 @@ async function runTurn() {
 
   if (await checkBattleEnd()) return;
   scheduleTurn();
+}
+
+// ── OPENING TEAM BUFFS (bench healers) ──
+// A team-wide buff (buffTeam — Data Bless / Sanctuary) only ever fired
+// on ITS caster's own turn, so a healer sitting on the bench never
+// got to use it — the buff a support pet is meant to open a fight
+// with was stuck waiting for a swap-in that might not happen for
+// several turns. Now: once, before the very first attack of a fight,
+// every BENCH pet (the active fighter's own turn already covers
+// itself via the normal autoCast path below) with a buffTeam special
+// toggled to auto-cast fires it if it's affordable — no VFX on an
+// off-field caster, just a small portrait pop over the active ally
+// and a log line, then the buff (and any healTeam) applies exactly
+// like it would mid-fight.
+async function runOpeningBuffs() {
+  if (!battle || !battle.team) return;
+  const activePet = activeAlly();
+  const bench = battle.team.filter(p => p !== activePet && p.hp > 0);
+  for (const caster of bench) {
+    const sp = unlockedSpecials(caster).find(s =>
+      s.buffTeam && caster.autoCast?.[s.id] && canCast(caster, s) && specialReady(caster, s));
+    if (!sp) continue;
+    spendMP(caster, sp);
+    markSpecialUsed(caster, sp);
+    battle.team.forEach(p => { if (p.hp > 0) addAilment(p, { id: 'frenzy', ...sp.buffTeam }); });
+    if (sp.healTeam) {
+      battle.team.forEach(p => {
+        if (p.hp <= 0) return;
+        const mx = statsOf(p).vit;
+        p.hp = Math.min(mx, p.hp + Math.floor(mx * sp.healTeam));
+      });
+    }
+    blog(`✨ ${caster.name} ใช้ ${sp.name} ก่อนเริ่มต่อสู้ · เสริมพลังทั้งทีม`, 'buff');
+    supportCasterPop(caster);
+    refreshBattleUnits();
+    await wait(2000 / battleSpeed);
+  }
+}
+
+// Small portrait box over the active ally's head — the only visual
+// tell an off-field pet gets when it opens a fight with a buff, since
+// it has no on-stage unit of its own to animate.
+function supportCasterPop(caster) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  const activePet = activeAlly();
+  const unitEl = activePet && document.querySelector(`.bunit[data-uid="${activePet.uid}"]`);
+  if (!layer || !stage || !unitEl) return;
+  const host = stage.getBoundingClientRect();
+  const r = unitEl.getBoundingClientRect();
+  const d = el('div', 'support-cast-pop');
+  d.style.left = (r.left - host.left + r.width / 2) + 'px';
+  d.style.top = (r.top - host.top) + 'px';
+  d.innerHTML = `<div class="support-cast-box">${creatureMarkup(caster, 'support-cast-sprite')}</div>
+    <div class="support-cast-name">${caster.name}</div>`;
+  layer.appendChild(d);
+  setTimeout(() => d.remove(), 2000 / battleSpeed);
 }
 
 // Applies damage to `target`, with one special case: a region boss's
@@ -3977,23 +4047,37 @@ async function playAttack(attacker, target, res, side) {
   await wait(returnMs / battleSpeed);
 }
 
+// Updates one .vital gauge (HP heart or MP circle) already in the DOM
+// in place — same clip-path-from-the-top math as vitalHtml() above.
+function updateVital(container, pct, num) {
+  if (!container) return;
+  const clipTop = Math.max(0, Math.min(100, 100 - pct));
+  const fill = container.querySelector('.vital-fill');
+  if (fill) fill.style.clipPath = `inset(${clipTop}% 0 0 0)`;
+  const numEl = container.querySelector('.vital-num');
+  if (numEl) numEl.textContent = num;
+}
+
 function refreshBattleUnits() {
   if (!battle) return;
   ['ally', 'foe'].forEach(which => {
     const pet = which === 'ally' ? activeAlly() : activeFoe();
     const plate = $(`plate-${which === 'ally' ? 'ally' : 'foe'}`);
     if (!pet || !plate) return;
-    const hpEl = plate.querySelector('.np-hp b');
-    if (hpEl) hpEl.textContent = Math.max(0, pet.hp);
+    const hpMax = pet.isBoss ? (pet.bossPhase === 2 ? pet.hpPhase2Max : statsOf(pet).mhp) : statsOf(pet).mhp;
+    const hpPct = Math.max(0, Math.min(100, Math.round(pet.hp / Math.max(1, hpMax) * 100)));
+    updateVital(plate.querySelector('.np-hp .vital'), hpPct, Math.max(0, pet.hp));
+    if (which === 'ally') {
+      const mpMax = statsOf(pet).int;
+      const mpPct = Math.round((pet.mp || 0) / Math.max(1, mpMax) * 100);
+      updateVital(plate.querySelector('.np-mp .vital'), mpPct, Math.max(0, pet.mp || 0));
+    }
     if (pet.isBoss) {
-      const phase1Max = statsOf(pet).mhp;
-      const curMax = pet.bossPhase === 2 ? pet.hpPhase2Max : phase1Max;
-      const pct = Math.max(0, Math.min(100, Math.round(pet.hp / Math.max(1, curMax) * 100)));
       const bar = plate.querySelector('.boss-hpbar');
       if (bar) {
         bar.className = `boss-hpbar phase${pet.bossPhase}`;
         const fill = bar.querySelector('i');
-        if (fill) fill.style.width = pct + '%';
+        if (fill) fill.style.width = hpPct + '%';
       }
       const tag = plate.querySelector('.np-boss-tag');
       if (tag) tag.textContent = `⚠ BOSS${pet.bossPhase===2?' · RAGE':''}`;
@@ -4238,22 +4322,38 @@ function renderBattleSide(pet, elId, isEnemy) {
     // Kept deliberately compact (one bar, no separate phase-pip row) —
     // the boss's enlarged sprite sits right below this plate, and a
     // taller plate was overlapping it.
+    const hpMax = pet.isBoss ? (pet.bossPhase === 2 ? pet.hpPhase2Max : statsOf(pet).mhp) : statsOf(pet).mhp;
+    const hpPct = Math.max(0, Math.min(100, Math.round(pet.hp / Math.max(1, hpMax) * 100)));
     let bossBar = '';
     if (pet.isBoss) {
-      const phase1Max = statsOf(pet).mhp;
-      const curMax = pet.bossPhase === 2 ? pet.hpPhase2Max : phase1Max;
-      const pct = Math.max(0, Math.min(100, Math.round(pet.hp / Math.max(1, curMax) * 100)));
-      bossBar = `<div class="boss-hpbar phase${pet.bossPhase}"><i style="width:${pct}%"></i></div>`;
+      bossBar = `<div class="boss-hpbar phase${pet.bossPhase}"><i style="width:${hpPct}%"></i></div>`;
     }
     plate.innerHTML = `
       ${pet.isBoss ? `<div class="np-boss-tag">⚠ BOSS${pet.bossPhase===2?' · RAGE':''}</div>` : ''}
       <div class="np-name">${pet.name}</div>
       <div class="np-lv">Lv.${pet.level}</div>
-      <div class="np-hp"><span class="np-heart">♥</span><b>${Math.max(0,pet.hp)}</b></div>
+      <div class="np-hp">${vitalHtml('heart', hpPct, Math.max(0, pet.hp))}</div>
       ${bossBar}
-      ${!isEnemy ? `<div class="np-mp">MP<span class="mp-bar"><i style="width:${mpPct}%"></i></span>${pet.mp||0}</div>` : ''}
+      ${!isEnemy ? `<div class="np-mp">${vitalHtml('circle', mpPct, Math.max(0, pet.mp || 0))}</div>` : ''}
       ${spdPct > 0 ? `<div class="spd-pip">⚡ ${spdPct}%</div>` : ''}`;
   }
+}
+
+// Shared HP/MP "liquid" gauge markup — see the .vital CSS rules for
+// how the clip-path-from-the-top mechanism drains the fill. `shape`
+// is 'heart' (HP) or 'circle' (MP); refreshBattleUnits() below updates
+// the same two elements (.vital-fill/.vital-num) in place every turn
+// instead of re-rendering, which is what the MP gauge previously
+// never got — the number and fill only came from THIS function, run
+// once per render, so spending MP mid-fight left it stale until the
+// next full re-render (e.g. a pet swap).
+function vitalHtml(shape, pct, num) {
+  const clipTop = Math.max(0, Math.min(100, 100 - pct));
+  return `<div class="vital vital-${shape}">
+    <div class="vital-fill-bg"></div>
+    <div class="vital-fill" style="clip-path:inset(${clipTop}% 0 0 0)"></div>
+    <span class="vital-num">${num}</span>
+  </div>`;
 }
 
 function renderBattle() {
