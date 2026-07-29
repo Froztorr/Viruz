@@ -209,6 +209,10 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .lc-warn{font-size:14px;color:#c8ff33;margin-top:3px}
 
 /* ── SKILL TREE SCREEN ── */
+.tree-mode-toggle{display:inline-flex;gap:6px;margin-left:10px;vertical-align:middle}
+.chip-btn{font-size:12px;padding:4px 10px;border-radius:20px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--muted);cursor:pointer}
+.chip-btn.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 10px rgba(55,230,255,.25)}
 .tree-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
   padding:8px 10px;background:var(--panel);border:1px solid var(--line);margin-bottom:10px}
 .tree-pts{font-size:17px;color:var(--muted)}
@@ -838,6 +842,10 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 .pc-name{font-family:var(--pixel);font-size:23px;line-height:1.05;text-align:center;
   margin-bottom:4px;text-shadow:0 2px 0 rgba(0,0,0,.6)}
 .pc-trait{font-size:14px}
+.pc-evo-ready{display:inline-block;color:var(--green);font-size:16px;font-weight:bold;
+  animation:evoArrowBob 1s ease-in-out infinite alternate;
+  text-shadow:0 0 8px rgba(92,214,92,.8)}
+@keyframes evoArrowBob{from{transform:translateY(0)}to{transform:translateY(-3px)}}
 .pc-lv{font-size:15px;color:var(--txt);text-align:center;margin-bottom:5px;line-height:1.2}
 .pc-bar{height:6px;background:rgba(0,0,0,.55);border:1px solid var(--line);overflow:hidden}
 .pc-bar i{display:block;height:100%;background:var(--green);transition:width .3s}
@@ -879,11 +887,55 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
   clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,9px 100%,0 calc(100% - 9px));
 }
 .shop-card:hover{border-color:var(--magenta);box-shadow:0 0 16px rgba(255,79,216,.2)}
+.shop-card.disabled{opacity:.35;pointer-events:none}
 .sc-icon{font-size:30px;margin-bottom:5px}
 .sc-icon .eq-icon-img{width:36px;height:36px;display:block;margin:0 auto}
 .sc-name{font-family:var(--pixel);font-size:18px;margin-bottom:5px}
 .sc-desc{font-size:17px;color:var(--muted);line-height:1.45;margin-bottom:6px;min-height:34px}
 .sc-cost{font-size:13px;color:var(--gold);margin-bottom:7px}
+
+/* ── TECH LAB ── */
+.techlab-section{border-color:rgba(150,255,150,.25)}
+.tl-status{font-family:var(--pixel);font-size:14px;padding:8px 10px;margin-bottom:10px;
+  border:1px solid var(--line);background:var(--panel2)}
+.tl-status.ok{color:var(--green);border-color:var(--green)}
+.tl-status.bad{color:#ff8a5a;border-color:rgba(255,138,90,.5)}
+.tl-slots{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.tl-slot{width:78px;height:88px;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:4px;background:var(--panel);border:2px dashed var(--line);
+  color:var(--muted);padding:4px}
+.tl-slot.filled{border-style:solid;border-color:var(--cyan);background:var(--panel2);color:var(--txt)}
+.tl-slot-plus{font-size:26px;color:var(--line2)}
+.tl-slot-icon{font-size:26px}
+.tl-slot-label{font-size:11px;text-align:center;line-height:1.2}
+.tl-slot-count{font-size:10px;color:var(--gold)}
+.tl-odds{margin-bottom:12px;padding:8px 10px;background:var(--panel);border:1px solid var(--line)}
+.tl-odds-title{font-size:12px;color:var(--muted);margin-bottom:5px}
+.tl-odds-row{display:flex;justify-content:space-between;font-size:14px;padding:2px 0}
+
+/* ── EVOLVE ANIMATION ── */
+.evo-overlay{position:fixed;inset:0;z-index:999;background:rgba(4,6,14,.92);
+  display:flex;align-items:center;justify-content:center}
+.evo-stage{position:relative;display:flex;flex-direction:column;align-items:center;gap:14px}
+.evo-sprite-wrap{position:relative;width:200px;height:200px;display:flex;align-items:center;justify-content:center}
+.evo-sprite-wrap img,.evo-sprite-wrap svg{max-width:180px;max-height:180px}
+.evo-sprite-wrap.evo-pulse{animation:evoPulse .95s ease-in-out}
+.evo-sprite-wrap.evo-pulse::after{content:'';position:absolute;inset:-20px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,.95) 0%,rgba(255,255,255,0) 70%);
+  animation:evoPulseGlow .95s ease-in-out}
+@keyframes evoPulse{0%,100%{filter:brightness(1)}45%{filter:brightness(3) saturate(0)}}
+@keyframes evoPulseGlow{0%,100%{opacity:0}45%{opacity:1}}
+.evo-sprite-wrap.evo-reveal{animation:evoReveal .5s ease-out}
+@keyframes evoReveal{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+.evo-shards{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
+.evo-shard{position:absolute;background-repeat:no-repeat;opacity:1}
+.evo-shards.go .evo-shard{animation:evoShardFly .8s ease-out forwards}
+@keyframes evoShardFly{
+  0%{transform:translate(0,0) rotate(0deg);opacity:1}
+  100%{transform:translate(var(--dx),var(--dy)) rotate(var(--rot));opacity:0}}
+.evo-label{font-family:var(--pixel);font-size:20px;color:#eaf4ff;letter-spacing:1px;
+  text-shadow:0 0 12px rgba(120,200,255,.6)}
+
 .clinic-row{display:flex;align-items:center;gap:10px;padding:8px;
   border:1px solid var(--line);background:var(--panel);margin-bottom:7px}
 .cr-sprite{width:44px;height:44px;display:block;overflow:visible}
@@ -921,6 +973,7 @@ body.drawer-open #drawer-panel{transform:translateX(0)}
 
 /* ── CARE SCREEN ── */
 #care-picker{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px}
+#techlab-pet-picker{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px}
 .care-chip{flex:0 0 auto;width:64px;padding:6px 4px;background:var(--panel2);
   border:1px solid var(--line);text-align:center;transition:.12s;
   clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%)}
@@ -1200,6 +1253,25 @@ body.care-game-open{overflow:hidden}
   border-color:var(--cyan);transform:translateY(-2px);
   box-shadow:0 0 16px rgba(55,230,255,.35)}
 
+/* region boss pin — dark red, bigger, a slowly-rotating radiant glow
+   behind the dot so it reads as "moving" without literally animating
+   position (the dot itself still pulses via the shared pinPulse). */
+.boss-pin{z-index:3}
+.boss-pin .boss-dot{width:22px;height:22px;background:#7a0d0d;
+  border-color:rgba(255,180,150,.95);
+  box-shadow:0 0 0 5px rgba(122,13,13,.3),0 0 22px rgba(255,40,20,.9);
+  position:relative}
+.boss-pin .boss-dot::before{content:'';position:absolute;inset:-14px;
+  border-radius:50%;
+  background:conic-gradient(from 0deg,rgba(180,10,10,0) 0%,rgba(255,40,20,.55) 18%,rgba(180,10,10,0) 40%);
+  animation:bossRadiant 2.6s linear infinite;pointer-events:none}
+@keyframes bossRadiant{to{transform:rotate(360deg)}}
+.boss-card{border-color:rgba(255,90,60,.6) !important;background:rgba(20,4,4,.92) !important}
+.boss-card b{color:#ff6a4a}
+.boss-card em{color:#ff9a3d !important;font-weight:bold}
+.boss-pin:hover .boss-card,.boss-pin:active .boss-card{
+  border-color:#ff6a4a !important;box-shadow:0 0 18px rgba(255,60,30,.5) !important}
+
 /* zone briefing modal */
 .zone-brief{font-size:13px}
 .zb-desc{color:var(--muted);margin-bottom:10px;line-height:1.6}
@@ -1301,6 +1373,25 @@ body.care-game-open{overflow:hidden}
   text-shadow:0 3px 0 rgba(0,0,0,.6),0 0 12px rgba(255,90,110,.5)}
 .name-plate.right .np-hp{justify-content:flex-end}
 .np-heart{color:#ff4a5e;font-size:22px;text-shadow:0 0 8px rgba(255,74,94,.6)}
+
+/* ── BOSS BATTLE UI ── */
+.np-boss-tag{font-family:var(--pixel);font-size:12px;letter-spacing:.5px;
+  color:#ff8a5a;text-shadow:0 0 8px rgba(255,60,20,.6);margin-bottom:2px}
+.boss-hpwrap{margin-top:4px;display:flex;flex-direction:column;gap:3px}
+.boss-hpbar{width:140px;height:10px;border:2px solid rgba(255,255,255,.4);
+  background:rgba(0,0,0,.5);border-radius:2px;overflow:hidden}
+.boss-hpbar i{display:block;height:100%;transition:width .3s ease;
+  background:linear-gradient(180deg,#ff8a5a,#c8321a)}
+.boss-hpbar.phase2 i{background:linear-gradient(180deg,#ff3d3d,#7a0d0d);
+  box-shadow:0 0 10px rgba(255,40,20,.7)}
+.boss-phase-pips{display:flex;gap:4px}
+.boss-phase-pips .pip{width:8px;height:8px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.5);background:rgba(0,0,0,.4)}
+.boss-phase-pips .pip.on{background:#ff5a3d;box-shadow:0 0 6px rgba(255,90,60,.8)}
+.rage-marks{position:absolute;top:-6px;left:50%;transform:translateX(-50%);
+  display:flex;gap:4px;font-size:20px;z-index:5;animation:rageBounce .5s ease-in-out infinite alternate}
+@keyframes rageBounce{from{transform:translateX(-50%) translateY(0)}to{transform:translateX(-50%) translateY(-6px)}}
+.bu-sprite-wrap.is-boss{filter:drop-shadow(0 0 14px rgba(255,40,20,.5))}
 
 /* ── TURN BANNERS ── */
 #banner-layer{position:absolute;left:0;right:0;top:74px;z-index:7;
@@ -1917,6 +2008,14 @@ img.bu-sprite.is-gif{--raster-mult:2}
     <div class="section">
       <div class="section-title">// บอทป้องกันฐาน //</div>
       <div id="shop-bots" class="grid"></div>
+    </div>
+    <div class="section techlab-section">
+      <div class="section-title">// 🧪 Tech Lab — วิวัฒน์ขั้นสุดท้าย //</div>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">
+        เลือก VIRUZ ที่พร้อม (Lv สูงสุด + เพื่อนแท้) แล้วใส่ Malware Core 1 ชิ้น + Code Part 3 ชิ้นเพื่อวิวัฒน์
+      </div>
+      <div id="techlab-pet-picker"></div>
+      <div id="techlab-panel"></div>
     </div>
   </section>
 

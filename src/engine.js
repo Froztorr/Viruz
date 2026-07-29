@@ -10,6 +10,8 @@ import {
   RARITY, RARITY_KEYS, SPECIES, ANTIVIRUZ, TUNING, loyaltyTier, SIGNATURE_SKILLS, LOYALTY_TIERS,
   HACK_WORDS, HACK_JUNK, hackDifficulty, wordLikeness,
   SKILL_TREES, SPECIALS, AILMENTS, STAT_KEYS, treeFor, nodeById,
+  MUTATION_KEYS, MUTATION_ROLL, treeForMutation,
+  bossPoolForMap, BOSS_TUNING,
   speedGain, SKILL_TIER_BONUS } from './data.js';
 
 // ── Helpers ──
@@ -43,6 +45,7 @@ export function createPet(speciesId, rarity, forcedAttr = null) {
     attr,
     stage: 0,
     level: 1,
+    mutation: null,        // rolled by evolve() on reaching stage 2
     exp: 0,
     expNeed: TUNING.expCurve(1),
     loyalty: 0,            // 0-100, drives LOYALTY_TIERS
@@ -166,40 +169,66 @@ export function equipmentBonuses(pet) {
   return out;
 }
 
-// Sum the flat stat bonuses a pet has bought in its skill tree.
+// All skill trees a pet currently has access to: the attribute tree
+// always, plus the mutation tree once stage 2 and a mutation is
+// rolled (see evolve() below). Node ids never collide across trees
+// (r1/g1/y1/w1 vs oc1/bw1/ph1/cp1), so pet.tree can stay one flat
+// { nodeId: rank } map shared by both.
+export function treesFor(pet) {
+  const list = [treeFor(pet.attr)];
+  if (pet.stage >= 2 && pet.mutation) {
+    const mt = treeForMutation(pet.mutation);
+    if (mt) list.push(mt);
+  }
+  return list;
+}
+// Finds a node (and which tree it lives in) across every tree the
+// pet currently has access to.
+function findNode(pet, nodeId) {
+  for (const tree of treesFor(pet)) {
+    const node = tree.nodes.find(n => n.id === nodeId);
+    if (node) return { tree, node };
+  }
+  return null;
+}
+
+// Sum the flat stat bonuses a pet has bought across its skill tree(s).
 export function treeBonuses(pet) {
   const z = { atk:0, def:0, spd:0, vit:0, crit:0, eva:0, int:0 };
   const spent = pet.tree || {};
-  const tree = treeFor(pet.attr);
+  const trees = treesFor(pet);
   for (const nid in spent) {
     const rank = spent[nid];
     if (!rank) continue;
-    const node = tree.nodes.find(n => n.id === nid);
+    let node = null;
+    for (const t of trees) { node = t.nodes.find(n => n.id === nid); if (node) break; }
     if (!node || node.kind !== 'stat') continue;
     z[node.stat] = (z[node.stat] || 0) + node.per * rank;
   }
   return z;
 }
 
-// Which specials a pet has unlocked (skill-node ids taken).
+// Which specials a pet has unlocked (skill-node ids taken), across
+// every tree it has access to.
 export function unlockedSpecials(pet) {
   const spent = pet.tree || {};
-  const tree = treeFor(pet.attr);
   const out = [];
-  tree.nodes.forEach(n => {
-    if (n.kind === 'skill' && spent[n.id]) {
-      const sp = SPECIALS[n.skill];
-      if (sp) out.push(sp);
-    }
+  treesFor(pet).forEach(tree => {
+    tree.nodes.forEach(n => {
+      if (n.kind === 'skill' && spent[n.id]) {
+        const sp = SPECIALS[n.skill];
+        if (sp) out.push(sp);
+      }
+    });
   });
   return out;
 }
 
 // Can this node be taken right now?
 export function canTakeNode(pet, nodeId) {
-  const tree = treeFor(pet.attr);
-  const node = tree.nodes.find(n => n.id === nodeId);
-  if (!node) return { ok:false, why:'ไม่พบโหนด' };
+  const found = findNode(pet, nodeId);
+  if (!found) return { ok:false, why:'ไม่พบโหนด' };
+  const { tree, node } = found;
   const spent = pet.tree || {};
   const rank = spent[nodeId] || 0;
   if (rank >= node.max) return { ok:false, why:'สูงสุดแล้ว' };
@@ -315,8 +344,8 @@ export function combatStats(pet, team) {
     atk:  Math.floor(s.atk * m * ail.atk),
     def:  Math.floor(s.def * m * lb.def * ail.def),
     spd:  Math.floor(s.spd * m * lb.spd * ail.spd),
-    crit: s.crit,
-    eva:  s.eva,
+    crit: Math.max(1, Math.round(s.crit * ail.crit)),
+    eva:  Math.max(1, Math.round(s.eva  * ail.eva)),
     int:  s.int,
     vit:  s.vit,
     mhp:  s.vit,
@@ -445,15 +474,21 @@ export function tickAilments(unit) {
   return events;
 }
 
-// Ailment/buff modifiers folded into combat stats.
+// Ailment/buff modifiers folded into combat stats. Generic: any
+// ailment instance carrying atk/def/spd/eva/crit is applied
+// multiplicatively, whatever its `id` — not just the original
+// hardcoded 'frenzy' case. This is what lets a buffSelf/ailment
+// payload from ANY special (frenzy, the Phantom mutation's eva veil,
+// the Corrupted mutation's stat-drain debuff, ...) actually take
+// effect without each one needing its own special-cased branch here.
 export function ailmentMods(unit) {
-  const m = { atk:1, def:1, spd:1 };
+  const m = { atk:1, def:1, spd:1, eva:1, crit:1 };
   (unit.ailments || []).forEach(a => {
-    if (a.id === 'frenzy') {
-      m.atk *= 1 + (a.atk || 0);
-      m.spd *= 1 + (a.spd || 0);
-      m.def *= 1 + (a.def || 0);   // def is negative for frenzy
-    }
+    if (a.atk  != null) m.atk  *= 1 + a.atk;
+    if (a.def  != null) m.def  *= 1 + a.def;
+    if (a.spd  != null) m.spd  *= 1 + a.spd;
+    if (a.eva  != null) m.eva  *= 1 + a.eva;
+    if (a.crit != null) m.crit *= 1 + a.crit;
   });
   if (unit._shield) m.def *= 1 + unit._shield;
   return m;
@@ -514,21 +549,53 @@ export function canEvolve(pet) {
   if (pet.stage >= 2) return { ok: false, reason: 'ถึงขั้นสูงสุดแล้ว' };
   const next = sp.evos[pet.stage + 1];
   if (!next) return { ok: false, reason: 'ไม่มีวิวัฒนาการ' };
+  // Final evolution (stage 1 -> 2) is gated on the pet being fully
+  // leveled for ITS OWN rarity cap (30 for Normal, up to 120 for
+  // Mythic — not a fixed number) plus max loyalty, rather than a
+  // fixed reqLv. It's also the only stage that rolls a mutation, and
+  // is only actually performable through the Tech Lab (see
+  // techLabEvolve() in game.js), which additionally requires 1
+  // Malware Core + 3 Code Parts.
+  if (pet.stage === 1) {
+    if (pet.level < pet.maxLv) return { ok: false, reason: `ต้องถึง Lv.${pet.maxLv} (สูงสุดของเรริตี้นี้)` };
+    if (loyaltyTier(pet.loyalty).id !== 'loyal') return { ok: false, reason: 'ต้องมีความไว้ใจสูงสุด (เพื่อนแท้)' };
+    return { ok: true, next };
+  }
   if (pet.level < next.reqLv) return { ok: false, reason: `ต้องถึง Lv.${next.reqLv}` };
   return { ok: true, next };
 }
 
-export function evolve(pet, force = false) {
+export function evolve(pet, force = false, mutationRoll = null) {
   const sp = SPECIES[pet.speciesId];
   if (!sp || pet.stage >= 2) return null;
   const next = sp.evos[pet.stage + 1];
   if (!next) return null;
-  if (!force && pet.level < next.reqLv) return null;
+  if (!force) {
+    if (pet.stage === 1) {
+      if (pet.level < pet.maxLv) return null;
+      if (loyaltyTier(pet.loyalty).id !== 'loyal') return null;
+    } else if (pet.level < next.reqLv) {
+      return null;
+    }
+  }
   pet.stage++;
   ['atk', 'def', 'spd', 'mhp'].forEach(k => {
     pet.base[k] = Math.floor(pet.base[k] * next.mult);
   });
   if (next.skill) pet.skills.push({ ...next.skill });
+  // Reaching the final stage rolls a mutation — a visual identity
+  // variant (see spriteV2Path() in data.js) plus a second, smaller
+  // skill tree (MUTATION_TREES) layered on top of the attribute tree.
+  // `mutationRoll` lets the Tech Lab pass in weighted odds built from
+  // whichever Code Parts were spent (mutationWeightsFromParts() in
+  // data.js); falls back to equal odds if called without one (e.g.
+  // force-evolve from a debug/admin path).
+  if (pet.stage === 2 && !pet.mutation) {
+    const pool = sp.mutationPool || MUTATION_KEYS;
+    let roll = mutationRoll || (pool.length === MUTATION_KEYS.length ? MUTATION_ROLL : pool.map(k => [k, 25]));
+    if (pool.length !== MUTATION_KEYS.length) roll = roll.filter(([k]) => pool.includes(k));
+    pet.mutation = rollWeighted(roll);
+  }
   pet.hp = statsOf(pet).mhp;
   return next;
 }
@@ -573,6 +640,39 @@ export function spawnAntiviruz(defId, level) {
   };
   pet.hp = statsOf(pet).mhp;
   return pet;
+}
+
+// ── REGION BOSS ──
+// One per map/region (see bossPoolForMap() in data.js), picked
+// randomly from that region's 3 highest-power monsters each time it
+// spawns. `bossPhase` starts at 1 (normal bar); once that bar empties
+// game.js's battle code should NOT kill it — instead flip to phase 2
+// (hpPhase2Max, +50% atk rage state) before actually resolving death.
+// isBoss/mapId are read back by game.js's loot resolution (2x money,
+// 25% Malware Core, a bumped equipment-grade roll) and by the pin
+// respawn logic once it dies for real.
+export function spawnBoss(mapId, level) {
+  const pool = bossPoolForMap(mapId);
+  if (!pool.length) return null;
+  const defId = pool[Math.floor(Math.random() * pool.length)];
+  const pet = spawnAntiviruz(defId, level);
+  if (!pet) return null;
+  pet.isBoss = true;
+  pet.mapId = mapId;
+  pet.scale = (pet.scale || 1) * BOSS_TUNING.sizeMult;
+  pet.bossPhase = 1;
+  pet.hpPhase2Max = Math.max(1, Math.floor(statsOf(pet).mhp * BOSS_TUNING.phase2HpPct));
+  return pet;
+}
+// Call once when a boss's phase-1 bar hits 0, INSTEAD of letting it
+// die. Returns false if there's nothing to do (not a phase-1 boss) —
+// safe to call unconditionally from the "hp <= 0" check.
+export function enterBossRage(pet) {
+  if (!pet || !pet.isBoss || pet.bossPhase !== 1) return false;
+  pet.bossPhase = 2;
+  pet.hp = pet.hpPhase2Max;
+  pet.base.atk = Math.floor(pet.base.atk * BOSS_TUNING.phase2AtkMult);
+  return true;
 }
 
 // Build the full wave list for a hack target.

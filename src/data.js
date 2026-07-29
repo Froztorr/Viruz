@@ -81,7 +81,7 @@ export const RARITY_KEYS = ['normal','rare','epic','legendary','mythic'];
 // To pin an attribute later, add `fixedAttr:'red'` to a species.
 export const SPECIES = {
   blobyte: {
-    id:'blobyte', name:'BloByte', shape:'royalslime', palette:'slime_royal',
+    id:'blobyte', name:'BloByte', shape:'royalslime', palette:'slime_royal', art2:true,
     rarities:['normal','rare','epic'],
     base:{ atk:20, def:9, spd:11, mhp:70 },
     skills:[
@@ -94,7 +94,7 @@ export const SPECIES = {
     ],
   },
   inkarm: {
-    id:'inkarm', name:'InkArm', shape:'frostsquid', palette:'frost_squid',
+    id:'inkarm', name:'InkArm', shape:'frostsquid', palette:'frost_squid', art2:true,
     rarities:['normal','rare','epic','legendary'],
     base:{ atk:22, def:10, spd:13, mhp:66 },
     skills:[
@@ -107,7 +107,7 @@ export const SPECIES = {
     ],
   },
   nulworm: {
-    id:'nulworm', name:'NulWorm', shape:'crimworm', palette:'crimson_worm',
+    id:'nulworm', name:'NulWorm', shape:'crimworm', palette:'crimson_worm', art2:true,
     rarities:['normal','rare','epic'],
     base:{ atk:24, def:7, spd:15, mhp:58 },
     skills:[
@@ -120,7 +120,7 @@ export const SPECIES = {
     ],
   },
   clampr: {
-    id:'clampr', name:'Clampr', shape:'steelcrab', palette:'steel_crab',
+    id:'clampr', name:'Clampr', shape:'steelcrab', palette:'steel_crab', art2:true,
     rarities:['normal','rare','epic'],
     base:{ atk:19, def:16, spd:8, mhp:82 },
     skills:[
@@ -133,7 +133,7 @@ export const SPECIES = {
     ],
   },
   hopbit: {
-    id:'hopbit', name:'HopBit', shape:'violetbeast', palette:'beast_violet',
+    id:'hopbit', name:'HopBit', shape:'violetbeast', palette:'beast_violet', art2:true,
     rarities:['normal','rare','epic'],
     base:{ atk:21, def:9, spd:18, mhp:62 },
     skills:[
@@ -146,7 +146,7 @@ export const SPECIES = {
     ],
   },
   jetsquid: {
-    id:'jetsquid', name:'JetSquid', shape:'frostsquid', palette:'deep_fish',
+    id:'jetsquid', name:'JetSquid', shape:'frostsquid', palette:'deep_fish', art2:true,
     rarities:['rare','epic','legendary'],
     base:{ atk:25, def:10, spd:16, mhp:68 },
     skills:[
@@ -159,7 +159,7 @@ export const SPECIES = {
     ],
   },
   chitbug: {
-    id:'chitbug', name:'ChitBug', shape:'sandbug', palette:'sand_bug',
+    id:'chitbug', name:'ChitBug', shape:'sandbug', palette:'sand_bug', art2:true,
     rarities:['normal','rare','epic'],
     base:{ atk:20, def:14, spd:12, mhp:76 },
     skills:[
@@ -172,7 +172,7 @@ export const SPECIES = {
     ],
   },
   echowing: {
-    id:'echowing', name:'EchoWing', shape:'shadowbat', palette:'shadow_bat',
+    id:'echowing', name:'EchoWing', shape:'shadowbat', palette:'shadow_bat', art2:true,
     rarities:['normal','rare','epic','legendary'],
     base:{ atk:23, def:9, spd:17, mhp:64 },
     skills:[
@@ -185,7 +185,7 @@ export const SPECIES = {
     ],
   },
   dustmoth: {
-    id:'dustmoth', name:'DustMoth', shape:'embermoth', palette:'ember_moth',
+    id:'dustmoth', name:'DustMoth', shape:'embermoth', palette:'ember_moth', art2:true,
     rarities:['rare','epic','legendary'],
     base:{ atk:18, def:11, spd:14, mhp:72 },
     skills:[
@@ -198,7 +198,7 @@ export const SPECIES = {
     ],
   },
   finbyte: {
-    id:'finbyte', name:'FinByte', shape:'deepfish', palette:'deep_fish',
+    id:'finbyte', name:'FinByte', shape:'deepfish', palette:'deep_fish', art2:true,
     rarities:['normal','rare','epic'],
     base:{ atk:20, def:12, spd:14, mhp:70 },
     skills:[
@@ -211,7 +211,7 @@ export const SPECIES = {
     ],
   },
   glitchimp: {
-    id:'glitchimp', name:'GlitchImp', shape:'angelwing', palette:'angel_light',
+    id:'glitchimp', name:'GlitchImp', shape:'angelwing', palette:'angel_light', art2:true,
     rarities:['rare','epic','legendary','mythic'],
     base:{ atk:26, def:11, spd:15, mhp:70 },
     skills:[
@@ -224,7 +224,7 @@ export const SPECIES = {
     ],
   },
   spikeling: {
-    id:'spikeling', name:'Spikeling', shape:'spikelizard', palette:'spike_lizard',
+    id:'spikeling', name:'Spikeling', shape:'spikelizard', palette:'spike_lizard', art2:true,
     rarities:['normal','rare','epic'],
     base:{ atk:22, def:13, spd:10, mhp:78 },
     skills:[
@@ -237,7 +237,7 @@ export const SPECIES = {
     ],
   },
   orbling: {
-    id:'orbling', name:'Orbling', shape:'toxinblob', palette:'toxin_green',
+    id:'orbling', name:'Orbling', shape:'toxinblob', palette:'toxin_green', art2:true,
     rarities:['normal','rare','epic'],
     base:{ atk:17, def:12, spd:12, mhp:80 },
     skills:[
@@ -250,7 +250,7 @@ export const SPECIES = {
     ],
   },
   haunbit: {
-    id:'haunbit', name:'HaunBit', shape:'voidwisp', palette:'void_wisp',
+    id:'haunbit', name:'HaunBit', shape:'voidwisp', palette:'void_wisp', art2:true,
     rarities:['epic','legendary','mythic'],
     base:{ atk:24, def:10, spd:16, mhp:68 },
     skills:[
@@ -263,6 +263,63 @@ export const SPECIES = {
     ],
   },
 
+  // ── Animated-sprite species ──
+  // These use real animated art from assets/sprites/<gif>/{still,attack}.webp
+  // (animated WebP — smaller and cheaper to decode than GIF; see `ext`)
+  // instead of a procedural `shape`. Both kinds coexist: the renderer
+  // checks for `gif` first and falls back to `shape`.
+  bytehound: {
+    id:'bytehound', name:'ByteHound', gif:'dog', ext:'webp',
+    rarities:['normal','rare','epic'],
+    base:{ atk:21, def:11, spd:12, mhp:72 },
+    skills:[
+      { n:'Packet Bite', pw:38, special:false },
+      { n:'Firewall Fang', pw:58, special:true, reqLv:3, desc:'เจาะไฟร์วอลล์ x1.5' },
+    ],
+    evos:[ null,
+      { label:'Guard',  mult:1.5, reqLv:20, skill:{ n:'Sentry Howl', pw:78,  special:true, reqLv:20, desc:'เห่าเตือนภัย x1.8' } },
+      { label:'Warden', mult:2.0, reqLv:50, skill:{ n:'Kernel Maul', pw:104, special:true, reqLv:50, desc:'ขย้ำเคอร์เนล x2' } },
+    ],
+  },
+  armorhound: {
+    id:'armorhound', name:'ArmorHound', gif:'dog2', ext:'webp',
+    rarities:['rare','epic','legendary'],
+    base:{ atk:20, def:17, spd:9, mhp:88 },
+    skills:[
+      { n:'Shield Rush', pw:42, special:false },
+      { n:'Plated Charge', pw:62, special:true, reqLv:3, desc:'พุ่งชนเกราะ x1.5' },
+    ],
+    evos:[ null,
+      { label:'Bulwark', mult:1.5, reqLv:20, skill:{ n:'Aegis Slam', pw:82,  special:true, reqLv:20, desc:'ทุบอีจิส x1.8' } },
+      { label:'Paladin', mult:2.0, reqLv:50, skill:{ n:'Last Stand', pw:110, special:true, reqLv:50, desc:'ยืนหยัดครั้งสุดท้าย x2' } },
+    ],
+  },
+  tabbyproc: {
+    id:'tabbyproc', name:'TabbyProc', gif:'cat', ext:'webp',
+    rarities:['normal','rare','epic'],
+    base:{ atk:22, def:10, spd:16, mhp:66 },
+    skills:[
+      { n:'Claw Script', pw:36, special:false },
+      { n:'Pounce Exploit', pw:56, special:true, reqLv:3, desc:'จู่โจมช่องโหว่ x1.5' },
+    ],
+    evos:[ null,
+      { label:'Prowler', mult:1.5, reqLv:20, skill:{ n:'Shadow Dash', pw:76,  special:true, reqLv:20, desc:'พุ่งเงา x1.8' } },
+      { label:'Stalker', mult:2.0, reqLv:50, skill:{ n:'Zero Day',    pw:100, special:true, reqLv:50, desc:'ช่องโหว่ศูนย์วัน x2' } },
+    ],
+  },
+  mysticproc: {
+    id:'mysticproc', name:'MysticProc', gif:'cat3', ext:'webp',
+    rarities:['epic','legendary','mythic'],
+    base:{ atk:24, def:13, spd:14, mhp:76 },
+    skills:[
+      { n:'Arcane Ping', pw:40, special:false },
+      { n:'Spirit Flux', pw:64, special:true, reqLv:3, desc:'กระแสวิญญาณ x1.5' },
+    ],
+    evos:[ null,
+      { label:'Oracle',    mult:1.5, reqLv:20, skill:{ n:'Nine Tails',   pw:86,  special:true, reqLv:20, desc:'เก้าหาง x1.8' } },
+      { label:'Ascendant', mult:2.0, reqLv:50, skill:{ n:'Total Recall', pw:118, special:true, reqLv:50, desc:'เรียกคืนทั้งระบบ x2' } },
+    ],
+  },
 };
 export const SPECIES_KEYS = Object.keys(SPECIES);
 
@@ -386,6 +443,13 @@ export function zonesOfMap(mapId) {
 export function zoneById(id) {
   return ZONES.find(z => z.id === id) || null;
 }
+// A boss "resets its position" by respawning at a random battle zone
+// within its region each time it (re)appears.
+export function randomBossZone(mapId) {
+  const battle = zonesOfMap(mapId).filter(z => z.kind === 'battle');
+  if (!battle.length) return null;
+  return battle[Math.floor(Math.random() * battle.length)];
+}
 
 // ── MONSTERS ──
 // Themed per region. `attr` may be null → rolled at spawn.
@@ -420,6 +484,38 @@ export const ANTIVIRUZ = {
   butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'right', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     },
   vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', faces:'right', scale:1.06, base:{atk:72,def:24,spd:22, mhp:130}, attr:null     },
   vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'right', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    },
+};
+
+// ── REGION BOSSES ──
+// One wandering boss per MAP (region), not per zone. Pool = the 3
+// highest-power monsters belonging to that region (across all its
+// zones), scaled 1.5x size with a two-phase HP bar. Position is
+// re-rolled among that region's battle zones each time the boss
+// (re)spawns — see rollBossSpawn() in engine.js.
+function monsterPower(m) {
+  const b = m.base;
+  return b.atk + b.def + b.spd * 0.5 + b.mhp * 0.3;
+}
+export function bossPoolForMap(mapId) {
+  const ids = new Set();
+  zonesOfMap(mapId).forEach(z => (z.pool || []).forEach(id => ids.add(id)));
+  return [...ids]
+    .map(id => ANTIVIRUZ[id])
+    .filter(Boolean)
+    .sort((a, b) => monsterPower(b) - monsterPower(a))
+    .slice(0, 3)
+    .map(m => m.id);
+}
+
+export const BOSS_TUNING = {
+  sizeMult: 1.5,             // "0.5x bigger than normal"
+  phase2HpPct: 0.70,         // second bar's max, as % of the normal max HP
+  phase2AtkMult: 1.50,       // +50% attack once in rage state
+  malwareCoreChance: 0.25,
+  moneyMult: 2.0,            // "2x better money" vs the same enemy's normal drop
+  // Bosses roll loot from one rarity tier above what their level would
+  // normally allow — reuses the existing equipment grade weighting,
+  // just biased up a notch (see rollEquipDrop's boss branch in game.js).
 };
 
 
@@ -474,40 +570,6 @@ export const FOODS = [
   { id:'food_good',   name:'Byte Burger',   icon:'🍔', cost:220,  loyalty:7,  desc:'อาหารอย่างดี +7 ความผูกพัน' },
   { id:'food_premium',name:'Golden Cache',  icon:'🍰', cost:600,  loyalty:14, desc:'ของหวานชั้นเลิศ +14 ความผูกพัน' },
   { id:'food_feast',  name:'Quantum Feast', icon:'🍱', cost:1400, loyalty:24, desc:'มื้อพิเศษสุด +24 ความผูกพัน' },
-];
-
-// ── HOMEMADE COOKING ──
-// Ingredients are bought at the Food Shop like anything else — except
-// meat, which is deliberately NOT purchasable there. It only drops
-// from hunting monsters, so cooking always costs a trip into battle
-// first, not just Bitz. That's the tradeoff for homemade food being
-// stronger than anything precooked.
-export const INGREDIENTS = [
-  { id:'ing_veg', name:'Data Veggies', icon:'🥬', cost:40, desc:'ผักสด — ใช้ทำอาหารโฮมเมด' },
-  { id:'ing_bun', name:'Byte Bun',     icon:'🍞', cost:35, desc:'ขนมปัง — ใช้ทำอาหารโฮมเมด' },
-];
-export const MEAT_ITEM = { id:'ing_meat', name:'Viral Meat', icon:'🥩',
-  desc:'เนื้อไวรัส — ดรอปจากการล่าสัตว์ประหลาดเท่านั้น ซื้อไม่ได้' };
-export const MEAT_DROP_CHANCE = 0.35;
-
-// Recipes cook into regular food items (they land in the same G.foods
-// bag FOODS do, and use the same care-screen feeding minigame) but
-// every one of them beats every precooked tier — the best precooked
-// food (Quantum Feast) is 24 loyalty; the cheapest recipe here already
-// clears that.
-export const RECIPES = [
-  { id:'recipe_taco',      name:'Meat Taco',              icon:'🌮',
-    need:{ veg:1, bun:1, meat:1 }, loyalty:25, desc:'ทาโก้เนื้อ — โฮมเมด +25 ความผูกพัน' },
-  { id:'recipe_sandwich',  name:'Meat Sandwich',          icon:'🥪',
-    need:{ veg:1, bun:2, meat:1 }, loyalty:27, desc:'แซนด์วิชเนื้อ — โฮมเมด +27 ความผูกพัน' },
-  { id:'recipe_burger',    name:'Meat Burger',            icon:'🍔',
-    need:{ veg:1, bun:2, meat:2 }, loyalty:30, desc:'เบอร์เกอร์เนื้อ — โฮมเมด +30 ความผูกพัน' },
-  { id:'recipe_friedrice', name:'Fried Rice',             icon:'🍛',
-    need:{ veg:2, bun:0, meat:1 }, loyalty:29, desc:'ข้าวผัดเนื้อ — โฮมเมด +29 ความผูกพัน' },
-  { id:'recipe_spaghetti', name:'Spaghetti & Meatballs',  icon:'🍝',
-    need:{ veg:2, bun:0, meat:2 }, loyalty:34, desc:'สปาเก็ตตี้ลูกชิ้น — โฮมเมด +34 ความผูกพัน' },
-  { id:'recipe_stew',      name:'Hearty Stew',            icon:'🍲',
-    need:{ veg:3, bun:0, meat:2 }, loyalty:38, desc:'สตูว์เนื้อ — โฮมเมด +38 ความผูกพัน (สูงสุด)' },
 ];
 
 export const TOYS = [
@@ -620,6 +682,13 @@ export const AILMENTS = {
     id:'charm', name:'Charmed', thai:'เสน่ห์', icon:'💗', color:'#ff6ab0',
     desc:'หันไปโจมตีพวกเดียวกัน',
   },
+  // Stage-2 "Corrupted" mutation debuff. Generic multi-stat drain —
+  // ailmentMods() applies atk/def/spd/eva/crit off ANY ailment object
+  // that carries those keys, so this needs no special-case engine code.
+  corrupt: {
+    id:'corrupt', name:'Corrupted', thai:'เสื่อมสภาพ', icon:'🦠', color:'#a05fe0',
+    desc:'ATK/DEF/SPD ของศัตรูลดลง',
+  },
 };
 
 // ── STAT KEYS ──
@@ -667,29 +736,24 @@ export const EQUIP_GRADES = {
 };
 export const EQUIP_GRADE_KEYS = ['script', 'trojan', 'polymorphic', 'zeroday', 'apt'];
 
-// Payload special effects. Payload gear never rolls stats — it rolls
-// ONE of these instead. Unlike the old system, these are NOT gated by
-// the wearer's attribute — level requirement is the only gate now.
-// Exploit and Rootkit stay pure stat-boost slots (see EQUIP_STAT_BASE
-// below); this is what distinguishes Payload from the other two.
-export const PAYLOAD_EFFECTS = {
-  leech:     { id:'leech',     name:'Data Leech',      icon:'🩸',
-    desc:'ฟื้น HP ตามเปอร์เซ็นต์ดาเมจที่สร้างทุกครั้งที่โจมตี',
-    mag:[0.08, 0.12, 0.16, 0.22, 0.30] },
-  manaregen: { id:'manaregen', name:'Kill Reboot',     icon:'🔌',
-    desc:'ฟื้น MP ทันทีเมื่อโจมตีสังหารศัตรู',
-    mag:[0.20, 0.30, 0.40, 0.55, 0.75] },
-  overclock: { id:'overclock', name:'Overclock',       icon:'⚔️',
-    desc:'โจมตีแรกของการต่อสู้ คริติคอลเสมอ',
-    mag:[0, 0, 0, 0, 0] },
-  adaptive:  { id:'adaptive',  name:'Adaptive Strike', icon:'🌪️',
-    desc:'โจมตีแรกของการต่อสู้ ตีซ้ำ 2 ครั้งเสมอ',
-    mag:[0, 0, 0, 0, 0] },
-  toxin:     { id:'toxin',     name:'Toxin Injector',  icon:'☠️',
-    desc:'มีโอกาสวางพิษให้ศัตรูเมื่อโจมตีติด',
-    mag:[0.10, 0.15, 0.20, 0.28, 0.38] },
+// Attribute-locked procs. Rolled onto roughly 1 in 4 items; the
+// effect only activates while equipped on a pet whose OWN attribute
+// matches — a green (speed) item is a speed-themed named item, not
+// something that adapts to whoever wears it.
+export const EQUIP_AFFIXES = {
+  red:    { attr:'red',    name:'Overclock',   icon:'⚔️', desc:'โจมตีแรกของการต่อสู้ คริติคอลเสมอ' },
+  green:  { attr:'green',  name:'Double Tap',  icon:'🌪️', desc:'โจมตีแรกของการต่อสู้ ตีซ้ำ 2 ครั้งเสมอ' },
+  yellow: { attr:'yellow', name:'Bastion',     icon:'🛡️', desc:'เริ่มการต่อสู้ด้วยเกราะกันดาเมจ' },
+  white:  { attr:'white',  name:'Restoration', icon:'➕', desc:'เริ่มการต่อสู้ด้วยการฟื้นฟู HP ทันที' },
 };
-export const PAYLOAD_EFFECT_KEYS = ['leech', 'manaregen', 'overclock', 'adaptive', 'toxin'];
+
+// Grade-scaled magnitude for each affix's proc (index = EQUIP_GRADE_KEYS position).
+export const AFFIX_MAGNITUDE = {
+  yellow: [0.12, 0.16, 0.20, 0.25, 0.32],  // shield % of max HP
+  white:  [0.10, 0.14, 0.18, 0.22, 0.28],  // heal % of max HP
+  red:    [0, 0, 0, 0, 0],                  // binary proc, magnitude unused
+  green:  [0, 0, 0, 0, 0],
+};
 
 const EQUIP_NAME_PARTS = {
   payload: ['Warhead', 'Detonator', 'Strikecode', 'Bombshell'],
@@ -698,8 +762,7 @@ const EQUIP_NAME_PARTS = {
 };
 
 // Base per-level roll strength for each rollable stat. `int` is left
-// out — equipment boosts combat power, not MP pool. Only Exploit and
-// Rootkit ever roll these now — see rollEquipment().
+// out — equipment boosts combat power, not MP pool.
 const EQUIP_STAT_BASE = { atk:0.9, def:0.7, spd:0.6, crit:0.7, eva:0.5, vit:3.2 };
 const EQUIP_ROLLABLE_STATS = Object.keys(EQUIP_STAT_BASE);
 
@@ -721,58 +784,6 @@ function rollWeighted(weights) {
 // requirement (e.g. the dropping enemy's level, or the player's
 // highest pet level for crafting) — equipment never asks for more
 // than that. `forcedGradeId` lets crafting skew the grade roll.
-// Any pet of any attribute can equip anything — level requirement is
-// the only gate.
-// Generated pixel-art icons for equipment. Payload is keyed by
-// EFFECT (its art identifies what it does — grade shows as a colored
-// frame in the UI instead, since any effect can roll any grade).
-// Exploit/Rootkit are keyed by GRADE instead, since those slots are
-// pure stat power that scales with grade. Multiple variants per key
-// are fine — a random one is picked per roll so repeated drops of
-// the same effect/grade don't all look identical.
-export const EQUIP_ICONS = {
-  payload: {
-    leech:     ['assets/equipment/payload/leech_1.png'],
-    manaregen: ['assets/equipment/payload/manaregen_1.png'],
-    overclock: ['assets/equipment/payload/overclock_1.png'],
-    adaptive:  ['assets/equipment/payload/adaptive_1.png', 'assets/equipment/payload/adaptive_2.png'],
-    toxin:     ['assets/equipment/payload/toxin_1.png', 'assets/equipment/payload/toxin_2.png', 'assets/equipment/payload/toxin_3.png'],
-  },
-  exploit: {
-    script:      ['assets/equipment/exploit/script_1.png'],
-    trojan:      ['assets/equipment/exploit/trojan_1.png', 'assets/equipment/exploit/trojan_2.png'],
-    polymorphic: ['assets/equipment/exploit/polymorphic_1.png'],
-    zeroday:     ['assets/equipment/exploit/zeroday_1.png'],
-    apt:         ['assets/equipment/exploit/apt_1.png', 'assets/equipment/exploit/apt_2.png'],
-  },
-  rootkit: {
-    script:      ['assets/equipment/rootkit/script_1.png'],
-    trojan:      ['assets/equipment/rootkit/trojan_1.png', 'assets/equipment/rootkit/trojan_2.png'],
-    polymorphic: ['assets/equipment/rootkit/polymorphic_1.png', 'assets/equipment/rootkit/polymorphic_2.png'],
-    zeroday:     ['assets/equipment/rootkit/zeroday_1.png'],
-    apt:         ['assets/equipment/rootkit/apt_1.png'],
-  },
-};
-function pickEquipIcon(slotId, effectId, gradeId) {
-  const key = slotId === 'payload' ? effectId : gradeId;
-  const variants = (EQUIP_ICONS[slotId] || {})[key];
-  if (!variants || !variants.length) return null;
-  return variants[Math.floor(Math.random() * variants.length)];
-}
-
-// For items saved before the icon system existed. Only ever ADDS an
-// icon — never touches stats/effectId/grade, so it can't change what
-// an existing item actually does. A legacy Payload item that predates
-// the effects rework (stats instead of effectId) has no valid key to
-// look up an icon for and is left exactly as it was; Exploit/Rootkit
-// items always have a grade, so those backfill cleanly every time.
-export function backfillEquipIcon(item) {
-  if (!item || item.icon) return item;
-  const icon = pickEquipIcon(item.slotId, item.effectId, item.grade);
-  if (icon) item.icon = icon;
-  return item;
-}
-
 export function rollEquipment(maxLevel, forcedGradeId) {
   maxLevel = Math.max(1, Math.floor(maxLevel || 1));
   const slotId = EQUIP_SLOT_KEYS[Math.floor(Math.random() * EQUIP_SLOT_KEYS.length)];
@@ -782,34 +793,29 @@ export function rollEquipment(maxLevel, forcedGradeId) {
   const grade = EQUIP_GRADES[gradeId];
   const lvlReq = 1 + Math.floor(Math.random() * maxLevel);
 
-  let stats = {};
-  let effectId = null;
-  let name;
-
-  if (slotId === 'payload') {
-    effectId = PAYLOAD_EFFECT_KEYS[Math.floor(Math.random() * PAYLOAD_EFFECT_KEYS.length)];
-    name = `${grade.name} ${PAYLOAD_EFFECTS[effectId].name}`;
-  } else {
-    const useBias = Math.random() < 0.7 && slot.bias.length >= 2;
-    const pool = useBias ? slot.bias : EQUIP_ROLLABLE_STATS;
-    const statCount = Math.min(pool.length, 2 + (Math.random() < 0.35 ? 1 : 0));
-    const chosen = [];
-    while (chosen.length < statCount) {
-      const k = pool[Math.floor(Math.random() * pool.length)];
-      if (!chosen.includes(k)) chosen.push(k);
-    }
-    chosen.forEach(k => {
-      const base = EQUIP_STAT_BASE[k] || 1;
-      stats[k] = Math.max(1, Math.round(base * lvlReq * grade.statMult * (0.85 + Math.random() * 0.3)));
-    });
-    const namePart = EQUIP_NAME_PARTS[slotId][Math.floor(Math.random() * EQUIP_NAME_PARTS[slotId].length)];
-    name = `${grade.name} ${namePart}`;
+  const useBias = Math.random() < 0.7 && slot.bias.length >= 2;
+  const pool = useBias ? slot.bias : EQUIP_ROLLABLE_STATS;
+  const statCount = Math.min(pool.length, 2 + (Math.random() < 0.35 ? 1 : 0));
+  const chosen = [];
+  while (chosen.length < statCount) {
+    const k = pool[Math.floor(Math.random() * pool.length)];
+    if (!chosen.includes(k)) chosen.push(k);
   }
+  const stats = {};
+  chosen.forEach(k => {
+    const base = EQUIP_STAT_BASE[k] || 1;
+    stats[k] = Math.max(1, Math.round(base * lvlReq * grade.statMult * (0.85 + Math.random() * 0.3)));
+  });
+
+  let attr = null;
+  if (Math.random() < 0.25) attr = ATTR_KEYS[Math.floor(Math.random() * ATTR_KEYS.length)];
+
+  const namePart = EQUIP_NAME_PARTS[slotId][Math.floor(Math.random() * EQUIP_NAME_PARTS[slotId].length)];
+  const name = `${grade.name} ${namePart}`;
 
   return {
     uid: 'eq_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-    slotId, grade: gradeId, lvlReq, stats, effectId, name,
-    icon: pickEquipIcon(slotId, effectId, gradeId),
+    slotId, grade: gradeId, lvlReq, stats, attr, name,
   };
 }
 
@@ -914,6 +920,37 @@ export const SPECIALS = {
   w_smite:    { id:'w_smite',    name:'Judgment Ray',   thai:'ลำแสงตัดสิน',  mp:23, cd:3.7, pw:1.9, hits:1, vfx:'holy', desc:'ลำแสงศักดิ์สิทธิ์ x1.9' },
   w_revive:   { id:'w_revive',   name:'System Restore', thai:'กู้ระบบ',      mp:44, cd:4.9, pw:0, hits:0, vfx:'bless', reviveTeam:0.5, desc:'ชุบชีวิตเพื่อนที่ล้ม 50% HP' },
   w_sanctuary:{ id:'w_sanctuary',name:'Sanctuary',      thai:'วิหารศักดิ์สิทธิ์',mp:38, cd:4.7,pw:0,hits:0,vfx:'bless', healTeam:0.5, buffTeam:{ turns:3, def:0.3 }, desc:'ฟื้น 50% + DEF+30%' },
+
+  // ── STAGE-2 MUTATIONS ──
+  // Unlocked only once a pet reaches stage 2 and rolls a mutation
+  // (see evolve() in engine.js). A second, smaller skill tree layered
+  // on top of the attribute tree — reuses the exact same payload keys
+  // (ailment / buffSelf / shieldSelf / heal) so no new application
+  // logic is needed in game.js's cast-resolution code.
+
+  // OVERCLOCK: speed + freeze (system lockup)
+  oc_surge:       { id:'oc_surge',       name:'Clock Surge',     thai:'เร่งรอบ',        mp:12, cd:3.5, pw:0,   hits:0, vfx:'wind', buffSelf:{ id:'overclock_surge', turns:3, spd:0.45, atk:0.15, def:-0.10 }, desc:'SPD+45% ATK+15% DEF-10% 3 เทิร์น' },
+  oc_lockup:      { id:'oc_lockup',      name:'System Lockup',   thai:'ระบบค้าง',       mp:18, cd:3.6, pw:1.0, hits:1, vfx:'ice',  ailment:{ id:'freeze', turns:1 }, desc:'x1.0 + แช่แข็งศัตรู 1 เทิร์น' },
+  oc_shortcircuit:{ id:'oc_shortcircuit',name:'Short Circuit',   thai:'ลัดวงจร',        mp:27, cd:3.9, pw:1.3, hits:1, vfx:'ice',  ailment:{ id:'freeze', turns:2 }, desc:'x1.3 + แช่แข็งศัตรู 2 เทิร์น' },
+  oc_singularity: { id:'oc_singularity', name:'Clock Singularity',thai:'ภาวะเร่งสุดขีด', mp:40, cd:4.4, pw:1.0, hits:3, vfx:'wind', ailment:{ id:'freeze', turns:1 }, desc:'โจมตี 3 ครั้ง + แช่แข็ง' },
+
+  // BULWARK: heavy hitting + endurance
+  bw_slam:        { id:'bw_slam',        name:'Bulwark Slam',    thai:'ทุบเกราะ',       mp:12, cd:3.6, pw:1.5, hits:1, vfx:'impact', ignoreDef:0.15, desc:'x1.5 เจาะเกราะ 15%' },
+  bw_bracing:     { id:'bw_bracing',     name:'Brace Protocol',  thai:'ตั้งรับ',        mp:15, cd:3.7, pw:0,   hits:0, vfx:'shield',  shieldSelf:0.40, heal:0.15, desc:'ลดดาเมจ 40% + ฟื้น HP 15%' },
+  bw_juggernaut:  { id:'bw_juggernaut',  name:'Juggernaut Charge',thai:'พุ่งชนมหึมา',   mp:26, cd:4.0, pw:1.9, hits:1, vfx:'impact', ignoreDef:0.35, desc:'x1.9 เจาะเกราะ 35%' },
+  bw_unbreakable: { id:'bw_unbreakable', name:'Unbreakable Core',thai:'แกนทำลายไม่ได้', mp:42, cd:4.6, pw:2.4, hits:1, vfx:'impact', shieldSelf:0.5, ignoreDef:0.25, desc:'x2.4 + เกราะ 50%' },
+
+  // PHANTOM: evasion
+  ph_veil:        { id:'ph_veil',        name:'Phantom Veil',    thai:'ม่านเงา',        mp:12, cd:3.5, pw:0,   hits:0, vfx:'aura', buffSelf:{ id:'phantom_veil', turns:3, eva:0.50, spd:0.20 }, desc:'EVA+50% SPD+20% 3 เทิร์น' },
+  ph_shadowstep:  { id:'ph_shadowstep',  name:'Shadowstep',      thai:'ก้าวเงา',        mp:17, cd:3.6, pw:1.1, hits:2, vfx:'wind', buffSelf:{ id:'phantom_veil', turns:2, eva:0.25 }, desc:'จู่โจม 2 ครั้ง + EVA+25%' },
+  ph_mirage:      { id:'ph_mirage',      name:'Mirage Flicker',  thai:'ภาพลวงตา',       mp:25, cd:3.9, pw:0.85,hits:3, vfx:'wind', buffSelf:{ id:'phantom_veil', turns:2, eva:0.35 }, desc:'โจมตี 3 ครั้ง + EVA+35%' },
+  ph_voidwalk:    { id:'ph_voidwalk',    name:'Voidwalk',        thai:'เดินทะลุมิติ',   mp:39, cd:4.5, pw:2.6, hits:1, vfx:'pierce', buffSelf:{ id:'phantom_veil', turns:3, eva:0.60 }, desc:'x2.6 + EVA+60% 3 เทิร์น' },
+
+  // CORRUPTED: debuff
+  cp_decay:       { id:'cp_decay',       name:'Data Decay',      thai:'ข้อมูลเสื่อม',   mp:13, cd:3.6, pw:0.9, hits:1, vfx:'poison', ailment:{ id:'corrupt', turns:3, atk:-0.20, def:-0.15 }, desc:'x0.9 + ATK-20% DEF-15% ศัตรู' },
+  cp_corruptstrike:{ id:'cp_corruptstrike',name:'Corrupt Strike', thai:'จู่โจมเสื่อม',   mp:19, cd:3.8, pw:1.2, hits:1, vfx:'poison', ailment:{ id:'corrupt', turns:3, atk:-0.25, spd:-0.20 }, desc:'x1.2 + ATK-25% SPD-20% ศัตรู' },
+  cp_plague:      { id:'cp_plague',      name:'Plague Protocol', thai:'ไวรัสระบาด',     mp:28, cd:4.1, pw:1.3, hits:1, vfx:'poison', ailment:{ id:'corrupt', turns:4, atk:-0.25, def:-0.20, spd:-0.20 }, desc:'x1.3 + ATK/DEF/SPD-20~25% 4 เทิร์น' },
+  cp_oblivion:    { id:'cp_oblivion',    name:'Oblivion Protocol',thai:'ล่มระบบสมบูรณ์', mp:44, cd:4.8, pw:1.8, hits:1, vfx:'meteor', ailment:{ id:'corrupt', turns:4, atk:-0.35, def:-0.30, spd:-0.25 }, desc:'x1.8 + ลดสถานะศัตรูมหาศาล 4 เทิร์น' },
 };
 
 // Rarer pets unlock a bonus tier of skills at the deep nodes.
@@ -1017,6 +1054,108 @@ export function nodeById(attr, id) {
   return treeFor(attr).nodes.find(n => n.id === id) || null;
 }
 
+// ── STAGE-2 MUTATIONS ──
+// Rolled once when a pet reaches evolution stage 2 (see evolve() in
+// engine.js). Purely cosmetic identity (art variant) PLUS a second,
+// smaller skill tree layered on top of the pet's attribute tree —
+// same node shape (statNode/skillNode), just a shorter path (8 nodes,
+// Lv50-75) since it's a bonus tier rather than a full progression.
+export const MUTATION_KEYS = ['overclock', 'bulwark', 'phantom', 'corrupted'];
+
+// Equal odds by default. A future catalyst item can bias this the
+// same way CRAFT_RECIPES biases equipment grade — see rollWeighted()
+// in engine.js.
+export const MUTATION_ROLL = MUTATION_KEYS.map(k => [k, 25]);
+
+export const MUTATIONS = {
+  overclock: { id:'overclock', name:'Overclock', thai:'โอเวอร์คล็อก', color:'#5fe8ff',
+    desc:'เร่งความเร็ว ลัดวงจรและแช่แข็งศัตรู' },
+  bulwark:   { id:'bulwark',   name:'Bulwark',   thai:'ปราการ',       color:'#c97a3d',
+    desc:'โจมตีหนัก ทนทาน ตั้งรับแกร่ง' },
+  phantom:   { id:'phantom',   name:'Phantom',   thai:'ภูตเงา',       color:'#b89aff',
+    desc:'หลบหลีกสูง จู่โจมจากที่ซ่อน' },
+  corrupted: { id:'corrupted', name:'Corrupted', thai:'เสื่อมสภาพ',   color:'#a05fe0',
+    desc:'บ่อนทำลายสถานะศัตรู' },
+};
+
+export const MUTATION_TREES = {
+  overclock: {
+    name:'Overclock Path', thai:'สายโอเวอร์คล็อก', color:'#5fe8ff',
+    nodes: [
+      statNode ('oc1', 'spd',  2, 5, 50, 90, [],          50),
+      statNode ('oc2', 'crit', 2, 5, 30, 74, ['oc1'],      52),
+      skillNode('oc3', 'oc_surge',           70, 74, ['oc1'],      55),
+      statNode ('oc4', 'spd',  3, 5, 50, 58, ['oc2'],      58),
+      skillNode('oc5', 'oc_lockup',          30, 42, ['oc2','oc3'],60),
+      statNode ('oc6', 'crit', 3, 5, 70, 42, ['oc4'],      64),
+      skillNode('oc7', 'oc_shortcircuit',    50, 24, ['oc5','oc6'],68),
+      skillNode('oc8', 'oc_singularity',     50,  6, ['oc7'],      75),
+    ],
+  },
+  bulwark: {
+    name:'Bulwark Path', thai:'สายปราการ', color:'#c97a3d',
+    nodes: [
+      statNode ('bw1', 'def',  2, 5, 50, 90, [],          50),
+      statNode ('bw2', 'vit',  3, 5, 30, 74, ['bw1'],      52),
+      skillNode('bw3', 'bw_slam',            70, 74, ['bw1'],      55),
+      statNode ('bw4', 'def',  3, 5, 50, 58, ['bw2'],      58),
+      skillNode('bw5', 'bw_bracing',         30, 42, ['bw2','bw3'],60),
+      statNode ('bw6', 'vit',  4, 5, 70, 42, ['bw4'],      64),
+      skillNode('bw7', 'bw_juggernaut',      50, 24, ['bw5','bw6'],68),
+      skillNode('bw8', 'bw_unbreakable',     50,  6, ['bw7'],      75),
+    ],
+  },
+  phantom: {
+    name:'Phantom Path', thai:'สายภูตเงา', color:'#b89aff',
+    nodes: [
+      statNode ('ph1', 'eva',  2, 5, 50, 90, [],          50),
+      statNode ('ph2', 'spd',  2, 5, 30, 74, ['ph1'],      52),
+      skillNode('ph3', 'ph_veil',            70, 74, ['ph1'],      55),
+      statNode ('ph4', 'eva',  3, 5, 50, 58, ['ph2'],      58),
+      skillNode('ph5', 'ph_shadowstep',      30, 42, ['ph2','ph3'],60),
+      statNode ('ph6', 'spd',  3, 5, 70, 42, ['ph4'],      64),
+      skillNode('ph7', 'ph_mirage',          50, 24, ['ph5','ph6'],68),
+      skillNode('ph8', 'ph_voidwalk',        50,  6, ['ph7'],      75),
+    ],
+  },
+  corrupted: {
+    name:'Corrupted Path', thai:'สายเสื่อมสภาพ', color:'#a05fe0',
+    nodes: [
+      statNode ('cp1', 'atk',  2, 5, 50, 90, [],          50),
+      statNode ('cp2', 'crit', 2, 5, 30, 74, ['cp1'],      52),
+      skillNode('cp3', 'cp_decay',           70, 74, ['cp1'],      55),
+      statNode ('cp4', 'atk',  3, 5, 50, 58, ['cp2'],      58),
+      skillNode('cp5', 'cp_corruptstrike',   30, 42, ['cp2','cp3'],60),
+      statNode ('cp6', 'crit', 3, 5, 70, 42, ['cp4'],      64),
+      skillNode('cp7', 'cp_plague',          50, 24, ['cp5','cp6'],68),
+      skillNode('cp8', 'cp_oblivion',        50,  6, ['cp7'],      75),
+    ],
+  },
+};
+
+export function treeForMutation(mutation) { return MUTATION_TREES[mutation] || null; }
+export function nodeByIdMutation(mutation, id) {
+  const t = treeForMutation(mutation);
+  return t ? (t.nodes.find(n => n.id === id) || null) : null;
+}
+
+// ── STAGE-2 ART ──
+// The 14 upgraded species render from real per-attribute PNG art
+// instead of the fixed-palette SVG — see spriteV2Path() below and
+// creatureMarkupFor() in sprites.js. `shape`/`palette` stay on each
+// SPECIES entry as a fallback for anything that fails to load.
+export const ART2_SPECIES = [
+  'blobyte','inkarm','nulworm','clampr','hopbit','jetsquid','chitbug',
+  'echowing','dustmoth','finbyte','glitchimp','spikeling','orbling','haunbit',
+];
+const ART2_BASE = 'assets/sprites_v2';
+// Stage 0/1 (no mutation yet): <species>/stage1_<attr>.png
+// Stage 2 (mutation rolled):   <species>/<mutation>_<attr>.png
+export function spriteV2Path(speciesId, attr, mutation = null) {
+  const file = mutation ? `${mutation}_${attr}` : `stage1_${attr}`;
+  return `${ART2_BASE}/${speciesId}/${file}.png`;
+}
+
 // ── SHOP ──
 export const EGGS = [
   { id:'egg_n', name:'Normal Egg', icon:'🥚', cost:500,
@@ -1033,8 +1172,66 @@ export const ITEMS = [
   { id:'hp_l',  name:'HP Core',     icon:'💉', cost:500,  type:'hp',   val:0.80, combat:true,  desc:'ฟื้น HP 80%' },
   { id:'hp_all',name:'Team Repair', icon:'🧬', cost:900,  type:'hpall',val:0.60, combat:true,  desc:'ฟื้น HP 60% ทั้งทีม' },
   { id:'exp_b', name:'EXP Booster', icon:'⚡', cost:800,  type:'exp',  val:500,  combat:false, desc:'+500 EXP' },
-  { id:'evo_s', name:'Evo Stone',   icon:'💎', cost:3000, type:'evo',  val:1,    combat:false, desc:'วิวัฒน์ทันที' },
+  // NOTE: this used to instant-evolve a pet directly (type:'evo',
+  // bypassing level/loyalty/materials). Evolution is now gated behind
+  // the Tech Lab exclusively, so this instead hands over one Malware
+  // Core — still a Bitz shortcut, just one that feeds the same gate
+  // everyone else uses rather than skipping it.
+  { id:'evo_s', name:'Evo Stone',   icon:'💎', cost:3000, type:'material', val:1, matId:'malware_core', combat:false, desc:'รับ Malware Core x1' },
 ];
+
+// ── EVOLUTION MATERIALS ──
+// Drop-only, never sold in the shop — tracked as simple stackable
+// counts in G.materials (see engine.js/game.js), not the unique-
+// instance equipment bag pattern. Required by the Tech Lab to evolve
+// a stage-2-ready pet: 1 Malware Core + 3 Code Parts (any mix of the
+// 4 mutation types — see mutationWeightsFromParts() below).
+export const MATERIALS = {
+  malware_core: { id:'malware_core', name:'Malware Core', icon:'🧿',
+    desc:'ดรอปจากบอสประจำภูมิภาค — ใช้วิวัฒน์ที่ Tech Lab' },
+  code_part_overclock: { id:'code_part_overclock', name:'Code Part: Overclock', icon:'🔷', mutation:'overclock',
+    desc:'ชิ้นส่วนโค้ด — เพิ่มโอกาสได้ Overclock' },
+  code_part_bulwark:   { id:'code_part_bulwark',   name:'Code Part: Bulwark',   icon:'🟤', mutation:'bulwark',
+    desc:'ชิ้นส่วนโค้ด — เพิ่มโอกาสได้ Bulwark' },
+  code_part_phantom:   { id:'code_part_phantom',   name:'Code Part: Phantom',   icon:'🟣', mutation:'phantom',
+    desc:'ชิ้นส่วนโค้ด — เพิ่มโอกาสได้ Phantom' },
+  code_part_corrupted: { id:'code_part_corrupted', name:'Code Part: Corrupted', icon:'🟢', mutation:'corrupted',
+    desc:'ชิ้นส่วนโค้ด — เพิ่มโอกาสได้ Corrupted' },
+};
+export const CODE_PART_IDS = ['code_part_overclock','code_part_bulwark','code_part_phantom','code_part_corrupted'];
+
+// Code part drop chance per kill scales from 5% at Lv1 up to 50% at
+// Lv50, linear, capped at 50 beyond that (matches "5% to 50% from
+// Lv1 to Lv50 enemy" — bosses use their own separate roll, see
+// BOSS_TUNING below).
+export function codePartDropChance(enemyLevel) {
+  const t = Math.max(0, Math.min(1, (enemyLevel - 1) / 49));
+  return 0.05 + t * 0.45;
+}
+
+// Each Code Part slotted for a given mutation adds a flat 30
+// percentage points to that mutation's odds; whatever's left over
+// (100 - 30*n) splits evenly across the mutation(s) that got ZERO
+// parts. `parts` is an array of 1-3 mutation-type strings (e.g.
+// ['bulwark','bulwark','bulwark'] or ['bulwark','phantom','bulwark']).
+export function mutationWeightsFromParts(parts) {
+  const per = {};
+  MUTATION_KEYS.forEach(k => { per[k] = 0; });
+  parts.forEach(k => { if (per[k] != null) per[k] += 30; });
+  const used = MUTATION_KEYS.filter(k => per[k] > 0);
+  const unused = MUTATION_KEYS.filter(k => per[k] === 0);
+  const spent = used.reduce((s, k) => s + per[k], 0);
+  const leftover = Math.max(0, 100 - spent);
+  if (unused.length) {
+    const each = leftover / unused.length;
+    unused.forEach(k => { per[k] = each; });
+  } else if (leftover > 0) {
+    // all 3 parts spread across all 4 types (impossible with 3 slots
+    // and 4 types, kept as a safety fallback) — just renormalize.
+    MUTATION_KEYS.forEach(k => { per[k] += leftover / MUTATION_KEYS.length; });
+  }
+  return MUTATION_KEYS.map(k => [k, per[k]]);
+}
 
 // Potions sold at safe spots. Bought here, consumed in battle.
 export const POTIONS = [
@@ -1051,29 +1248,32 @@ export const DEFENSE_BOTS = [
 ];
 
 // ── CITY MAP HOTSPOTS ──
+// Percentages relative to the video frame, so it scales on any screen.
+// Coordinates measured from the marked reference screenshot (same
+// 1080x1920 frame as assets/video/city2.mp4). `region` is either
+// 'pin' (small arrow-pointed spot — click the text label) or 'zone'
+// (a big circled area — click anywhere inside the whole building).
+// zoneR is the clickable radius as a % of the shorter screen dimension,
+// only used for 'zone' nodes.
 // Re-measured directly from the user's second annotation pass (colored
 // dot = click target center, colored line = where the text caption
 // should render). Every landmark here uses an explicit textX/textY
 // rather than a generic direction, because the distances aren't
-// uniform. Every node's clickable area is now a large invisible
-// circle (zoneR, in vmin) centred on x/y — see buildMapNodes().
+// uniform (food_shop's text sits much closer to its dot than the
+// others do).
 export const MAP_NODES = [
-  { id:'warp_gate', label:'Warp Gate',    x:25.5, y:20.3, textX:25.3, textY:5.0,  zoneR:14,
+  { id:'warp_gate', label:'Warp Gate',    x:25.5, y:20.3, textX:25.3, textY:5.0,  region:'pin',
     screen:'world', hint:'ออกผจญภัย · แผนที่โลก' },
-  { id:'clinic',    label:'Clinic',       x:72.2, y:25.1, textX:77.3, textY:8.5,  zoneR:14,
+  { id:'clinic',    label:'Clinic',       x:72.2, y:25.1, textX:77.3, textY:8.5,  region:'pin',
     screen:'clinic', hint:'รักษา VIRUZ · ฟักไข่' },
-  { id:'apartment', label:'Your Home',    x:54.9, y:49.6, textX:53.1, textY:33.7, zoneR:14,
+  { id:'apartment', label:'Your Home',    x:54.9, y:49.6, textX:53.1, textY:33.7, region:'pin',
     screen:'home',  hint:'ฐานของคุณ · ทีม · ป้องกัน' },
-  // textX kept equal to x (no horizontal move) — textY shifted up
-  // from the landmark by (~37.8px/cm against a ~800px reference
-  // viewport height): hacking net 3cm, tech/food net 2cm (each eased
-  // back down 1cm from the first pass).
-  { id:'hacking',   label:'Hacking Center', x:22.9, y:53.4, textX:22.9, textY:39.1, zoneR:15,
-    screen:'raid', hint:'เจาะบ้านผู้เล่นคนอื่น' },
-  { id:'tech_shop', label:'Tech Shop',    x:87.0, y:64.8, textX:87.0, textY:55.5, zoneR:13,
-    screen:'shop', hint:'ไอเทม · บูสเตอร์ (ในอนาคต: คราฟต์อุปกรณ์ · การ์ดอัพเกรด)' },
-  { id:'food_shop', label:'Food Shop',    x:16.0, y:83.5, textX:16.0, textY:74.2, zoneR:14,
-    screen:'foodshop', hint:'ซื้ออาหารสำเร็จรูปและวัตถุดิบทำอาหาร' },
+  { id:'hacking',   label:'Hacking Center', x:22.9, y:53.4, region:'zone',
+    zoneR:15, screen:'raid', hint:'เจาะบ้านผู้เล่นคนอื่น' },
+  { id:'tech_shop', label:'Tech Shop',    x:87.0, y:64.8, region:'zone',
+    zoneR:13, screen:'shop', hint:'ไอเทม · บูสเตอร์ (ในอนาคต: คราฟต์อุปกรณ์ · การ์ดอัพเกรด)' },
+  { id:'food_shop', label:'Food Shop',    x:16.0, y:83.5, region:'zone',
+    zoneR:14, screen:'care', hint:'ดูแล VIRUZ (ในอนาคต: ซื้อวัตถุดิบคราฟต์อาหารเพิ่มสเตตัส/ความผูกพัน)' },
 ];
 
 // ── PROGRESSION TUNING ──
