@@ -10,6 +10,8 @@
 // file needs to change.
 // ═══════════════════════════════════════════════════════════
 
+import { guardTierForLevel } from './data.js';
+
 const LS_KEY = 'viruz_v5';
 const LS_RIVALS = 'viruz_v5_rivals';
 
@@ -119,11 +121,17 @@ export class LocalBackend {
       // Spread rivals from 60% to 180% of the player's power
       const scale = 0.6 + (i / n) * 1.2;
       const power = Math.max(40, Math.floor(myPower * scale));
+      const level = Math.max(1, Math.floor(power / 28));
       out.push({
         uid: rid(),
         name: mockName(),
-        level: Math.max(1, Math.floor(power / 28)),
+        level,
         power,
+        // Every mock rival "hires" one of the 4 AntiviruZ security
+        // tiers based on their own level (see guardTierForLevel() /
+        // GUARD_TIERS in data.js) — that's the gate battle
+        // startRaidFight() spawns before the rival's own pet team.
+        guardTier: guardTierForLevel(level),
         defense: {
           // Represented abstractly; the raid resolver only needs power.
           petPower: Math.floor(power * 0.7),
