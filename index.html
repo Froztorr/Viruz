@@ -1668,12 +1668,39 @@ body.care-game-open{overflow:hidden}
   min-height:76px}
 /* GIF creatures are raster; keep pixel art crisp and match SVG sizing */
 img.is-gif{image-rendering:pixelated;object-fit:contain}
+/* v2 PNG species art (attribute/mutation-colored) — same story: real
+   photos/pixel-art have their own aspect ratio, not the SVGs' square
+   viewBox, so without object-fit:contain a wide creature gets
+   squashed to fit a square box (this was the "too short horizontally"
+   bug — the fix already existed for .is-gif, it just never got
+   extended to this newer art set). */
+img.is-art2{image-rendering:pixelated;object-fit:contain}
+/* Outside battle, v2 art sits in boxes originally sized for the
+   square SVG viewBox. Since object-fit:contain now preserves the
+   real (usually wider-than-tall) proportions instead of stretching,
+   those boxes read as mostly-empty vertical space around a small
+   image — shortening just the height (keeping width, since layout
+   grids depend on it) lets the art fill its box properly. */
+.bench-sprite.is-art2{height:24px}
+.br-sprite.is-art2{height:33px}
+.care-chip-sprite.is-art2{height:28px}
+.cr-sprite.is-art2{height:28px}
+.pc-sprite.is-art2{height:54px}
+.ps-sprite.is-art2{height:48px}
+.starter-sprite.is-art2{height:60px}
+.swap-sprite.is-art2{height:39px}
+.zb-sprite.is-art2{height:35px}
+.care-sprite.is-art2{height:80px}
 /* PNG/JPEG/GIF (raster) characters render 2x larger than SVG ones. A
    --raster-mult custom property (2 for raster, 1 for SVG) is folded
    into EVERY sprite transform below — base, float, flip — so the
    doubling survives animation instead of being reset by a keyframe
    that only knew about --cr-scale. */
 img.bu-sprite.is-gif{--raster-mult:2}
+/* Same doubling for v2 species IN BATTLE ONLY — applies identically
+   to both the ally and the enemy slot since it's keyed off the shared
+   .bu-sprite class, not which side is rendering. */
+img.bu-sprite.is-art2{--raster-mult:2}
 /* flip and scale must combine — a bare scaleX(-1) would wipe the scale */
 .bu-sprite.flip{transform:scale(calc(var(--cr-scale,1) * var(--raster-mult,1) * -1),calc(var(--cr-scale,1) * var(--raster-mult,1)))}
 .bu-sprite.flip.float{animation-name:floatBobFlip}

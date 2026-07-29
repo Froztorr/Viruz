@@ -6,15 +6,7 @@
 //
 // Builders draw into a 100x100 viewBox facing RIGHT.
 // Enemies are flipped horizontally by the renderer.
-//
-// EXCEPTION — the 14 "art2" species (see ART2_SPECIES in data.js) now
-// render from real per-attribute PNG art instead: colour DOES vary by
-// attribute for those, and mutation (stage 2) swaps in a different
-// art set entirely. Everything else keeps the original fixed-palette
-// SVG behaviour described above unchanged.
 // ═══════════════════════════════════════════════════════════
-
-import { ART2_SPECIES, spriteV2Path } from './data.js';
 
 const SPRITE_BASE = 'assets/sprites';
 
@@ -346,27 +338,10 @@ export function creatureSVG(shape, paletteKey, opts = {}) {
   </svg>`;
 }
 
-// Unified renderer — v2 attribute art, GIF art, or procedural SVG,
-// chosen per species.
-//
-// v2 species (ART2_SPECIES): colour comes from the pet's actual
-// attribute, and reaching evolution stage 2 swaps to that mutation's
-// art set. `mutation` is only meaningful once `stage>=2`; pass the
-// pet's `stage`/`mutation` fields through (game.js's creatureMarkup()
-// wrapper does this) — omitted, this just renders stage-1 attribute
-// art, which is a safe default for eggs/previews with no pet yet.
-//
-// Everything else: attribute is intentionally ignored for colour, as
-// before — a creature's fixed palette is part of its identity, like
-// VR2's blue whale / red bull.
-export function creatureMarkupFor(species, attr, cls = '', anim = 'still', stage = 0, mutation = null) {
-  const speciesId = species && species.id;
-  if (speciesId && ART2_SPECIES.includes(speciesId)) {
-    const attrId = (attr && attr.id) || 'red';
-    const useMutation = stage >= 2 ? mutation : null;
-    const path = spriteV2Path(speciesId, attrId, useMutation);
-    return `<img class="${cls} is-art2" src="${path}" alt="${species.name || ''}">`;
-  }
+// Unified renderer — GIF art or procedural SVG, chosen per species.
+// NOTE: attribute is intentionally ignored for colour. A creature's
+// palette is part of its identity, like VR2's blue whale / red bull.
+export function creatureMarkupFor(species, _attr, cls = '', anim = 'still') {
   if (species && species.gif) {
     const ext = species.ext || 'gif';
     return `<img class="${cls} is-gif" src="${gifURL(species.gif, anim, ext)}" alt="${species.name || ''}">`;

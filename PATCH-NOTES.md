@@ -1,5 +1,28 @@
 # Patch: Stage-2 mutations + attribute art (this zip)
 
+## ⚠️ If you downloaded a build of this before ~05:40 UTC, redownload
+An earlier version of this zip was built on top of an outdated copy
+of `game.js`/`data.js` (one you'd uploaded standalone earlier in the
+conversation) instead of the real, fuller files inside your actual
+project — which cost you the cooking menu, the wandering-pet care
+screen, and the swipeable pet detail window, none of which I'd
+touched. This build is redone from your real `game.js`/`data.js`;
+all three are confirmed present alongside everything below. Also
+fixed in this pass, found from your bug report:
+- A boss surviving into its rage phase was briefly redrawing into
+  your OWN ally slot instead of the enemy slot (`applyDamage()` was
+  keying off the attacker's side instead of the target's).
+- The boss map pin sat at the exact same coordinates as the zone
+  pin underneath it, blocking clicks on that zone entirely — now
+  offset to sit beside it instead.
+- v2 species art (the 14 upgraded species) was stretching to fill a
+  square box instead of keeping its real proportions ("too short
+  horizontally") — your CSS already had the fix for this exact
+  problem on the older raster sprites (`object-fit:contain` +
+  2x-in-battle sizing), it just never got extended to the new art.
+  Extended now; non-battle boxes also shortened to fit the art's
+  actual proportions instead of leaving empty vertical space.
+
 ## What's new
 
 ### 1. Real per-attribute art for all 14 species
