@@ -1409,6 +1409,12 @@ body.care-game-open{overflow:hidden}
 .stat-buff-chip i{font-style:normal;opacity:.75;font-size:9px;margin-left:1px}
 .np-hp{display:flex;align-items:center;margin-top:5px}
 .name-plate.right .np-hp{justify-content:flex-end}
+/* An enlarged ally (x1.25 size tier) grows tall enough from the bottom
+   of the stage to reach into the name plate and cover the MP gauge
+   stacked below HP — see renderBattleSide()'s `enlarged` check. HP+MP
+   sit side by side instead, so neither one gets covered. */
+.np-vitals-inline{display:flex;align-items:center;gap:8px;margin-top:5px}
+.np-vitals-inline .np-hp,.np-vitals-inline .np-mp{margin-top:0}
 
 /* ── HP/MP "LIQUID" GAUGES ──
    Replaces the old bold-number heart glyph and the separate MP

@@ -41,6 +41,7 @@ export function createPet(speciesId, rarity, forcedAttr = null) {
     shape: sp.shape,
     palette: sp.palette,
     gif: sp.gif || null,
+    scale: sp.scale || 1,
     rarity,
     attr,
     stage: 0,

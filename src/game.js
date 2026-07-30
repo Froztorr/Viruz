@@ -151,6 +151,7 @@ async function boot() {
       EQUIP_SLOT_KEYS.forEach(sk => { if (p.equip[sk]) backfillEquipIcon(p.equip[sk]); });
       p.shape = sp.shape || null;
       p.gif   = sp.gif   || null;
+      p.scale = sp.scale || 1;
       if (!p.name) p.name = sp.name;
       if (!ATTR[p.attr]) p.attr = 'red';    // guard against removed attrs
       if (!RARITY[p.rarity]) p.rarity = 'normal';
@@ -4500,14 +4501,25 @@ function renderBattleSide(pet, elId, isEnemy) {
     if (pet.isBoss) {
       bossBar = `<div class="boss-hpbar phase${pet.bossPhase}"><i style="width:${hpPct}%"></i></div>`;
     }
+    // A "large" sprite (sc>=1.2, e.g. the x1.25 size tier) grows tall
+    // enough from the bottom of the stage to reach up into the name
+    // plate and cover the MP gauge sitting below HP — so for an
+    // enlarged ally, HP+MP sit side by side instead of stacked.
+    const enlarged = !isEnemy && sc >= 1.2;
+    const vitalsHtml = enlarged
+      ? `<div class="np-vitals-inline">
+           <div class="np-hp">${vitalHtml('heart', hpPct, Math.max(0, pet.hp))}</div>
+           <div class="np-mp">${vitalHtml('circle', mpPct, Math.max(0, pet.mp || 0))}</div>
+         </div>`
+      : `<div class="np-hp">${vitalHtml('heart', hpPct, Math.max(0, pet.hp))}</div>
+         ${!isEnemy ? `<div class="np-mp">${vitalHtml('circle', mpPct, Math.max(0, pet.mp || 0))}</div>` : ''}`;
     plate.innerHTML = `
       ${pet.isBoss ? `<div class="np-boss-tag">⚠ BOSS${pet.bossPhase===2?' · RAGE':''}</div>` : ''}
       <div class="np-name">${pet.name}</div>
       <div class="np-lv">Lv.${pet.level}</div>
       <div class="np-buffs">${statBuffChips(pet)}</div>
-      <div class="np-hp">${vitalHtml('heart', hpPct, Math.max(0, pet.hp))}</div>
+      ${vitalsHtml}
       ${bossBar}
-      ${!isEnemy ? `<div class="np-mp">${vitalHtml('circle', mpPct, Math.max(0, pet.mp || 0))}</div>` : ''}
       ${spdPct > 0 ? `<div class="spd-pip">⚡ ${spdPct}%</div>` : ''}`;
   }
 }

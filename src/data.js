@@ -81,7 +81,7 @@ export const RARITY_KEYS = ['normal','rare','epic','legendary','mythic'];
 // To pin an attribute later, add `fixedAttr:'red'` to a species.
 export const SPECIES = {
   blobyte: {
-    id:'blobyte', name:'BloByte', shape:'royalslime', palette:'slime_royal', art2:true,
+    id:'blobyte', name:'BloByte', shape:'royalslime', palette:'slime_royal', art2:true, scale:0.75,
     rarities:['normal','rare','epic'],
     base:{ atk:20, def:9, spd:11, mhp:70 },
     skills:[
@@ -94,7 +94,7 @@ export const SPECIES = {
     ],
   },
   inkarm: {
-    id:'inkarm', name:'InkArm', shape:'frostsquid', palette:'frost_squid', art2:true,
+    id:'inkarm', name:'InkArm', shape:'frostsquid', palette:'frost_squid', art2:true, scale:1,
     rarities:['normal','rare','epic','legendary'],
     base:{ atk:22, def:10, spd:13, mhp:66 },
     skills:[
@@ -107,7 +107,7 @@ export const SPECIES = {
     ],
   },
   nulworm: {
-    id:'nulworm', name:'NulWorm', shape:'crimworm', palette:'crimson_worm', art2:true,
+    id:'nulworm', name:'NulWorm', shape:'crimworm', palette:'crimson_worm', art2:true, scale:0.75,
     rarities:['normal','rare','epic'],
     base:{ atk:24, def:7, spd:15, mhp:58 },
     skills:[
@@ -120,7 +120,7 @@ export const SPECIES = {
     ],
   },
   clampr: {
-    id:'clampr', name:'Clampr', shape:'steelcrab', palette:'steel_crab', art2:true,
+    id:'clampr', name:'Clampr', shape:'steelcrab', palette:'steel_crab', art2:true, scale:0.75,
     rarities:['normal','rare','epic'],
     base:{ atk:19, def:16, spd:8, mhp:82 },
     skills:[
@@ -133,7 +133,7 @@ export const SPECIES = {
     ],
   },
   hopbit: {
-    id:'hopbit', name:'HopBit', shape:'violetbeast', palette:'beast_violet', art2:true,
+    id:'hopbit', name:'HopBit', shape:'violetbeast', palette:'beast_violet', art2:true, scale:1.25,
     rarities:['normal','rare','epic'],
     base:{ atk:21, def:9, spd:18, mhp:62 },
     skills:[
@@ -146,7 +146,7 @@ export const SPECIES = {
     ],
   },
   jetsquid: {
-    id:'jetsquid', name:'JetSquid', shape:'frostsquid', palette:'deep_fish', art2:true,
+    id:'jetsquid', name:'JetSquid', shape:'frostsquid', palette:'deep_fish', art2:true, scale:1,
     rarities:['rare','epic','legendary'],
     base:{ atk:25, def:10, spd:16, mhp:68 },
     skills:[
@@ -159,7 +159,7 @@ export const SPECIES = {
     ],
   },
   chitbug: {
-    id:'chitbug', name:'ChitBug', shape:'sandbug', palette:'sand_bug', art2:true,
+    id:'chitbug', name:'ChitBug', shape:'sandbug', palette:'sand_bug', art2:true, scale:0.75,
     rarities:['normal','rare','epic'],
     base:{ atk:20, def:14, spd:12, mhp:76 },
     skills:[
@@ -172,7 +172,7 @@ export const SPECIES = {
     ],
   },
   echowing: {
-    id:'echowing', name:'EchoWing', shape:'shadowbat', palette:'shadow_bat', art2:true,
+    id:'echowing', name:'EchoWing', shape:'shadowbat', palette:'shadow_bat', art2:true, scale:0.75,
     rarities:['normal','rare','epic','legendary'],
     base:{ atk:23, def:9, spd:17, mhp:64 },
     skills:[
@@ -185,7 +185,7 @@ export const SPECIES = {
     ],
   },
   dustmoth: {
-    id:'dustmoth', name:'DustMoth', shape:'embermoth', palette:'ember_moth', art2:true,
+    id:'dustmoth', name:'DustMoth', shape:'embermoth', palette:'ember_moth', art2:true, scale:0.75,
     rarities:['rare','epic','legendary'],
     base:{ atk:18, def:11, spd:14, mhp:72 },
     skills:[
@@ -198,7 +198,7 @@ export const SPECIES = {
     ],
   },
   finbyte: {
-    id:'finbyte', name:'FinByte', shape:'deepfish', palette:'deep_fish', art2:true,
+    id:'finbyte', name:'FinByte', shape:'deepfish', palette:'deep_fish', art2:true, scale:1,
     rarities:['normal','rare','epic'],
     base:{ atk:20, def:12, spd:14, mhp:70 },
     skills:[
@@ -211,7 +211,7 @@ export const SPECIES = {
     ],
   },
   glitchimp: {
-    id:'glitchimp', name:'GlitchImp', shape:'angelwing', palette:'angel_light', art2:true,
+    id:'glitchimp', name:'GlitchImp', shape:'angelwing', palette:'angel_light', art2:true, scale:1,
     rarities:['rare','epic','legendary','mythic'],
     base:{ atk:26, def:11, spd:15, mhp:70 },
     skills:[
@@ -224,7 +224,7 @@ export const SPECIES = {
     ],
   },
   spikeling: {
-    id:'spikeling', name:'Spikeling', shape:'spikelizard', palette:'spike_lizard', art2:true,
+    id:'spikeling', name:'Spikeling', shape:'spikelizard', palette:'spike_lizard', art2:true, scale:1,
     rarities:['normal','rare','epic'],
     base:{ atk:22, def:13, spd:10, mhp:78 },
     skills:[
@@ -237,7 +237,7 @@ export const SPECIES = {
     ],
   },
   orbling: {
-    id:'orbling', name:'Orbling', shape:'toxinblob', palette:'toxin_green', art2:true,
+    id:'orbling', name:'Orbling', shape:'toxinblob', palette:'toxin_green', art2:true, scale:1,
     rarities:['normal','rare','epic'],
     base:{ atk:17, def:12, spd:12, mhp:80 },
     skills:[
@@ -250,7 +250,7 @@ export const SPECIES = {
     ],
   },
   haunbit: {
-    id:'haunbit', name:'HaunBit', shape:'voidwisp', palette:'void_wisp', art2:true,
+    id:'haunbit', name:'HaunBit', shape:'voidwisp', palette:'void_wisp', art2:true, scale:1,
     rarities:['epic','legendary','mythic'],
     base:{ atk:24, def:10, spd:16, mhp:68 },
     skills:[
@@ -396,27 +396,31 @@ export const ANTIVIRUZ = {
   // Placement follows habitat: bugs in the woods, a kappa at the
   // waterfall, reptiles in the sand, otter/frog at the water, and
   // island wildlife out at sea.
-  greenworm:    { id:'greenworm',    name:'GreenWorm',   gif:'greenworm',     ext:'png', faces:'left', scale:0.72, base:{atk:15,def:7, spd:10, mhp:38}, attr:'green'  },
-  beetle:       { id:'beetle',       name:'JadeBeetle',  gif:'beetle',        ext:'png', faces:'right', scale:0.66, base:{atk:18,def:12,spd:9,  mhp:48}, attr:'yellow' },
+  greenworm:    { id:'greenworm',    name:'GreenWorm',   gif:'greenworm',     ext:'png', faces:'left', scale:0.54, base:{atk:15,def:7, spd:10, mhp:38}, attr:'green'  },
+  beetle:       { id:'beetle',       name:'JadeBeetle',  gif:'beetle',        ext:'png', faces:'right', scale:0.5, base:{atk:18,def:12,spd:9,  mhp:48}, attr:'yellow' },
   stone_imp:    { id:'stone_imp',    name:'StoneImp',    shape:'steelcrab',   palette:'steel_crab',   base:{atk:19,def:14,spd:8,  mhp:58}, attr:'yellow' },
-  kappa:        { id:'kappa',        name:'Kappa',       gif:'kappa',         ext:'png', faces:'right', scale:0.92, base:{atk:23,def:13,spd:14, mhp:60}, attr:null     },
+  kappa:        { id:'kappa',        name:'Kappa',       gif:'kappa',         ext:'png', faces:'right', scale:0.69, base:{atk:23,def:13,spd:14, mhp:60}, attr:null     },
   fang_stalker: { id:'fang_stalker', name:'FangStalker', shape:'shadowbat',   palette:'shadow_bat',   base:{atk:26,def:10,spd:17, mhp:54}, attr:'red'    },
-  sand_worm:    { id:'sand_worm',    name:'SandWorm',    gif:'sand_worm',     ext:'png', faces:'right', scale:1.05, base:{atk:30,def:12,spd:13, mhp:68}, attr:'yellow' },
-  sand_turtle:  { id:'sand_turtle',  name:'SandTurtle',  gif:'sand_turtle',   ext:'png', faces:'left', scale:0.98, base:{atk:26,def:22,spd:7,  mhp:88}, attr:'yellow' },
-  oasis_otter:  { id:'oasis_otter',  name:'OasisOtter',  gif:'oasis_otter',   ext:'png', faces:'right', scale:0.82, base:{atk:33,def:14,spd:19, mhp:70}, attr:'green'  },
-  rainbow_frog: { id:'rainbow_frog', name:'RainbowFrog', gif:'rainbow_frog',  ext:'png', faces:'right', scale:0.74, base:{atk:35,def:15,spd:16, mhp:74}, attr:null     },
-  flying_fish:  { id:'flying_fish',  name:'FlyingFish',  gif:'flying_fish',   ext:'png', faces:'left', scale:0.78, base:{atk:36,def:14,spd:21, mhp:72}, attr:'green'  },
-  island_monkey:{ id:'island_monkey',name:'IslandMonkey',gif:'island_monkey', ext:'png', faces:'right', scale:0.88, base:{atk:40,def:18,spd:18, mhp:84}, attr:'red'    },
+  // Source art for these two is drawn the OPPOSITE of what `faces` said —
+  // SandWorm/SandTurtle were rendering mirrored (backwards) as enemies.
+  sand_worm:    { id:'sand_worm',    name:'SandWorm',    gif:'sand_worm',     ext:'png', faces:'left', scale:1.31, base:{atk:30,def:12,spd:13, mhp:68}, attr:'yellow' },
+  sand_turtle:  { id:'sand_turtle',  name:'SandTurtle',  gif:'sand_turtle',   ext:'png', faces:'right', scale:1.23, base:{atk:26,def:22,spd:7,  mhp:88}, attr:'yellow' },
+  oasis_otter:  { id:'oasis_otter',  name:'OasisOtter',  gif:'oasis_otter',   ext:'png', faces:'right', scale:0.62, base:{atk:33,def:14,spd:19, mhp:70}, attr:'green'  },
+  rainbow_frog: { id:'rainbow_frog', name:'RainbowFrog', gif:'rainbow_frog',  ext:'png', faces:'right', scale:0.56, base:{atk:35,def:15,spd:16, mhp:74}, attr:null     },
+  // Same mirrored-facing fix as SandWorm/SandTurtle above.
+  flying_fish:  { id:'flying_fish',  name:'FlyingFish',  gif:'flying_fish',   ext:'png', faces:'right', scale:0.59, base:{atk:36,def:14,spd:21, mhp:72}, attr:'green'  },
+  island_monkey:{ id:'island_monkey',name:'IslandMonkey',gif:'island_monkey', ext:'png', faces:'right', scale:0.66, base:{atk:40,def:18,spd:18, mhp:84}, attr:'red'    },
 
   // ══ HELL ══
   // These use real art (assets/sprites/<gif>/still.png + attack.png).
   // `ext:'png'` tells the renderer which extension to load.
-  goblin_grunt: { id:'goblin_grunt', name:'Goblin',        gif:'goblin',       ext:'png', faces:'left', scale:0.8, base:{atk:38,def:14,spd:15, mhp:70},  attr:'green'  },
-  goblin_miner: { id:'goblin_miner', name:'MinerGoblin',   gif:'miner_goblin', ext:'png', faces:'left', scale:0.84, base:{atk:43,def:17,spd:13, mhp:80},  attr:'yellow' },
-  black_beast:  { id:'black_beast',  name:'BlackBeast',    gif:'black_beast',  ext:'png', faces:'right', scale:1.15, base:{atk:50,def:16,spd:20, mhp:86},  attr:'red'    },
-  rock_golem:   { id:'rock_golem',   name:'RockGolem',     gif:'rock_golem',   ext:'png', faces:'right', scale:1.42, base:{atk:46,def:28,spd:8,  mhp:118}, attr:'yellow' },
+  // Same mirrored-facing fix as SandWorm/SandTurtle/FlyingFish above.
+  goblin_grunt: { id:'goblin_grunt', name:'Goblin',        gif:'goblin',       ext:'png', faces:'right', scale:0.6, base:{atk:38,def:14,spd:15, mhp:70},  attr:'green'  },
+  goblin_miner: { id:'goblin_miner', name:'MinerGoblin',   gif:'miner_goblin', ext:'png', faces:'right', scale:0.63, base:{atk:43,def:17,spd:13, mhp:80},  attr:'yellow' },
+  black_beast:  { id:'black_beast',  name:'BlackBeast',    gif:'black_beast',  ext:'png', faces:'right', scale:1.44, base:{atk:50,def:16,spd:20, mhp:86},  attr:'red'    },
+  rock_golem:   { id:'rock_golem',   name:'RockGolem',     gif:'rock_golem',   ext:'png', faces:'right', scale:1.78, base:{atk:46,def:28,spd:8,  mhp:118}, attr:'yellow' },
   hobgoblin:    { id:'hobgoblin',    name:'RedHobgoblin',  gif:'hobgoblin',    ext:'png', faces:'right', scale:1.1, base:{atk:56,def:20,spd:16, mhp:98},  attr:'red'    },
-  fire_golem:   { id:'fire_golem',   name:'FireGolem',     gif:'fire_golem',   ext:'png', faces:'right', scale:1.48, base:{atk:60,def:26,spd:11, mhp:126}, attr:'red'    },
+  fire_golem:   { id:'fire_golem',   name:'FireGolem',     gif:'fire_golem',   ext:'png', faces:'right', scale:1.85, base:{atk:60,def:26,spd:11, mhp:126}, attr:'red'    },
   butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'right', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     },
   vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', faces:'right', scale:1.06, base:{atk:72,def:24,spd:22, mhp:130}, attr:null     },
   vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'right', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    },
@@ -428,10 +432,10 @@ export const ANTIVIRUZ = {
   // tier GUARD_TIERS below assigns to that rival (by level bracket).
   // `faces` corrects each source image to how it was actually drawn —
   // see GUARD_TIERS comment for which ones needed a flip.
-  guard_imp:   { id:'guard_imp',   name:'GuardImp',   gif:'guard_imp',   ext:'png', faces:'left',  scale:1.0,  base:{atk:24,def:18,spd:11,mhp:72},  attr:null },
+  guard_imp:   { id:'guard_imp',   name:'GuardImp',   gif:'guard_imp',   ext:'png', faces:'left',  scale:0.75, base:{atk:24,def:18,spd:11,mhp:72},  attr:null },
   gunner_imp:  { id:'gunner_imp',  name:'GunnerImp',  gif:'gunner_imp',  ext:'png', faces:'right', scale:1.15, base:{atk:38,def:20,spd:15,mhp:95},  attr:null },
-  tank_imp:    { id:'tank_imp',    name:'TankImp',    gif:'tank_imp',    ext:'png', faces:'left',  scale:1.35, base:{atk:46,def:32,spd:9, mhp:135}, attr:null },
-  marshal_imp: { id:'marshal_imp', name:'MarshalImp', gif:'marshal_imp', ext:'png', faces:'right', scale:1.2,  base:{atk:68,def:30,spd:20,mhp:155}, attr:null },
+  tank_imp:    { id:'tank_imp',    name:'TankImp',    gif:'tank_imp',    ext:'png', faces:'left',  scale:1.69, base:{atk:46,def:32,spd:9, mhp:135}, attr:null },
+  marshal_imp: { id:'marshal_imp', name:'MarshalImp', gif:'marshal_imp', ext:'png', faces:'right', scale:0.9,  base:{atk:68,def:30,spd:20,mhp:155}, attr:null },
 };
 
 // ── RAID DEFENSE TIERS ──
