@@ -18,7 +18,8 @@ import {
   bossPoolForMap, BOSS_TUNING, randomBossZone,
   EQUIP_SLOTS, EQUIP_SLOT_KEYS, EQUIP_GRADES, EQUIP_GRADE_KEYS,
   PAYLOAD_EFFECTS, PAYLOAD_EFFECT_KEYS, EQUIP_DROP_CHANCE, CRAFT_RECIPES,
-  rollEquipment, craftEquipment, dustValueOf, sellValueOf, backfillEquipIcon } from './data.js';
+  rollEquipment, craftEquipment, dustValueOf, sellValueOf, backfillEquipIcon,
+  ART2_SPECIES } from './data.js';
 import {
   createPet, rollEgg, statsOf, combatStats, powerOf, teamPower, spawnAntiviruz,
   spawnBoss, enterBossRage,
@@ -4518,8 +4519,18 @@ function renderBattleSide(pet, elId, isEnemy) {
   const wantFaces  = isEnemy ? 'left' : 'right';
   const needFlip   = drawnFaces !== wantFaces;
 
-  // SIZE: scale by the creature's expected physical size.
-  const sc = pet.scale || 1;
+  // SIZE: scale by the creature's expected physical size — but capped
+  // so a large data-defined scale (e.g. FireGolem's 1.85x) can never
+  // grow the sprite past what #stage-cam's padding actually clears
+  // before #battle-stage's overflow:hidden starts cutting into it. A
+  // data scale is a size INTENT; this is what keeps intent from
+  // clipping the sprite (was reported: a large ally's horn/rim-light
+  // rendering with a hard cut edge — the sprite was genuinely bigger
+  // than the clearance available on its near side).
+  const isRaster = !!pet.gif || ART2_SPECIES.includes(pet.speciesId);
+  const rasterMult = isRaster ? 2 : 1;
+  const safeTotalScale = window.innerWidth <= 600 ? 3.0 : 2.4;
+  const sc = Math.min(pet.scale || 1, safeTotalScale / rasterMult);
 
   unit.style.setProperty('--cr-scale', sc);
   const rageMarks = (pet.isBoss && pet.bossPhase === 2)
