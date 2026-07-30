@@ -96,6 +96,20 @@ const el = (tag, cls, html) => {
 };
 function setText(id, v) { const e = $(id); if (e) e.textContent = v; }
 
+// ── HAPTICS ──
+// navigator.vibrate is unsupported (desktop, iOS Safari) or user-denied
+// often enough that every call site would need its own try/guard —
+// centralized here instead. Pattern presets:
+//   TAP    — light tick for any meaningful button/card press
+//   SKILL  — one long buzz when the player's own pet casts a skill
+//   DEATH  — a short double-buzz when a unit (either side) goes down
+const VIBE_TAP = 12;
+const VIBE_SKILL = 220;
+const VIBE_DEATH = [40, 60, 40];
+function vibrate(pattern) {
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {}
+}
+
 // ═══════════════ TEAM ACCESS ═══════════════
 function petById(id) { return G.roster.find(p => p.uid === id) || null; }
 function activeTeam() { return G.teamIds.map(petById).filter(Boolean); }
@@ -203,6 +217,7 @@ async function boot() {
   wirePetDetail();
   startTopBarClock();
   wireClickRipple();
+  wireDoubleTapGuard();
 }
 
 async function save() {
@@ -350,6 +365,7 @@ function wireClickRipple() {
   document.addEventListener('pointerdown', e => {
     const target = e.target.closest(TAPPABLE);
     if (!target || target.disabled) return;
+    vibrate(VIBE_TAP);
     const d = document.createElement('div');
     d.className = 'click-ripple';
     d.style.left = e.clientX + 'px';
@@ -357,6 +373,24 @@ function wireClickRipple() {
     document.body.appendChild(d);
     setTimeout(() => d.remove(), 460);
   }, { passive: true });
+}
+
+// ── DOUBLE-TAP-TO-ZOOM GUARD ──
+// CSS touch-action:manipulation (index.html) already drops double-tap
+// zoom on browsers that honor it. This is the belt-and-suspenders JS
+// fallback for the ones that don't: two touchend events landing close
+// together in time trigger the browser's double-tap zoom gesture, so
+// preventDefault the second one before that gesture can fire. A tap
+// followed shortly by a genuinely separate tap elsewhere on screen
+// still gets swallowed by this — an acceptable trade since the whole
+// point is "don't let two quick taps anywhere zoom the page."
+function wireDoubleTapGuard() {
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 350) e.preventDefault();
+    lastTouchEnd = now;
+  }, { passive: false });
 }
 
 // ── PULL-OUT DRAWER ──
@@ -3646,6 +3680,7 @@ function isEnemyFacingVfx(kind) {
 // frame instead, exactly like basicAttack's 'impact' already was.
 async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
   spendMP(caster, sp);
+  if (side === 'ally') vibrate(VIBE_SKILL);
   await showBanner(`✦ ${sp.name} ✦`, 'sig');
 
   // ── SELF-SIDE FIRST (self-targeted vfx only) ──
@@ -3672,6 +3707,7 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
     atkTeam.forEach(p => {
       if (p.hp > 0) return;
       p.hp = Math.floor(statsOf(p).vit * sp.reviveTeam); n++;
+      p._deathVibrated = false; // so a later re-death this fight still buzzes
     });
     blog(`✨ ${caster.name} กู้ระบบ · ชุบชีวิต ${n} ตัว`, 'buff');
   }
@@ -3776,6 +3812,16 @@ async function checkBattleEnd() {
   if (!battle) return true;
   const alliesAlive = battle.team.some(p => p.hp > 0);
   const enemiesAlive = battle.enemies.some(e => e.hp > 0);
+
+  // Haptic: a short double-buzz the first time we notice a unit (either
+  // side) has actually died — dedup via _deathVibrated so a unit that's
+  // already been credited/exploded doesn't re-trigger on a later check.
+  [...battle.team, ...battle.enemies].forEach(u => {
+    if (u.hp <= 0 && !u._deathVibrated) {
+      u._deathVibrated = true;
+      vibrate(VIBE_DEATH);
+    }
+  });
 
   // Credit exp for any enemy that just died THIS check, priced against
   // whichever ally fighter is currently active (the one that would have
