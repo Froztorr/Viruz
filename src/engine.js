@@ -378,11 +378,31 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   const a = combatStats(attacker, atkTeam);
   const d = combatStats(defender, defTeam);
 
+  // ── LEVEL GAP ──
+  // The stat-vs-stat contests below (evasion, mitigation) are already
+  // "relative", but nothing stopped a heavily gear/skill-tree-invested
+  // low-level pet from out-statting a much higher-level opponent
+  // outright — equipment and tree bonuses are flat additions with no
+  // ceiling tied to level, while a wild monster gets neither. A modestly
+  // built Lv30 could out-damage and rarely get evaded by a Lv80 monster
+  // while barely feeling that monster's own hits back, because its
+  // effective ATK/DEF/EVA had simply out-scaled what "level 80" was
+  // ever assumed to mean. This applies on top of everything above as a
+  // final, level-only correction — it cannot be out-geared, since it
+  // never looks at either side's stats, only their levels — so a big
+  // level gap stays meaningful even at very different investment
+  // levels. `k` per level is deliberately gentle; the clamps keep any
+  // single gap from producing guaranteed hits/misses or 1-shots.
+  const levelGap = (attacker.level || 1) - (defender.level || 1); // + = attacker higher level
+  const levelDmgMult = Math.max(0.35, Math.min(1.65, 1 + levelGap * 0.022));
+  const levelEvaShift = Math.max(-0.35, Math.min(0.35, -levelGap * 0.012));
+
   // ── EVASION: defender's EVA points vs attacker's accuracy ──
   // Accuracy is derived from SPD + a share of CRIT (precision), so a
   // fast/precise attacker naturally lands more hits on an evasive foe.
   const accuracy = a.spd * 0.55 + a.crit * 0.25;
-  const evaChance = opposedChance(d.eva, accuracy, { cap: 0.45, k: 1.1, floor: 0.05 });
+  let evaChance = opposedChance(d.eva, accuracy, { cap: 0.45, k: 1.1, floor: 0.05 });
+  evaChance = Math.max(0.02, Math.min(0.85, evaChance + levelEvaShift));
   if (Math.random() < evaChance) {
     return { dmg: 0, hits: 0, hitDmgs: [], crit: false, evaded: true };
   }
@@ -409,7 +429,7 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   const mitigation = Math.min(0.85, effDef / (effDef + soften));
 
   let base = (a.atk * pw * specialMult) * (1 - mitigation) / (DMG_SCALE * DMG_DIVISOR);
-  base = Math.max(1, base * variance);
+  base = Math.max(1, base * variance * levelDmgMult);
 
   // ── CRIT: attacker's CRIT points vs defender's composure ──
   // Composure resists crits, built from DEF + a share of EVA, so a
@@ -599,6 +619,14 @@ export function evolve(pet, force = false, mutationRoll = null) {
     let roll = mutationRoll || (pool.length === MUTATION_KEYS.length ? MUTATION_ROLL : pool.map(k => [k, 25]));
     if (pool.length !== MUTATION_KEYS.length) roll = roll.filter(([k]) => pool.includes(k));
     pet.mutation = rollWeighted(roll);
+    // Reaching the final (mutated) form was a dead end: maxLv is set
+    // once at creation from the STARTING rarity (30-120) and evolve()
+    // never touched it again, so a pet that had just grown enough to
+    // reach this stage (level === its rarity's maxLv, required above)
+    // could never gain another level or point afterward. This is
+    // meant to be a pet's endgame form, not its retirement — lift the
+    // cap the same way ANTIVIRUZ monsters are effectively uncapped.
+    pet.maxLv = 999;
   }
   pet.hp = statsOf(pet).mhp;
   return next;
