@@ -58,7 +58,11 @@
   --glow-gold:0 0 18px rgba(255,207,63,.45);
 }
 
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+/* touch-action:manipulation drops double-tap-to-zoom (still allows
+   panning/pinch-zoom) so a quick double-tap on a buy/sell button or
+   anywhere else doesn't accidentally zoom the page — see the matching
+   touchend guard in game.js for browsers that ignore this. */
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 html,body{height:100%}
 body{
   background:var(--bg); color:var(--txt);
