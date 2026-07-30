@@ -1362,7 +1362,15 @@ body.care-game-open{overflow:hidden}
 #stage-cam{
   position:absolute;inset:0;
   display:flex;justify-content:space-between;align-items:flex-end;
-  padding:0 16px 54px;
+  /* left/right padding is load-bearing, not just spacing: a fighter's
+     sprite scales from its OWN centre (transform-origin:50% 100% on
+     .bu-sprite), and #battle-stage clips anything (overflow:hidden)
+     that grows past its edge. 16px used to leave a large/oversized
+     sprite's near-edge side with barely any (or negative) clearance —
+     see the --cr-scale cap in renderBattleSide() for the other half of
+     this fix, which caps how big a sprite can render in the first
+     place so this padding is guaranteed to be enough. */
+  padding:0 34px 54px;
   transform-origin:50% 50%;will-change:transform;
 }
 #sky{position:absolute;inset:0;
