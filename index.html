@@ -1319,8 +1319,9 @@ body.care-game-open{overflow:hidden}
    caster has no on-stage unit of its own to animate. */
 .support-cast-pop{position:absolute;transform:translate(-50%,-100%);z-index:11;
   display:flex;flex-direction:column;align-items:center;gap:2px;
+  width:max-content;max-width:150px;
   pointer-events:none;animation:supportPopInOut 2s ease-in-out forwards}
-.support-cast-box{width:44px;height:44px;padding:3px;
+.support-cast-box{width:44px;height:44px;padding:3px;flex:0 0 auto;
   background:rgba(10,7,22,.85);border:2px solid var(--cyan);border-radius:6px;
   box-shadow:0 0 10px rgba(61,240,255,.5);
   display:flex;align-items:flex-end;justify-content:center;overflow:hidden}
@@ -1328,6 +1329,11 @@ body.care-game-open{overflow:hidden}
   image-rendering:pixelated}
 .support-cast-name{font-family:var(--pixel);font-size:10px;color:var(--cyan);
   text-shadow:0 2px 3px rgba(0,0,0,.8);white-space:nowrap}
+.support-cast-skill{font-family:var(--pixel);font-size:10px;color:#ffd23f;
+  text-shadow:0 2px 3px rgba(0,0,0,.8);white-space:nowrap}
+.support-cast-desc{font-size:10px;line-height:1.25;color:#dfe6ee;text-align:center;
+  text-shadow:0 1px 2px rgba(0,0,0,.9);
+  background:rgba(10,7,22,.7);border-radius:4px;padding:1px 4px}
 @keyframes supportPopInOut{
   0%{opacity:0;transform:translate(-50%,-80%) scale(.6)}
   12%{opacity:1;transform:translate(-50%,-100%) scale(1)}
@@ -1390,6 +1396,17 @@ body.care-game-open{overflow:hidden}
   box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 3px 0 rgba(0,0,0,.35),
              0 5px 12px rgba(0,0,0,.35)}
 .np-lv{font-size:15px;color:#eaf2ff;margin-top:3px;text-shadow:0 2px 3px rgba(0,0,0,.8)}
+
+/* Active stat-buff readout next to the level line — one colored chip
+   per buffed stat (aggregated across every active ailment that
+   touches it, since Data Bless/Sanctuary etc. can now stack — see
+   statBuffChips() in game.js), with a turn countdown so it's obvious
+   the buff is temporary and roughly how long is left. */
+.np-buffs{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px;max-width:150px}
+.name-plate.right .np-buffs{justify-content:flex-end}
+.stat-buff-chip{font-size:11px;font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.9);
+  white-space:nowrap}
+.stat-buff-chip i{font-style:normal;opacity:.75;font-size:9px;margin-left:1px}
 .np-hp{display:flex;align-items:center;margin-top:5px}
 .name-plate.right .np-hp{justify-content:flex-end}
 
@@ -1527,9 +1544,6 @@ body.care-game-open{overflow:hidden}
   -webkit-text-stroke:6px #14100c;paint-order:stroke fill;
   text-shadow:0 6px 0 rgba(0,0,0,.35);
   transform:rotate(var(--tilt,-5deg))}
-.dmg-mult{font-family:var(--pixel);font-size:22px;color:#ffd23f;
-  -webkit-text-stroke:4px #14100c;paint-order:stroke fill;margin-top:2px;
-  transform:rotate(var(--tilt,-5deg))}
 .dmg-big.crit .dmg-num{font-size:104px;color:#ff1f1f;
   -webkit-text-stroke:9px #2b0505;
   text-shadow:0 0 26px rgba(255,40,40,.8),0 10px 0 rgba(0,0,0,.45)}
@@ -1609,6 +1623,13 @@ body.care-game-open{overflow:hidden}
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
 }
+/* The hit-flash (hitWhite/hitWhiteRaster below) animates `filter`,
+   which some mobile GPUs composite less reliably than transform/opacity
+   — the reported symptom was the white-out simply not appearing some
+   hits on phone while always showing on desktop. Hinting filter here
+   too, on the exact elements those keyframes target, gives it the same
+   own-layer promotion as the transform properties above. */
+.bu-sprite .cr-body, img.bu-sprite{ will-change: filter; }
 .bunit.dead{opacity:.25;filter:grayscale(1)}
 
 /* Attack movement: the whole unit (bar, name, sprite) slides toward
@@ -1651,6 +1672,31 @@ body.care-game-open{overflow:hidden}
   0%   { transform: translateX(calc(var(--dir,1) * 46px)) scale(1.1,.94); }
   100% { transform: translateX(0) scale(1); }
 }
+
+/* Miss: the TARGET (not the attacker) briefly blurs and flinches
+   further away — same --dir sign as the attacker's own lunge, since
+   for the target that direction IS "away". Fixed, short duration
+   (well under 1s) regardless of combo speed-up. */
+.bunit.evade-recoil{
+  animation-name: evadeRecoil;
+  animation-duration: 460ms;
+  animation-timing-function: ease-out;
+  z-index:6;
+}
+@keyframes evadeRecoil{
+  0%   { transform: translateX(0); filter: blur(0); }
+  25%  { transform: translateX(calc(var(--dir,1) * 22px)); filter: blur(3px); }
+  60%  { transform: translateX(calc(var(--dir,1) * 14px)); filter: blur(1px); }
+  100% { transform: translateX(0); filter: blur(0); }
+}
+.miss-pop{position:absolute;transform:translate(-50%,-50%);z-index:10;
+  font-family:var(--pixel);font-size:26px;color:#dfe6ee;
+  -webkit-text-stroke:5px #14100c;paint-order:stroke fill;
+  animation:missPop .8s ease-out forwards;pointer-events:none}
+@keyframes missPop{
+  0%  {opacity:0;transform:translate(-50%,-40%) scale(.6) rotate(-6deg)}
+  20% {opacity:1;transform:translate(-50%,-58%) scale(1.1) rotate(-6deg)}
+  100%{opacity:0;transform:translate(-50%,-85%) scale(1) rotate(-6deg)}}
 
 /* Impact: target flashes white and shakes. The flash is a CSS filter
    pulse rather than swapping images, so it works on every sprite with

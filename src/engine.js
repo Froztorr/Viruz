@@ -384,7 +384,7 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   const accuracy = a.spd * 0.55 + a.crit * 0.25;
   const evaChance = opposedChance(d.eva, accuracy, { cap: 0.45, k: 1.1, floor: 0.05 });
   if (Math.random() < evaChance) {
-    return { dmg: 0, hits: 0, crit: false, evaded: true };
+    return { dmg: 0, hits: 0, hitDmgs: [], crit: false, evaded: true };
   }
 
   // Two skill authoring scales exist in this codebase: the modern one
@@ -420,13 +420,17 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   if (crit) base *= 2;
 
   // Multi-hit skills strike `hits` times; each hit rolls its own value.
+  // hitDmgs keeps the individual per-hit rolls (not just the summed
+  // total) so the battle UI can animate and apply each hit separately
+  // instead of dumping the whole combined number on the first swing.
   const hits = Math.max(1, skill.hits || 1);
-  let total = 0;
+  const hitDmgs = [];
   for (let i = 0; i < hits; i++) {
-    total += Math.max(1, Math.floor(base * (0.94 + Math.random() * 0.12)));
+    hitDmgs.push(Math.max(1, Math.floor(base * (0.94 + Math.random() * 0.12))));
   }
+  const total = hitDmgs.reduce((s, d) => s + d, 0);
 
-  return { dmg: total, hits, crit, evaded: false };
+  return { dmg: total, hits, hitDmgs, crit, evaded: false };
 }
 
 // Exposed so the UI can show a pet's EFFECTIVE crit/eva against a

@@ -3395,9 +3395,8 @@ function markSpecialUsed(unit, sp) {
 
 async function runTurn() {
   if (!battle || battle.over) return;
-  if (!battle._openingBuffsDone) {
-    battle._openingBuffsDone = true;
-    await runOpeningBuffs();
+  if (battle.phase === 'ally') {
+    await runTeamBuffCheck();
     if (!battle || battle.over) return;
   }
   const ally = activeAlly();
@@ -3457,29 +3456,44 @@ async function runTurn() {
   scheduleTurn();
 }
 
-// ── OPENING TEAM BUFFS (bench healers) ──
+// ── TEAM BUFF ID ──
+// Each buffTeam special gets its OWN ailment id (was a single shared
+// 'frenzy' id for every team buff, which meant a second buffTeam skill
+// couldn't coexist with the first — addAilment() dedupes same-id
+// instances, so casting Sanctuary while Data Bless was still up just
+// refreshed Data Bless's turns and silently dropped Sanctuary's DEF
+// bonus). Per-skill ids let them stack independently AND let
+// runTeamBuffCheck() below tell "is THIS specific buff still up"
+// instead of "is *a* buff up".
+function teamBuffAilmentId(sp) { return 'buff_' + sp.id; }
+
+// ── PERIODIC TEAM BUFFS (bench healers) ──
 // A team-wide buff (buffTeam — Data Bless / Sanctuary) only ever fired
-// on ITS caster's own turn, so a healer sitting on the bench never
-// got to use it — the buff a support pet is meant to open a fight
-// with was stuck waiting for a swap-in that might not happen for
-// several turns. Now: once, before the very first attack of a fight,
-// every BENCH pet (the active fighter's own turn already covers
-// itself via the normal autoCast path below) with a buffTeam special
-// toggled to auto-cast fires it if it's affordable — no VFX on an
-// off-field caster, just a small portrait pop over the active ally
-// and a log line, then the buff (and any healTeam) applies exactly
-// like it would mid-fight.
-async function runOpeningBuffs() {
+// on ITS caster's own turn, so a healer sitting on the bench never got
+// to use it, and once cast it was never refreshed — a support pet is
+// meant to keep the team buffed, not spend it once and go quiet. Now:
+// every ally turn, before that turn resolves, any BENCH pet (the
+// active fighter's own turn already covers itself via the normal
+// autoCast path in runTurn) with a buffTeam special toggled to
+// auto-cast fires it if the team doesn't currently have THAT buff up
+// (fresh at battle start, then again each time it wears off) and it's
+// affordable. No VFX on an off-field caster — a small portrait pop
+// over the active ally instead, naming the caster, the skill, and its
+// effect, then the buff (and any healTeam) applies exactly like it
+// would mid-fight.
+async function runTeamBuffCheck() {
   if (!battle || !battle.team) return;
   const activePet = activeAlly();
+  if (!activePet) return;
   const bench = battle.team.filter(p => p !== activePet && p.hp > 0);
   for (const caster of bench) {
     const sp = unlockedSpecials(caster).find(s =>
-      s.buffTeam && caster.autoCast?.[s.id] && canCast(caster, s) && specialReady(caster, s));
+      s.buffTeam && caster.autoCast?.[s.id] && canCast(caster, s) && specialReady(caster, s)
+      && !hasAilment(activePet, teamBuffAilmentId(s)));
     if (!sp) continue;
     spendMP(caster, sp);
     markSpecialUsed(caster, sp);
-    battle.team.forEach(p => { if (p.hp > 0) addAilment(p, { id: 'frenzy', ...sp.buffTeam }); });
+    battle.team.forEach(p => { if (p.hp > 0) addAilment(p, { id: teamBuffAilmentId(sp), ...sp.buffTeam }); });
     if (sp.healTeam) {
       battle.team.forEach(p => {
         if (p.hp <= 0) return;
@@ -3487,17 +3501,18 @@ async function runOpeningBuffs() {
         p.hp = Math.min(mx, p.hp + Math.floor(mx * sp.healTeam));
       });
     }
-    blog(`✨ ${caster.name} ใช้ ${sp.name} ก่อนเริ่มต่อสู้ · เสริมพลังทั้งทีม`, 'buff');
-    supportCasterPop(caster);
+    blog(`✨ ${caster.name} ใช้ ${sp.name} · ${sp.desc} · เสริมพลังทั้งทีม`, 'buff');
+    supportCasterPop(caster, sp);
     refreshBattleUnits();
     await wait(2000 / battleSpeed);
   }
 }
 
 // Small portrait box over the active ally's head — the only visual
-// tell an off-field pet gets when it opens a fight with a buff, since
-// it has no on-stage unit of its own to animate.
-function supportCasterPop(caster) {
+// tell an off-field pet gets when it uses a buff, since it has no
+// on-stage unit of its own to animate. Names the caster, the skill,
+// and its effect text.
+function supportCasterPop(caster, sp) {
   const layer = $('fx-layer');
   const stage = $('battle-stage');
   const activePet = activeAlly();
@@ -3509,9 +3524,45 @@ function supportCasterPop(caster) {
   d.style.left = (r.left - host.left + r.width / 2) + 'px';
   d.style.top = (r.top - host.top) + 'px';
   d.innerHTML = `<div class="support-cast-box">${creatureMarkup(caster, 'support-cast-sprite')}</div>
-    <div class="support-cast-name">${caster.name}</div>`;
+    <div class="support-cast-name">${caster.name}</div>
+    <div class="support-cast-skill">✦ ${sp.name}</div>
+    <div class="support-cast-desc">${sp.desc}</div>`;
   layer.appendChild(d);
   setTimeout(() => d.remove(), 2000 / battleSpeed);
+}
+
+// ── STAT BUFF READOUT (next to the level line) ──
+// One colored chip per stat currently modified by ANY active ailment
+// (buffs and the corrupt/frenzy-style debuffs alike), aggregated since
+// more than one can now touch the same stat at once (see
+// teamBuffAilmentId() above). Turn count shown is the longest-lived
+// contributor — the stat stays at its current (aggregated) % until
+// that expires, though the % itself may step down sooner if a
+// shorter-lived contributor runs out first; recomputed fresh from
+// pet.ailments on every call so that's always reflected live.
+const STAT_BUFF_META = {
+  atk:  { label: 'ATK',  color: '#ff5a5a' },
+  def:  { label: 'DEF',  color: '#d9a066' },
+  spd:  { label: 'SPD',  color: '#f5e77a' },
+  eva:  { label: 'EVA',  color: '#c9c9d6' },
+  crit: { label: 'CRIT', color: '#ff8ad1' },
+};
+function statBuffChips(pet) {
+  const totals = {};
+  (pet.ailments || []).forEach(a => {
+    Object.keys(STAT_BUFF_META).forEach(k => {
+      if (!a[k]) return;
+      const t = totals[k] || (totals[k] = { pct: 0, turns: 0 });
+      t.pct += a[k];
+      t.turns = Math.max(t.turns, a.turns || 0);
+    });
+  });
+  return Object.keys(totals).map(k => {
+    const meta = STAT_BUFF_META[k];
+    const t = totals[k];
+    const sign = t.pct >= 0 ? '+' : '';
+    return `<span class="stat-buff-chip" style="color:${meta.color}">${meta.label}${sign}${Math.round(t.pct * 100)}%<i>${t.turns}t</i></span>`;
+  }).join('');
 }
 
 // Applies damage to `target`, with one special case: a region boss's
@@ -3542,21 +3593,21 @@ async function basicAttack(attacker, target, side, atkTeam, defTeam) {
   const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false, firstStrikeProc(attacker));
 
   if (res.evaded) {
-    await playAttack(attacker, target, res, side);
+    await playAttackSequence(attacker, target, res, side);
     blog(`${target.name} หลบ ${attacker.name} ได้!`, side);
     return;
   }
 
   // Crit on a NORMAL attack: NO white-out self VFX anymore. Instead the
   // attacker itself swells to 2x, tilts, and charges (handled inside
-  // playAttack via the crit-attack class), with the big impact burst
-  // landing on the enemy at the same beat.
-  await playAttack(attacker, target, res, side);
-  playSpellVFX('impact', attacker, target, side);   // gold hit-flash, every landed normal hit
+  // playHit via the crit-attack class), with the big impact burst
+  // landing on the enemy at the same beat as the damage number and HP
+  // update — see playAttackSequence/playHit. 'impact' (the gold
+  // hit-flash WebP) plays on every landed normal hit, once per hit for
+  // a multi-hit skill, exactly at each hit's own contact frame instead
+  // of once after the whole exchange finished.
+  await playAttackSequence(attacker, target, res, side, 'impact');
 
-  await applyDamage(target, res.dmg, side);
-  refreshBattleUnits();
-  applyPayloadOnHit(attacker, target, res, side);
   let line = `${attacker.name} → ${skill.n}`;
   if (res.hits > 1) line += ` ×${res.hits}`;
   if (res.crit) line += ' CRIT';
@@ -3610,37 +3661,38 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
     blog(`🔥 ${caster.name} เข้าสู่สภาวะ ${sp.buffSelf.id}`, 'buff');
   }
   if (sp.buffTeam) {
-    atkTeam.forEach(p => { if (p.hp > 0) addAilment(p, { id: 'frenzy', ...sp.buffTeam }); });
+    atkTeam.forEach(p => { if (p.hp > 0) addAilment(p, { id: teamBuffAilmentId(sp), ...sp.buffTeam }); });
     blog(`✨ ${caster.name} เสริมพลังทั้งทีม`, 'buff');
   }
   refreshBattleUnits();
 
-  // ── WAIT FOR SELF ANIMATION TO FULLY FINISH, THEN A REAL PAUSE ──
-  // Previously this only waited a capped fraction of the self-effect's
-  // duration (max ~200ms), so the enemy-side hit was firing while the
-  // self animation was still playing. Now: wait out the self clip's
-  // real duration in full, THEN a full extra second before the
-  // enemy-facing effect/damage — exactly the beat the user asked for.
+  // ── WAIT FOR SELF ANIMATION TO FINISH, THEN A SHORT BEAT ──
+  // Self-buffs/heals/the skill-name banner read on the caster first,
+  // then the enemy-facing swing follows close behind — NOT after a
+  // full extra second like before, which read as a stall between the
+  // two halves of the same skill rather than one continuous action.
   const hasEnemyEffect = (sp.pw > 0 && sp.hits > 0) || sp.ailment;
   if (hasEnemyEffect) {
     await wait((selfVfxMs || 0) / battleSpeed);
-    await wait(1000 / battleSpeed);
+    await wait(200 / battleSpeed);
   }
 
   if (sp.pw > 0 && sp.hits > 0) {
     const res = computeDamage(caster, atkTeam, target, defTeam, sp, true, firstStrikeProc(caster));
     if (res.evaded) {
       await showBanner('MISS!', 'miss');
+      await playAttackSequence(caster, target, res, side);
       blog(`${target.name} หลบ ${sp.name} ได้!`, side);
     } else {
       if (res.crit) {
         // No white-out VFX — the crit swell+charge on the attacker (via
-        // playAttack's crit-attack class) is the crit tell now.
+        // playHit's crit-attack class) is the crit tell now.
         await showBanner('CRITICAL!!', 'crit');
       }
-      await playAttack(caster, target, res, side);
-      await applyDamage(target, res.dmg, side);
-      applyPayloadOnHit(caster, target, res, side);
+      // Enemy-facing hit(s): approach, contact (dmg number + hit-flash
+      // + HP update together), repeat per hit for a multi-hit skill,
+      // speeding up each time — see playAttackSequence/playHit.
+      await playAttackSequence(caster, target, res, side);
       let line = `✦ ${caster.name} → ${sp.name}`;
       if (res.hits > 1) line += ` ×${res.hits}`;
       if (res.crit) line += ' CRIT';
@@ -3967,19 +4019,38 @@ function impactBurst(unitEl, crit) {
   setTimeout(() => b.remove(), 600);
 }
 
-function floatDamage(anchorEl, res) {
+// Shows ONE hit's own damage number. Multi-hit skills call this once
+// per hit (see playAttackSequence) with that hit's individual roll —
+// no more "×N" multiplier badge bundling every hit into a single
+// number that lands well after the swing that supposedly caused it.
+function floatDamage(anchorEl, amount, crit) {
   const layer = $('fx-layer');
   const stage = $('battle-stage');
   if (!layer || !stage || !anchorEl) return;
   const host = stage.getBoundingClientRect();
   const r = anchorEl.getBoundingClientRect();
-  const wrap = el('div', 'dmg-big' + (res.crit ? ' crit' : ''));
+  const wrap = el('div', 'dmg-big' + (crit ? ' crit' : ''));
   wrap.style.left = (r.left - host.left + r.width / 2) + 'px';
   wrap.style.top = (r.top - host.top + r.height * 0.2) + 'px';
   wrap.style.setProperty('--tilt', (Math.random() * 14 - 7).toFixed(1) + 'deg');
-  wrap.innerHTML = `<span class="dmg-num">${res.dmg}${res.crit ? '!!' : ''}</span>${res.hits > 1 ? `<span class="dmg-mult">× ${res.hits}</span>` : ''}`;
+  wrap.innerHTML = `<span class="dmg-num">${amount}${crit ? '!!' : ''}</span>`;
   layer.appendChild(wrap);
   setTimeout(() => wrap.remove(), 1050);
+}
+
+// "Miss!" callout on the target, paired with the evade-recoil blur —
+// see playHit().
+function missPop(unitEl) {
+  const layer = $('fx-layer');
+  const stage = $('battle-stage');
+  if (!layer || !stage || !unitEl) return;
+  const host = stage.getBoundingClientRect();
+  const r = unitEl.getBoundingClientRect();
+  const d = el('div', 'miss-pop', 'Miss!');
+  d.style.left = (r.left - host.left + r.width / 2) + 'px';
+  d.style.top = (r.top - host.top + r.height * 0.25) + 'px';
+  layer.appendChild(d);
+  setTimeout(() => d.remove(), 800);
 }
 
 function healPop(pet, amount) {
@@ -4010,26 +4081,66 @@ function poisonPop(pet, amount) {
   setTimeout(() => d.remove(), 1000);
 }
 
-async function playAttack(attacker, target, res, side) {
+// ── ATTACK SEQUENCE ──
+// Plays the full exchange for an already-resolved computeDamage()
+// result: a miss (the target blurs and recoils back, "Miss!"), or one
+// approach-and-strike per hit in res.hitDmgs. Each hit's damage
+// number, hit-flash/shake, and HP (+MP) gauge update all land in the
+// same instant as the attacker's contact frame — see playHit — and
+// each hit after the first plays faster than the last, so a x2/x3/x4/
+// x5 skill still resolves in a few seconds instead of multiplying the
+// single-hit time by the hit count. Stops early if the target dies
+// partway through a combo (no point animating hits on a corpse).
+async function playAttackSequence(attacker, target, res, side, contactVfx) {
+  if (res.evaded) {
+    await playHit(attacker, target, 0, res, side, 1, contactVfx);
+    return;
+  }
+  const hits = (res.hitDmgs && res.hitDmgs.length) ? res.hitDmgs : [res.dmg];
+  for (let i = 0; i < hits.length; i++) {
+    if (target.hp <= 0) break;
+    const speedMult = 1 + i * 0.5; // 1, 1.5, 2, 2.5, 3 — each hit faster
+    await playHit(attacker, target, hits[i], res, side, speedMult, contactVfx);
+    applyPayloadOnHit(attacker, target, { dmg: hits[i], evaded: false, crit: res.crit }, side);
+  }
+}
+
+// One approach-and-strike beat: wind-up -> lunge toward target -> the
+// last frame of the lunge IS the contact frame, where the hit-flash,
+// damage number, and HP/MP gauge repaint all fire together -> ease
+// back. `speedMult` compresses the approach+contact timing for combo
+// hits after the first (capped so it never gets too fast to read);
+// `res` carries crit/evaded which apply to every hit in a combo alike
+// (computeDamage rolls crit once for the whole attack, not per hit).
+async function playHit(attacker, target, hitDmg, res, side, speedMult, contactVfx) {
   const aEl = document.querySelector(`.bunit[data-uid="${attacker.uid}"]`);
   const tEl = document.querySelector(`.bunit[data-uid="${target.uid}"]`);
   if (!aEl || !tEl) return;
-  // Slowed down significantly — the previous defaults (220/320/260ms)
-  // combined with a 120/130ms JS wait made the whole swing nearly
-  // imperceptible. The CSS keyframes read duration from --wind-ms/
-  // --lunge-ms/--return-ms custom properties, which were never being
-  // set from JS, so they silently used their short defaults regardless
-  // of any wait() change here — fixed by setting them explicitly so
-  // the animation and the JS timing agree.
-  const windMs = 260, lungeMs = 320, returnMs = 300;
+
+  // Faster baseline than before per feedback, and combo hits compress
+  // further still — floored so even a x5 skill stays readable.
+  const windMs   = Math.max(90,  170 / speedMult);
+  const lungeMs  = Math.max(110, 210 / speedMult);
+  const hitMs    = Math.max(160, 300 / speedMult);
+  const returnMs = Math.max(90,  170 / speedMult);
   aEl.style.setProperty('--wind-ms', (windMs / battleSpeed) + 'ms');
   aEl.style.setProperty('--lunge-ms', (lungeMs / battleSpeed) + 'ms');
   aEl.style.setProperty('--return-ms', (returnMs / battleSpeed) + 'ms');
-  // Direction the charge should travel: ally lunges right (+1), foe
-  // lunges left (-1). Crit adds the swell+tilt+charge class.
+  tEl.style.setProperty('--hit-ms', (hitMs / battleSpeed) + 'ms');
+  // Direction the charge (and, for a miss, the target's recoil) should
+  // travel: ally lunges right (+1), foe lunges left (-1).
   aEl.style.setProperty('--dir', side === 'ally' ? 1 : -1);
-  if (res.crit) aEl.classList.add('crit-attack');
+  tEl.style.setProperty('--dir', side === 'ally' ? 1 : -1);
+  if (res.crit && !res.evaded) aEl.classList.add('crit-attack');
 
+  // Force a reflow before (re)starting each animation class so a
+  // rapid combo always restarts these keyframes from frame 0 — without
+  // it, re-adding a class whose animation the browser considers still
+  // "current" can silently no-op the restart, which was the flakier
+  // half of the "hit-flash doesn't always play" report (worse on
+  // phones, where a dropped compositor frame makes it more likely the
+  // browser sees the class as never having left).
+  aEl.classList.remove('wind-up'); void aEl.offsetWidth;
   aEl.classList.add('wind-up');
   await wait(windMs / battleSpeed);
   aEl.classList.remove('wind-up');
@@ -4037,11 +4148,26 @@ async function playAttack(attacker, target, res, side) {
   await wait(lungeMs / battleSpeed);
   aEl.classList.remove('lunge-out');
   aEl.classList.add('lunge-back');
-  impactBurst(tEl, res.crit);
-  if (!res.evaded) floatDamage(tEl, res);
-  tEl.classList.add('hit');
-  await wait(480 / battleSpeed);
-  tEl.classList.remove('hit');
+
+  // ── CONTACT — the last frame of the approach IS this instant ──
+  if (res.evaded) {
+    tEl.classList.remove('evade-recoil'); void tEl.offsetWidth;
+    tEl.classList.add('evade-recoil');
+    missPop(tEl);
+    await wait(Math.min(460, hitMs) / battleSpeed);
+    tEl.classList.remove('evade-recoil');
+  } else {
+    await applyDamage(target, hitDmg, side);
+    impactBurst(tEl, res.crit);
+    floatDamage(tEl, hitDmg, res.crit);
+    if (contactVfx) playSpellVFX(contactVfx, attacker, target, side);
+    tEl.classList.remove('hit'); void tEl.offsetWidth;
+    tEl.classList.add('hit');
+    refreshUnitVitals(target, !!target.isEnemy);
+    await wait(hitMs / battleSpeed);
+    tEl.classList.remove('hit');
+  }
+
   aEl.classList.remove('lunge-back');
   aEl.classList.remove('crit-attack');
   await wait(returnMs / battleSpeed);
@@ -4058,31 +4184,47 @@ function updateVital(container, pct, num) {
   if (numEl) numEl.textContent = num;
 }
 
+// Refreshes ONE specific pet's plate — HP heart, MP circle (ally
+// only), boss bar, and stat-buff chips — keyed off the pet object
+// itself rather than re-deriving "whoever's active" via activeAlly()/
+// activeFoe(). That distinction matters at the instant a hit is
+// lethal: activeFoe()/activeAlly() filter to hp>0, so the exact unit
+// that just died is invisible to a lookup-based refresh and its plate
+// was stuck showing its last positive HP forever instead of 0 — this
+// is what let a corpse's heart never visibly empty before the
+// explode-shard effect played. Called with the concrete attacker/
+// target references at the moment of contact (see playHit) sidesteps
+// that entirely.
+function refreshUnitVitals(pet, isEnemy) {
+  if (!pet) return;
+  const plate = $(isEnemy ? 'plate-foe' : 'plate-ally');
+  if (!plate) return;
+  const hpMax = pet.isBoss ? (pet.bossPhase === 2 ? pet.hpPhase2Max : statsOf(pet).mhp) : statsOf(pet).mhp;
+  const hpPct = Math.max(0, Math.min(100, Math.round(pet.hp / Math.max(1, hpMax) * 100)));
+  updateVital(plate.querySelector('.np-hp .vital'), hpPct, Math.max(0, pet.hp));
+  if (!isEnemy) {
+    const mpMax = statsOf(pet).int;
+    const mpPct = Math.round((pet.mp || 0) / Math.max(1, mpMax) * 100);
+    updateVital(plate.querySelector('.np-mp .vital'), mpPct, Math.max(0, pet.mp || 0));
+  }
+  if (pet.isBoss) {
+    const bar = plate.querySelector('.boss-hpbar');
+    if (bar) {
+      bar.className = `boss-hpbar phase${pet.bossPhase}`;
+      const fill = bar.querySelector('i');
+      if (fill) fill.style.width = hpPct + '%';
+    }
+    const tag = plate.querySelector('.np-boss-tag');
+    if (tag) tag.textContent = `⚠ BOSS${pet.bossPhase===2?' · RAGE':''}`;
+  }
+  const buffsEl = plate.querySelector('.np-buffs');
+  if (buffsEl) buffsEl.innerHTML = statBuffChips(pet);
+}
+
 function refreshBattleUnits() {
   if (!battle) return;
-  ['ally', 'foe'].forEach(which => {
-    const pet = which === 'ally' ? activeAlly() : activeFoe();
-    const plate = $(`plate-${which === 'ally' ? 'ally' : 'foe'}`);
-    if (!pet || !plate) return;
-    const hpMax = pet.isBoss ? (pet.bossPhase === 2 ? pet.hpPhase2Max : statsOf(pet).mhp) : statsOf(pet).mhp;
-    const hpPct = Math.max(0, Math.min(100, Math.round(pet.hp / Math.max(1, hpMax) * 100)));
-    updateVital(plate.querySelector('.np-hp .vital'), hpPct, Math.max(0, pet.hp));
-    if (which === 'ally') {
-      const mpMax = statsOf(pet).int;
-      const mpPct = Math.round((pet.mp || 0) / Math.max(1, mpMax) * 100);
-      updateVital(plate.querySelector('.np-mp .vital'), mpPct, Math.max(0, pet.mp || 0));
-    }
-    if (pet.isBoss) {
-      const bar = plate.querySelector('.boss-hpbar');
-      if (bar) {
-        bar.className = `boss-hpbar phase${pet.bossPhase}`;
-        const fill = bar.querySelector('i');
-        if (fill) fill.style.width = hpPct + '%';
-      }
-      const tag = plate.querySelector('.np-boss-tag');
-      if (tag) tag.textContent = `⚠ BOSS${pet.bossPhase===2?' · RAGE':''}`;
-    }
-  });
+  refreshUnitVitals(activeAlly(), false);
+  refreshUnitVitals(activeFoe(), true);
   renderBench();
 }
 
@@ -4332,6 +4474,7 @@ function renderBattleSide(pet, elId, isEnemy) {
       ${pet.isBoss ? `<div class="np-boss-tag">⚠ BOSS${pet.bossPhase===2?' · RAGE':''}</div>` : ''}
       <div class="np-name">${pet.name}</div>
       <div class="np-lv">Lv.${pet.level}</div>
+      <div class="np-buffs">${statBuffChips(pet)}</div>
       <div class="np-hp">${vitalHtml('heart', hpPct, Math.max(0, pet.hp))}</div>
       ${bossBar}
       ${!isEnemy ? `<div class="np-mp">${vitalHtml('circle', mpPct, Math.max(0, pet.mp || 0))}</div>` : ''}
