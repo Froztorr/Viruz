@@ -155,7 +155,11 @@ async function boot() {
       if (!ATTR[p.attr]) p.attr = 'red';    // guard against removed attrs
       if (!RARITY[p.rarity]) p.rarity = 'normal';
       p.stage = clamp(p.stage || 0, 0, 2);
-      p.maxLv = RARITY[p.rarity].maxLv;
+      // Mirrors the uncap in evolve() (engine.js) — a mutated (stage 2)
+      // pet's maxLv was being unconditionally reset from its rarity's
+      // base cap on every load, silently undoing that uncap the very
+      // next time the game booted.
+      p.maxLv = p.stage === 2 ? 999 : RARITY[p.rarity].maxLv;
       if (!Array.isArray(p.skills) || !p.skills.length) {
         p.skills = sp.skills.map(s => ({ ...s }));
       }
@@ -3615,17 +3619,37 @@ async function basicAttack(attacker, target, side, atkTeam, defTeam) {
   blog(line, side);
 }
 
-// Casts a special: self-effect plays FIRST (per spec — self-buffs,
-// shields, heals, and the visual "wind-up" for an attack skill all
-// read on the caster), then after a short delay the enemy-facing
-// effect and damage/ailment resolve. This matches "apply self effect
-// first then for a small delay apply attack skill to enemy."
+// Is this vfx key one of the ones that actually renders ON THE ENEMY
+// (fire/ice/poison/charm/meteor/pierce/slash/impact — every element/
+// weapon-style key) rather than on the caster (heal/shield/bless/aura/
+// wind)? castSpecial uses this to decide whether sp.vfx belongs in the
+// "self effect" beat at all, or needs to be deferred to the attacker's
+// contact frame — see the comment above castSpecial for why that
+// distinction matters.
+function isEnemyFacingVfx(kind) {
+  const resolved = resolveVfxKey(kind);
+  const asset = resolved && VFX_ASSETS[resolved];
+  return !!asset && asset.target === 'enemy';
+}
+
+// Casts a special. Self-buffs/shields/heals genuinely read on the
+// caster first. But sp.vfx is NOT always a self effect — most attack
+// skills (Cinder Touch's 'fire', Twin Fang's 'slash', ...) use it to
+// name the IMPACT effect that's supposed to land on the enemy, and
+// playing that immediately (as this function used to, unconditionally,
+// for every sp.vfx) showed the hit effect on the target well before
+// the attacker had even started its approach — "the attacked effect...
+// apply first even before the attacker's self apply animation". Only a
+// genuinely self-targeted vfx (per VFX_ASSETS' target field) plays
+// here; an enemy-facing one is deferred to the attacker's contact
+// frame instead, exactly like basicAttack's 'impact' already was.
 async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
   spendMP(caster, sp);
   await showBanner(`✦ ${sp.name} ✦`, 'sig');
 
-  // ── SELF-SIDE FIRST ──
-  const selfVfxMs = playSpellVFX(sp.vfx, caster, target, side);
+  // ── SELF-SIDE FIRST (self-targeted vfx only) ──
+  const vfxIsEnemyFacing = isEnemyFacingVfx(sp.vfx);
+  const selfVfxMs = vfxIsEnemyFacing ? 0 : playSpellVFX(sp.vfx, caster, target, side);
   if (sp.heal) {
     const mx = statsOf(caster).vit;
     const amt = Math.floor(mx * sp.heal);
@@ -3681,7 +3705,7 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
     const res = computeDamage(caster, atkTeam, target, defTeam, sp, true, firstStrikeProc(caster));
     if (res.evaded) {
       await showBanner('MISS!', 'miss');
-      await playAttackSequence(caster, target, res, side);
+      await playAttackSequence(caster, target, res, side, vfxIsEnemyFacing ? sp.vfx : null);
       blog(`${target.name} หลบ ${sp.name} ได้!`, side);
     } else {
       if (res.crit) {
@@ -3692,7 +3716,7 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
       // Enemy-facing hit(s): approach, contact (dmg number + hit-flash
       // + HP update together), repeat per hit for a multi-hit skill,
       // speeding up each time — see playAttackSequence/playHit.
-      await playAttackSequence(caster, target, res, side);
+      await playAttackSequence(caster, target, res, side, vfxIsEnemyFacing ? sp.vfx : null);
       let line = `✦ ${caster.name} → ${sp.name}`;
       if (res.hits > 1) line += ` ×${res.hits}`;
       if (res.crit) line += ' CRIT';
@@ -3701,6 +3725,12 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
     }
   }
   if (sp.ailment && target.hp > 0) {
+    // Pure status skills (no pw/hits) never reach playAttackSequence, so
+    // an enemy-facing vfx (e.g. Siren Pulse's 'charm') has to fire here —
+    // its only chance to land on the target at all.
+    if (vfxIsEnemyFacing && !(sp.pw > 0 && sp.hits > 0)) {
+      playSpellVFX(sp.vfx, caster, target, side);
+    }
     addAilment(target, { ...sp.ailment });
     const A = AILMENTS[sp.ailment.id];
     if (A) blog(`${A.icon} ${target.name} ติด${A.thai}`, side);
