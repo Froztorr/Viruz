@@ -219,6 +219,9 @@ async function boot() {
   startTopBarClock();
   wireClickRipple();
   wireDoubleTapGuard();
+  wireDayNightTheme();
+  wireMacWindowChrome();
+  wireWindowDrag();
 }
 
 async function save() {
@@ -392,6 +395,117 @@ function wireDoubleTapGuard() {
     if (now - lastTouchEnd <= 350) e.preventDefault();
     lastTouchEnd = now;
   }, { passive: false });
+}
+
+// ── DAY/NIGHT THEME ──
+// Auto-switches the macOS-style light/dark appearance by the current
+// hour in THAILAND specifically (Asia/Bangkok, fixed UTC+7, no DST) —
+// not the player's own device timezone/locale, since "19:00 Thailand"
+// was the explicit spec. Intl's timeZone option resolves this directly
+// without needing an offset table. Re-checked every minute so a
+// session left open across the 19:00/06:00 boundary flips live, the
+// same way macOS itself auto-switches Appearance by time of day.
+function bangkokHour() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok', hour: 'numeric', hour12: false,
+  }).formatToParts(new Date());
+  return parseInt(parts.find(p => p.type === 'hour').value, 10) % 24;
+}
+function applyDayNightTheme() {
+  const h = bangkokHour();
+  const isDark = h >= 19 || h < 6;
+  document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+  // Keep the mobile browser chrome (status bar / task-switcher tint)
+  // matching the titlebar instead of always the dark-theme color the
+  // page shipped with.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', isDark ? '#241a3d' : '#f2e6bd');
+}
+function wireDayNightTheme() {
+  applyDayNightTheme();
+  setInterval(applyDayNightTheme, 60000);
+}
+
+// ── macOS WINDOW CHROME ──
+// Red/yellow/green traffic-light buttons in #mac-titlebar (index.html).
+// Real macOS semantics adapted to a screen-based (not window-based) app:
+// red closes the current screen back to the map (there's no separate
+// window to actually destroy), yellow "minimizes" into the existing
+// side drawer instead of inventing a new mechanic, green is the real
+// Fullscreen API — an actual maximize/fullscreen toggle exists here,
+// unlike the other two.
+function wireMacWindowChrome() {
+  const redBtn = $('mac-btn-red');
+  const yellowBtn = $('mac-btn-yellow');
+  const greenBtn = $('mac-btn-green');
+  if (redBtn) redBtn.onclick = () => {
+    if (currentScreenId && currentScreenId !== 'map' && currentScreenId !== 'intro') showScreen('map');
+  };
+  if (yellowBtn) yellowBtn.onclick = () => toggleDrawer();
+  if (greenBtn) greenBtn.onclick = () => {
+    if (!document.fullscreenElement) {
+      (document.documentElement.requestFullscreen ? document.documentElement.requestFullscreen() : Promise.resolve()).catch(() => {});
+    } else {
+      (document.exitFullscreen ? document.exitFullscreen() : Promise.resolve()).catch(() => {});
+    }
+  };
+}
+
+// ── DRAGGABLE WINDOW ──
+// Grab #mac-drag-handle (the title text, deliberately NOT the whole
+// bar so the traffic-light buttons keep working) to reposition the
+// whole titlebar+topbar+app unit, like moving a real Mac window —
+// only outside actual Fullscreen mode, where there's nowhere to move
+// it anyway. Bounds are computed once at pointerdown from the
+// titlebar's rect at that moment (its CURRENT, possibly-already-
+// dragged position), so they stay correct without re-measuring on
+// every move: the drag delta is clamped to whatever range keeps at
+// least a graspable sliver of the titlebar on screen.
+function wireWindowDrag() {
+  const win = $('mac-window');
+  const handle = $('mac-drag-handle');
+  const bar = $('mac-titlebar');
+  if (!win || !handle || !bar) return;
+  const MARGIN = 50;
+  let dragging = false;
+  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  let dxMin = 0, dxMax = 0, dyMin = 0, dyMax = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (document.fullscreenElement) return;
+    dragging = true;
+    win.classList.add('dragging');
+    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+    startX = e.clientX; startY = e.clientY;
+    startLeft = parseFloat(win.style.left) || 0;
+    startTop = parseFloat(win.style.top) || 0;
+    const r = bar.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    dxMin = MARGIN - r.right;
+    dxMax = vw - MARGIN - r.left;
+    dyMin = -r.top;
+    dyMax = Math.max(dyMin, vh - 100 - r.top);
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = Math.min(dxMax, Math.max(dxMin, e.clientX - startX));
+    const dy = Math.min(dyMax, Math.max(dyMin, e.clientY - startY));
+    win.style.left = (startLeft + dx) + 'px';
+    win.style.top = (startTop + dy) + 'px';
+  });
+  const endDrag = () => { dragging = false; win.classList.remove('dragging'); };
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+
+  // Entering real fullscreen: snap back to 0,0 so it isn't left
+  // offset (or worse, out of the clamp bounds computed for a
+  // non-fullscreen viewport) once the window has nowhere else to go.
+  document.addEventListener('fullscreenchange', () => {
+    if (document.fullscreenElement) {
+      win.style.left = '0px';
+      win.style.top = '0px';
+    }
+  });
 }
 
 // ── PULL-OUT DRAWER ──
