@@ -74,6 +74,9 @@
   --topbar-bg:rgba(255,253,246,.92);
   --btn-bg:linear-gradient(180deg,#fffef9,#f0e4bc);
   --btn-hover-bg:linear-gradient(180deg,#fffef9,#e8d9a0);
+  --knob-bg:linear-gradient(90deg,#fdf6df,#f5e5b8);
+  --knob-bg-active:linear-gradient(90deg,#f5e5b8,#eeda98);
+  --drawer-panel-bg:linear-gradient(180deg,#fffef9,#faf1d8);
 }
 
 /* ── DARK MODE ──
@@ -116,6 +119,9 @@
   --topbar-bg:rgba(6,4,16,.94);
   --btn-bg:linear-gradient(180deg,rgba(70,46,120,.95),rgba(34,22,62,.95));
   --btn-hover-bg:linear-gradient(180deg,rgba(88,60,150,.95),rgba(44,28,80,.95));
+  --knob-bg:linear-gradient(90deg,rgba(40,26,70,.85),rgba(60,38,100,.95));
+  --knob-bg-active:linear-gradient(90deg,rgba(60,38,100,.9),rgba(80,50,130,.98));
+  --drawer-panel-bg:linear-gradient(180deg,rgba(26,16,50,.98),rgba(14,9,28,.99));
 }
 :root[data-theme="dark"] body::before{ background:var(--mac-desktop); }
 :root[data-theme="dark"] body::after{
@@ -833,13 +839,14 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 #drawer-knob{
   position:fixed;right:0;top:50%;transform:translateY(-50%);
   z-index:50;width:26px;height:64px;
-  background:linear-gradient(90deg,rgba(40,26,70,.85),rgba(60,38,100,.95));
+  background:var(--knob-bg);
   border:1px solid var(--line2);border-right:none;border-radius:10px 0 0 10px;
-  box-shadow:-3px 0 12px rgba(0,0,0,.4);
+  box-shadow:-3px 0 12px rgba(0,0,0,.18);
   display:flex;align-items:center;justify-content:center;
   color:var(--cyan);font-size:16px;transition:.2s;
 }
-#drawer-knob:active{background:linear-gradient(90deg,rgba(60,38,100,.9),rgba(80,50,130,.98))}
+:root[data-theme="dark"] #drawer-knob{box-shadow:-3px 0 12px rgba(0,0,0,.4)}
+#drawer-knob:active{background:var(--knob-bg-active)}
 /* Knob is now global — visible on every screen (town, dungeon,
    battle, everywhere) rather than map-only. Hidden only on the intro
    screen since there's no game state to show yet. */
@@ -856,12 +863,13 @@ body.drawer-open #drawer-backdrop{opacity:1;pointer-events:auto}
 #drawer-panel{
   position:fixed;top:0;right:0;bottom:0;z-index:49;
   width:78vw;max-width:340px;
-  background:linear-gradient(180deg,rgba(26,16,50,.98),rgba(14,9,28,.99));
+  background:var(--drawer-panel-bg);
   border-left:1px solid var(--line2);
-  box-shadow:-8px 0 30px rgba(0,0,0,.5);
+  box-shadow:-8px 0 30px rgba(0,0,0,.25);
   transform:translateX(100%);transition:transform .28s cubic-bezier(.2,.8,.3,1);
   display:flex;flex-direction:column;
 }
+:root[data-theme="dark"] #drawer-panel{box-shadow:-8px 0 30px rgba(0,0,0,.5)}
 body.drawer-open #drawer-panel{transform:translateX(0)}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;
   padding:14px 14px 10px;border-bottom:1px solid var(--line)}
