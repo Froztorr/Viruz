@@ -221,6 +221,7 @@ async function boot() {
   wireDoubleTapGuard();
   wireDayNightTheme();
   wireMacWindowChrome();
+  wireWindowDrag();
 }
 
 async function save() {
@@ -448,6 +449,63 @@ function wireMacWindowChrome() {
       (document.exitFullscreen ? document.exitFullscreen() : Promise.resolve()).catch(() => {});
     }
   };
+}
+
+// ── DRAGGABLE WINDOW ──
+// Grab #mac-drag-handle (the title text, deliberately NOT the whole
+// bar so the traffic-light buttons keep working) to reposition the
+// whole titlebar+topbar+app unit, like moving a real Mac window —
+// only outside actual Fullscreen mode, where there's nowhere to move
+// it anyway. Bounds are computed once at pointerdown from the
+// titlebar's rect at that moment (its CURRENT, possibly-already-
+// dragged position), so they stay correct without re-measuring on
+// every move: the drag delta is clamped to whatever range keeps at
+// least a graspable sliver of the titlebar on screen.
+function wireWindowDrag() {
+  const win = $('mac-window');
+  const handle = $('mac-drag-handle');
+  const bar = $('mac-titlebar');
+  if (!win || !handle || !bar) return;
+  const MARGIN = 50;
+  let dragging = false;
+  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  let dxMin = 0, dxMax = 0, dyMin = 0, dyMax = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    if (document.fullscreenElement) return;
+    dragging = true;
+    win.classList.add('dragging');
+    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+    startX = e.clientX; startY = e.clientY;
+    startLeft = parseFloat(win.style.left) || 0;
+    startTop = parseFloat(win.style.top) || 0;
+    const r = bar.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight;
+    dxMin = MARGIN - r.right;
+    dxMax = vw - MARGIN - r.left;
+    dyMin = -r.top;
+    dyMax = Math.max(dyMin, vh - 100 - r.top);
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = Math.min(dxMax, Math.max(dxMin, e.clientX - startX));
+    const dy = Math.min(dyMax, Math.max(dyMin, e.clientY - startY));
+    win.style.left = (startLeft + dx) + 'px';
+    win.style.top = (startTop + dy) + 'px';
+  });
+  const endDrag = () => { dragging = false; win.classList.remove('dragging'); };
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+
+  // Entering real fullscreen: snap back to 0,0 so it isn't left
+  // offset (or worse, out of the clamp bounds computed for a
+  // non-fullscreen viewport) once the window has nowhere else to go.
+  document.addEventListener('fullscreenchange', () => {
+    if (document.fullscreenElement) {
+      win.style.left = '0px';
+      win.style.top = '0px';
+    }
+  });
 }
 
 // ── PULL-OUT DRAWER ──

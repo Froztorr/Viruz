@@ -172,6 +172,13 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
    shape — 1100px was just too generous a cap. */
 #app{position:relative;min-height:100vh;max-width:480px;margin:0 auto}
 
+/* Draggable "window" wrapper — see wireWindowDrag() (game.js). Plain
+   position:relative + left/top (not transform) so it never becomes the
+   containing block for the position:fixed descendants living inside
+   #app (map screen, drawer, evolution overlay, ...). Only active
+   (grabbable) outside real Fullscreen mode. */
+#mac-window{position:relative;left:0;top:0}
+
 /* ── macOS-STYLE TITLE BAR ──
    Sticky bar above #topbar; both stack (topbar's `top` offset equals
    this bar's height) so scrolling never lets one slide over the other.
@@ -195,6 +202,11 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .mac-dot-green{background:var(--mac-green)}
 .mac-titlebar-title{font-family:var(--pixel);font-size:10px;color:var(--txt);
   opacity:.7;letter-spacing:.5px}
+/* Drag handle — the "middle top of the tab" per spec, not the whole
+   bar, so it never fights the traffic-light buttons' own clicks. */
+#mac-drag-handle{cursor:grab;padding:4px 14px;user-select:none;-webkit-user-select:none;touch-action:none}
+#mac-drag-handle:active{cursor:grabbing}
+#mac-window.dragging{user-select:none}
 
 /* ── HUD ── */
 #topbar{
@@ -2117,13 +2129,22 @@ img.bu-sprite.is-art2{--raster-mult:2}
      red = close (back to the map, abandoning the current screen),
      yellow = minimize (tucks away into the existing side drawer),
      green = fullscreen (real Fullscreen API). -->
+<!-- #mac-window wraps the titlebar+topbar+app as one draggable unit
+     (see wireWindowDrag() in game.js). It uses position:relative with
+     left/top offsets rather than transform — transform on an ancestor
+     would make it the containing block for every position:fixed
+     descendant inside #app (the map screen, the drawer, the evolution
+     overlay, etc. are all position:fixed and expect the real
+     viewport), silently breaking all of them the moment a drag
+     started. left/top carries no such gotcha. -->
+<div id="mac-window">
 <div id="mac-titlebar">
   <div class="mac-traffic-lights">
     <button id="mac-btn-red" class="mac-dot mac-dot-red" title="ปิด" aria-label="Close"></button>
     <button id="mac-btn-yellow" class="mac-dot mac-dot-yellow" title="ย่อ" aria-label="Minimize"></button>
     <button id="mac-btn-green" class="mac-dot mac-dot-green" title="เต็มจอ" aria-label="Fullscreen"></button>
   </div>
-  <div class="mac-titlebar-title">VIRUZ PET</div>
+  <div class="mac-titlebar-title" id="mac-drag-handle">VIRUZ PET</div>
 </div>
 <!-- ═══ PERSISTENT TOP STATUS BAR ═══
      Shows on every screen (unlike the old #hud which only appeared on
@@ -2461,6 +2482,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
 </div>
+</div> <!-- /#mac-window -->
 
 <!-- MODAL -->
 <div id="modal-back">
