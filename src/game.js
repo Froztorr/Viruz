@@ -219,6 +219,8 @@ async function boot() {
   startTopBarClock();
   wireClickRipple();
   wireDoubleTapGuard();
+  wireDayNightTheme();
+  wireMacWindowChrome();
 }
 
 async function save() {
@@ -392,6 +394,60 @@ function wireDoubleTapGuard() {
     if (now - lastTouchEnd <= 350) e.preventDefault();
     lastTouchEnd = now;
   }, { passive: false });
+}
+
+// ── DAY/NIGHT THEME ──
+// Auto-switches the macOS-style light/dark appearance by the current
+// hour in THAILAND specifically (Asia/Bangkok, fixed UTC+7, no DST) —
+// not the player's own device timezone/locale, since "19:00 Thailand"
+// was the explicit spec. Intl's timeZone option resolves this directly
+// without needing an offset table. Re-checked every minute so a
+// session left open across the 19:00/06:00 boundary flips live, the
+// same way macOS itself auto-switches Appearance by time of day.
+function bangkokHour() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Bangkok', hour: 'numeric', hour12: false,
+  }).formatToParts(new Date());
+  return parseInt(parts.find(p => p.type === 'hour').value, 10) % 24;
+}
+function applyDayNightTheme() {
+  const h = bangkokHour();
+  const isDark = h >= 19 || h < 6;
+  document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+  // Keep the mobile browser chrome (status bar / task-switcher tint)
+  // matching the titlebar instead of always the dark-theme color the
+  // page shipped with.
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', isDark ? '#241a3d' : '#f2e6bd');
+}
+function wireDayNightTheme() {
+  applyDayNightTheme();
+  setInterval(applyDayNightTheme, 60000);
+}
+
+// ── macOS WINDOW CHROME ──
+// Red/yellow/green traffic-light buttons in #mac-titlebar (index.html).
+// Real macOS semantics adapted to a screen-based (not window-based) app:
+// red closes the current screen back to the map (there's no separate
+// window to actually destroy), yellow "minimizes" into the existing
+// side drawer instead of inventing a new mechanic, green is the real
+// Fullscreen API — an actual maximize/fullscreen toggle exists here,
+// unlike the other two.
+function wireMacWindowChrome() {
+  const redBtn = $('mac-btn-red');
+  const yellowBtn = $('mac-btn-yellow');
+  const greenBtn = $('mac-btn-green');
+  if (redBtn) redBtn.onclick = () => {
+    if (currentScreenId && currentScreenId !== 'map' && currentScreenId !== 'intro') showScreen('map');
+  };
+  if (yellowBtn) yellowBtn.onclick = () => toggleDrawer();
+  if (greenBtn) greenBtn.onclick = () => {
+    if (!document.fullscreenElement) {
+      (document.documentElement.requestFullscreen ? document.documentElement.requestFullscreen() : Promise.resolve()).catch(() => {});
+    } else {
+      (document.exitFullscreen ? document.exitFullscreen() : Promise.resolve()).catch(() => {});
+    }
+  };
 }
 
 // ── PULL-OUT DRAWER ──
