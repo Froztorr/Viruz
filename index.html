@@ -143,9 +143,9 @@ body{
   overflow-x:hidden; -webkit-font-smoothing:none;
 }
 /* Soft pale-yellow "desktop" backdrop behind the windowed app (see
-   #mac-titlebar / #app's window framing below) — a warm gradient
-   rather than the old cyberpunk glow-pools + CRT scanline layers,
-   since those read as dark-theme-specific effects. */
+   #app's window framing below) — a warm gradient rather than the old
+   cyberpunk glow-pools + CRT scanline layers, since those read as
+   dark-theme-specific effects. */
 body::before{
   content:'';position:fixed;inset:0;z-index:-2;pointer-events:none;
   background:var(--mac-desktop);
@@ -185,28 +185,6 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
    (the map screen's video layer, the evolution overlay, etc. all
    expect the real viewport). */
 #app{position:relative;min-height:100vh;max-width:480px;margin:0 auto}
-
-/* ── macOS-STYLE TITLE BAR ──
-   Sticky bar above #topbar; both stack (topbar's `top` offset equals
-   this bar's height) so scrolling never lets one slide over the other.
-   The rounded top corners only read as an actual "window" shape on a
-   viewport wider than #app's 480px cap, where the pale desktop
-   backdrop (body::before) shows around it — on a phone (the common
-   case, narrower than 480px) they just clip the two top screen
-   corners, which still reads fine as an iOS-style rounded notch. */
-/* Now a static system MENU BAR, not a draggable window itself — real
-   macOS menu bars don't carry traffic lights either; those belong to
-   individual document windows, which is what every .screen (plus the
-   drawer) now is — see .win-titlebar below and wireWindowManager() in
-   game.js. */
-#mac-titlebar{
-  position:sticky;top:0;z-index:500;max-width:480px;margin:0 auto;
-  display:flex;align-items:center;justify-content:center;
-  height:28px;background:var(--mac-titlebar);
-  border-bottom:1px solid var(--line2);
-}
-.mac-titlebar-title{font-family:var(--pixel);font-size:12px;color:var(--txt);
-  opacity:.7;letter-spacing:.5px}
 
 /* ── PER-WINDOW CHROME ──
    #win-main (the single shared main-scene window) and the drawer each
@@ -257,7 +235,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 
 /* ── HUD ── */
 #topbar{
-  position:sticky;top:34px;z-index:70;display:flex;align-items:center;
+  position:sticky;top:0;z-index:70;display:flex;align-items:center;
   justify-content:space-between;gap:8px;padding:6px 10px;
   background:var(--topbar-bg);border-bottom:1px solid var(--line2);
   backdrop-filter:blur(6px);font-size:15px;color:var(--txt);
@@ -267,7 +245,7 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 
 /* ── MINIMIZED-WINDOW DOCK ── */
 #win-dock{
-  position:sticky;top:74px;z-index:65;
+  position:sticky;top:40px;z-index:65;
   max-width:480px;margin:0 auto;
   display:flex;gap:6px;overflow-x:auto;padding:0;
   background:var(--topbar-bg);border-bottom:1px solid var(--line);
@@ -2251,14 +2229,6 @@ img.bu-sprite.is-art2{--raster-mult:2}
 </style>
 </head>
 <body>
-<!-- ═══ SYSTEM MENU BAR ═══
-     A static bar, like the real macOS menu bar — no traffic lights
-     here; those now belong to each individual window (every .screen,
-     plus the drawer) via .win-titlebar, since each is independently
-     open/closable/draggable. See wireWindowManager() in game.js. -->
-<div id="mac-titlebar">
-  <div class="mac-titlebar-title">VIRUZ PET</div>
-</div>
 <!-- ═══ PERSISTENT TOP STATUS BAR ═══
      Shows on every screen (unlike the old #hud which only appeared on
      some). Left: real clock + soonest-expiring timed activity (care
