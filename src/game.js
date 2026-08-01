@@ -966,11 +966,16 @@ function renderPdStats() {
   const a = ATTR[pet.attr];
   const r = RARITY[pet.rarity];
   const s = statsOf(pet);
+  const eq = equipmentBonuses(pet);
+  const tb = treeBonuses(pet);
   const tier = loyaltyTier(pet.loyalty);
   const loyProg = loyaltyProgress(pet.loyalty);
   const tree = treeFor(pet.attr);
   const specials = unlockedSpecials(pet);
   const evoReady = canEvolve(pet).ok;
+  const habitCard = pet.equip && pet.equip.habit;
+  const habitColor = habitCard && HABIT_COLORS[habitCard.color];
+  const habitType = habitCard && HABIT_TYPES[habitCard.type];
   const page = $('pd-page-stats');
   if (!page) return;
 
@@ -978,7 +983,10 @@ function renderPdStats() {
     <div class="ps-head">
       ${creatureMarkup(pet, 'ps-sprite float')}
       <div class="ps-headinfo">
-        <div class="ps-rar" style="color:${r.color}">${r.name} · ${attrIcon(a, 16)} ${a.name}${evoReady ? ` <span class="pc-evo-ready" title="พร้อมวิวัฒน์ — ไปที่ Tech Lab">▲ พร้อมวิวัฒน์</span>` : ''}</div>
+        <div class="ps-rar" style="color:${r.color}">${r.name} · ${attrIcon(a, 24)} ${a.name}${evoReady ? ` <span class="pc-evo-ready" title="พร้อมวิวัฒน์ — ไปที่ Tech Lab">▲ พร้อมวิวัฒน์</span>` : ''}</div>
+        <div class="ps-habits">Habits: ${habitCard
+          ? `${habitIcon(habitColor, 24)} ${habitColor.name} ${habitIcon(habitType, 24)} ${habitType.name}`
+          : `<span class="muted">ยังไม่ติดตั้งการ์ดข้อมูล</span>`}</div>
         <div class="ps-lv">Lv.${pet.level}/${pet.maxLv} · EXP ${pet.exp}/${pet.expNeed}</div>
         <div class="ps-loy">${tier.icon} ${tier.name}
           <span class="pc-loy-bar" style="width:60px;display:inline-block"><i style="width:${loyProg.pct}%"></i></span>
@@ -988,13 +996,40 @@ function renderPdStats() {
     <div class="ps-stats">
       ${STAT_KEYS.map(k => {
         const meta = STAT_META[k];
-        const val = (k === 'crit' || k === 'eva') ? s[k] + '%' : s[k];
-        return `<span class="ps-stat"><i>${meta.icon}</i>${meta.name}<b>${val}</b></span>`;
+        const suffix = (k === 'crit' || k === 'eva') ? '%' : '';
+        const x = eq[k] || 0, y = tb[k] || 0;
+        let delta = '';
+        if (x || y) {
+          const parts = [];
+          if (x) parts.push(`<span class="pd-x">+${x}</span>`);
+          if (y) parts.push(`<span class="pd-y">+${y}</span>`);
+          delta = `<i class="ps-delta">(${parts.join('')})</i>`;
+        }
+        return `<span class="ps-stat"><i>${meta.icon}</i>${meta.name}<b>${s[k]}${suffix}</b>${delta}</span>`;
       }).join('')}
     </div>
+    <div class="ps-skills-title">// เอฟเฟกต์พาสซีฟ //</div>
+    <div class="ps-passives"></div>
     <div class="ps-skills-title">// สกิลพิเศษ //</div>
     <div class="ps-skills"></div>
     <button class="btn wide pd-team-btn" id="pd-team-btn"></button>`;
+
+  const passiveList = page.querySelector('.ps-passives');
+  const passiveEntries = [];
+  ['payload', 'exploit', 'rootkit'].forEach(slotId => {
+    const item = pet.equip && pet.equip[slotId];
+    const eff = item && item.effectId && PAYLOAD_EFFECTS[item.effectId];
+    if (eff) passiveEntries.push({ icon: eff.icon, name: eff.name, desc: eff.desc });
+  });
+  if (habitType) passiveEntries.push({ icon: habitIcon(habitType, 21), name: habitType.name, desc: habitType.desc });
+  specials.forEach(sp => passiveEntries.push({ icon: '✦', name: sp.name, desc: sp.desc }));
+  if (!passiveEntries.length) {
+    passiveList.innerHTML = `<div class="muted" style="padding:8px">ยังไม่มีเอฟเฟกต์พาสซีฟ</div>`;
+  } else {
+    passiveList.innerHTML = passiveEntries.map(p =>
+      `<div class="ps-passive-row"><i>${p.icon}</i><div><b>${p.name}</b><span>${p.desc}</span></div></div>`
+    ).join('');
+  }
 
   const list = page.querySelector('.ps-skills');
   if (!specials.length) {
