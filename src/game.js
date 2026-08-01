@@ -5,7 +5,7 @@
 
 import {
   ATTR, ATTR_KEYS, RARITY, RARITY_KEYS, SPECIES, SPECIES_KEYS,
-  MAPS, ZONES, zonesOfMap, zoneById, ANTIVIRUZ, EGGS, ITEMS, POTIONS, DEFENSE_BOTS, MAP_NODES, TUNING,
+  MAPS, ZONES, zonesOfMap, zoneById, ANTIVIRUZ, EGGS, ITEMS, POTIONS, REVIVE_POTION, DEFENSE_BOTS, MAP_NODES, TUNING,
   GUARD_TIERS, guardTierForLevel,
   SYNERGY, WHITE_TRAITS,
   LOYALTY_TIERS, loyaltyTier, loyaltyProgress, SIGNATURE_SKILLS,
@@ -31,7 +31,7 @@ import {
   unlockedSpecials, canTakeNode, takeNode, treeBonuses,
   addAilment, hasAilment, clearAilments, tickAilments,
   advanceSpeedCounter, maxMP, canCast, spendMP, restoreMP, uid, equipmentBonuses,
-  habitOf } from './engine.js';
+  habitOf, petState, markDown, reviveDownPet, startIncubation, DOWN_MS, INCUBATE_MS } from './engine.js';
 import { NET } from './net.js';
 import { creatureMarkupFor, gifURL } from './sprites.js';
 
@@ -243,6 +243,7 @@ async function boot() {
   wirePetDetail();
   wireInventoryTabs();
   startTopBarClock();
+  startDownStateTicker();
   wireClickRipple();
   wireDoubleTapGuard();
   wireDayNightTheme();
@@ -812,6 +813,20 @@ function startTopBarClock() {
   topBarTimer = setInterval(renderTopBar, 15000);   // refresh every 15s
 }
 
+// Down/Error/incubation countdowns are real wall-clock timers, not
+// battle turns — nothing else drives a re-render while one is ticking
+// down, so poll whichever pet-card-bearing screen is currently open
+// and refresh it every few seconds.
+let downStateTimer = null;
+function startDownStateTicker() {
+  clearInterval(downStateTimer);
+  downStateTimer = setInterval(() => {
+    if (currentMainId === 'home') renderHome();
+    else if (currentMainId === 'character') renderCharacter();
+    else if (currentMainId === 'clinic') renderClinic();
+  }, 4000);
+}
+
 // Highlight the quickbar button for the current screen
 function syncQuickbar() {
   const cur = $('app').getAttribute('data-screen');
@@ -870,7 +885,25 @@ function petCard(pet, opts = {}) {
   card.style.setProperty('--rar', r.color);
   card.style.setProperty('--glow', a.glow);
   if (opts.selected) card.classList.add('sel');
-  if (pet.hp <= 0) card.classList.add('down');
+  const state = petState(pet);
+  if (state !== 'alive') card.classList.add('down', 'ps-' + state);
+
+  // Down: a grey wipe wraps counter-clockwise around the sprite over
+  // the real 5-minute window. Error: a glitch filter over the sprite.
+  // Incubating/Ready just get a status line — no sprite overlay needed.
+  let spriteOverlay = '', stateLine = '';
+  if (state === 'down') {
+    const frac = Math.min(1, Math.max(0, 1 - (pet.downUntil - Date.now()) / DOWN_MS));
+    spriteOverlay = `<div class="ps-wipe" style="--frac:${frac}"></div>`;
+    stateLine = `<div class="pc-state down">⬇ Down — เหลือ ${fmtCountdown(pet.downUntil - Date.now())}</div>`;
+  } else if (state === 'error') {
+    spriteOverlay = `<div class="ps-glitch"></div>`;
+    stateLine = `<div class="pc-state error">⚠ Error — ต้องไป Clinic</div>`;
+  } else if (state === 'incubating') {
+    stateLine = `<div class="pc-state incubating">🧊 บ่มอยู่ — เหลือ ${fmtCountdown(pet.incubatingUntil - Date.now())}</div>`;
+  } else if (state === 'ready') {
+    stateLine = `<div class="pc-state ready">✅ พร้อมรับคืนที่ Clinic</div>`;
+  }
 
   const trait = pet.whiteTrait ? WHITE_TRAITS[pet.whiteTrait] : null;
   const expPct = Math.min(100, Math.round((pet.exp / Math.max(1, pet.expNeed)) * 100));
@@ -883,11 +916,12 @@ function petCard(pet, opts = {}) {
       <span class="pc-attr" title="${a.desc}">${attrIcon(a, 18)}</span>
       <span class="pc-rar">${r.name}</span>
     </div>
-    ${creatureMarkup(pet, 'pc-sprite float')}
+    <div class="pc-sprite-wrap">${creatureMarkup(pet, 'pc-sprite float')}${spriteOverlay}</div>
     <div class="pc-name">${pet.name}${evoReady ? ` <span class="pc-evo-ready" title="พร้อมวิวัฒน์ — ไปที่ Tech Lab">▲</span>` : ''}${trait ? ` <span class="pc-trait" title="${trait.desc}">${trait.icon}</span>` : ''}</div>
     <div class="pc-lv">Lv.${pet.level}<span class="pc-cap">/${pet.maxLv}</span> · St.${pet.stage+1}</div>
     <div class="pc-bar"><i style="width:${hpPct}%"></i></div>
     <div class="pc-hp">HP ${pet.hp}/${s.mhp}</div>
+    ${stateLine}
     <div class="pc-xpbar" title="EXP ${pet.exp}/${pet.expNeed}">
       <i style="width:${expPct}%"></i></div>
     <div class="pc-xp">EXP ${pet.exp}/${pet.expNeed}</div>
@@ -1475,25 +1509,84 @@ function openDefensePicker() {
 }
 
 // ═══════════════ SCREEN: CLINIC ═══════════════
+// mm:ss, or h:mm:ss once it's over an hour (the incubation chamber).
+function fmtCountdown(ms) {
+  const totalSec = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const mm = h > 0 ? String(m).padStart(2, '0') : m;
+  return (h > 0 ? `${h}:${mm}:` : `${mm}:`) + String(s).padStart(2, '0');
+}
+function errorIncubateCost(pet) { return 200 + pet.level * 15; }
+
 function renderClinic() {
-  // Healing
+  // Healing — includes the Down/Error/incubation-chamber flow. A Down
+  // pet (still inside its 5-min window) heals the same as any other
+  // hurt-but-conscious one; Error can't be fixed with a normal heal at
+  // all — it needs the incubation chamber, a real hour, paid up front.
   const heal = $('clinic-heal');
   heal.innerHTML = '';
   G.roster.forEach(pet => {
     const s = statsOf(pet);
+    const state = petState(pet);
+
+    if (state === 'incubating') {
+      const row = el('div', 'clinic-row incubating');
+      row.innerHTML = `
+        ${creatureMarkup(pet, 'cr-sprite')}
+        <div class="cr-info"><b>${pet.name}</b><span>🧊 อยู่ในห้องบ่ม — เหลือ ${fmtCountdown(pet.incubatingUntil - Date.now())}</span></div>
+        <button class="btn small" disabled>กำลังบ่ม</button>`;
+      heal.appendChild(row);
+      return;
+    }
+    if (state === 'ready') {
+      const row = el('div', 'clinic-row ready');
+      row.innerHTML = `
+        ${creatureMarkup(pet, 'cr-sprite')}
+        <div class="cr-info"><b>${pet.name}</b><span>✅ บ่มเสร็จแล้ว — พร้อมนำกลับมาใช้</span></div>
+        <button class="btn small primary">รับคืน</button>`;
+      row.querySelector('button').onclick = () => {
+        reviveDownPet(pet);
+        save(); renderClinic(); renderHUD();
+        toast(`${pet.name} ฟื้นคืนชีพแล้ว!`);
+        log(`✨ ${pet.name} ฟื้นจากห้องบ่ม`, 'heal');
+      };
+      heal.appendChild(row);
+      return;
+    }
+    if (state === 'error') {
+      const cost = errorIncubateCost(pet);
+      const row = el('div', 'clinic-row error');
+      row.innerHTML = `
+        ${creatureMarkup(pet, 'cr-sprite')}
+        <div class="cr-info"><b>${pet.name}</b><span>⚠️ Error — ต้องเข้าห้องบ่ม 1 ชม.</span></div>
+        <button class="btn small danger">${cost} Bitz</button>`;
+      row.querySelector('button').onclick = () => {
+        if (G.bitz < cost) { toast('Bitz ไม่พอ'); return; }
+        G.bitz -= cost;
+        startIncubation(pet);
+        save(); renderClinic(); renderHUD();
+        toast(`${pet.name} เข้าห้องบ่ม — ใช้เวลา 1 ชั่วโมง`);
+        log(`🧊 ${pet.name} เข้าห้องบ่ม`, 'sys');
+      };
+      heal.appendChild(row);
+      return;
+    }
     if (pet.hp >= s.mhp) return;
     const cost = Math.max(30, Math.floor((s.mhp - pet.hp) * 1.2));
-    const row = el('div','clinic-row');
+    const row = el('div', 'clinic-row' + (state === 'down' ? ' down' : ''));
     row.innerHTML = `
       ${creatureMarkup(pet, 'cr-sprite')}
       <div class="cr-info">
         <b>${pet.name}</b>
-        <span>${pet.hp}/${s.mhp} HP</span>
+        <span>${pet.hp}/${s.mhp} HP${state === 'down' ? ` · ⬇ Down เหลือ ${fmtCountdown(pet.downUntil - Date.now())}` : ''}</span>
       </div>
       <button class="btn small">${cost} Bitz</button>`;
     row.querySelector('button').onclick = () => {
       if (G.bitz < cost) { toast('Bitz ไม่พอ'); return; }
-      G.bitz -= cost; pet.hp = s.mhp;
+      G.bitz -= cost;
+      reviveDownPet(pet);
       save(); renderClinic(); renderHUD();
       log(`รักษา ${pet.name} เต็ม HP`, 'heal');
     };
@@ -1502,7 +1595,9 @@ function renderClinic() {
   if (!heal.children.length) {
     heal.appendChild(el('div','muted','ทุกตัวสุขภาพเต็มแล้ว ✓'));
   }
+  const fixableHere = p => !['error', 'incubating', 'ready'].includes(petState(p));
   const healAllCost = G.roster.reduce((sum,p) => {
+    if (!fixableHere(p)) return sum;
     const s = statsOf(p);
     return sum + Math.max(0, Math.floor((s.mhp - p.hp) * 1.0));
   }, 0);
@@ -1512,7 +1607,7 @@ function renderClinic() {
   ha.onclick = () => {
     if (G.bitz < healAllCost) { toast('Bitz ไม่พอ'); return; }
     G.bitz -= healAllCost;
-    G.roster.forEach(p => p.hp = statsOf(p).mhp);
+    G.roster.forEach(p => { if (fixableHere(p)) reviveDownPet(p); });
     save(); renderClinic(); renderHUD();
     log('รักษาทีมทั้งหมด', 'heal');
   };
@@ -1582,6 +1677,33 @@ function renderShop() {
     card.querySelector('button').onclick = () => buyItem(it);
     items.appendChild(card);
   });
+
+  // Revive Potion — bought here for Bitz like anything else in this
+  // shop, but stored in the Potions bag instead of applied instantly,
+  // since it's meant to be kept in reserve and used later (from the
+  // Inventory tab) on whichever pet actually goes Down.
+  const revive = $('shop-revive');
+  if (revive) {
+    revive.innerHTML = '';
+    const owned = (G.potions && G.potions[REVIVE_POTION.id]) || 0;
+    const card = el('div','shop-card');
+    card.innerHTML = `
+      <div class="sc-icon">${REVIVE_POTION.icon}</div>
+      <div class="sc-name">${REVIVE_POTION.name}</div>
+      <div class="sc-desc">${REVIVE_POTION.desc}</div>
+      <div class="sc-cost">${REVIVE_POTION.cost.toLocaleString()} Bitz</div>
+      <div class="sc-owned">มี ${owned} ชิ้น</div>
+      <button class="btn">ซื้อ</button>`;
+    card.querySelector('button').onclick = () => {
+      if (G.bitz < REVIVE_POTION.cost) { toast('Bitz ไม่พอ'); return; }
+      G.bitz -= REVIVE_POTION.cost;
+      G.potions = G.potions || {};
+      G.potions[REVIVE_POTION.id] = (G.potions[REVIVE_POTION.id] || 0) + 1;
+      save(); renderShop(); renderHUD();
+      toast(`ซื้อ ${REVIVE_POTION.name} แล้ว — ใช้ได้จากกระเป๋าไอเทม`);
+    };
+    revive.appendChild(card);
+  }
 
   const bots = $('shop-bots');
   bots.innerHTML = '';
@@ -2665,7 +2787,40 @@ function renderInvPotions() {
     any = true;
     box.appendChild(invBox(p.icon, n, () => showItemDetail(p.icon, p.name, p.desc)));
   });
+  const reviveN = owned[REVIVE_POTION.id] || 0;
+  if (reviveN) {
+    any = true;
+    box.appendChild(invBox(REVIVE_POTION.icon, reviveN, () => {
+      showItemDetail(REVIVE_POTION.icon, REVIVE_POTION.name, REVIVE_POTION.desc,
+        `<button class="btn wide primary" id="revive-use-btn">✨ ใช้</button>`);
+      $('revive-use-btn').onclick = () => { closeModal(); useRevivePotion(); };
+    }));
+  }
   if (!any) box.innerHTML = `<div class="inv-empty-msg">ยังไม่มียา</div>`;
+}
+
+// Pick which Down pet to bring back — only Down pets are offered (not
+// Error, not already-alive ones); the potion itself is consumed only
+// once a valid target is actually chosen.
+function useRevivePotion() {
+  const owned = (G.potions && G.potions[REVIVE_POTION.id]) || 0;
+  if (owned <= 0) { toast('ไม่มี Revive Potion'); return; }
+  const targets = G.roster.filter(p => petState(p) === 'down');
+  if (!targets.length) { toast('ไม่มี VIRUZ ที่อยู่ในสถานะ Down ตอนนี้'); return; }
+  modal('เลือก VIRUZ ที่จะชุบชีวิต', wrap => {
+    const grid = el('div', 'modal-grid');
+    targets.forEach(pet => {
+      const c = petCard(pet, { onClick: p => {
+        G.potions[REVIVE_POTION.id]--;
+        reviveDownPet(p);
+        save(); closeModal(); renderHUD();
+        toast(`✨ ${p.name} ฟื้นคืนชีพแล้ว!`);
+        log(`✨ ใช้ Revive Potion กับ ${p.name}`, 'heal');
+      }});
+      grid.appendChild(c);
+    });
+    wrap.appendChild(grid);
+  });
 }
 
 // Item boxes in the equipment bag — tapping one shows its full stats
@@ -3445,13 +3600,18 @@ function renderSafeSpot() {
   setText('safe-thai', z.thai);
   setText('npc-greet', `สวัสดี ${G.name || 'นักผจญภัย'} ให้ข้าช่วยอะไรได้บ้าง?`);
 
-  const hurt = G.roster.filter(p => p.hp < statsOf(p).mhp).length;
+  // Error/incubating/ready pets can't be fixed here — only a Real
+  // World Clinic incubation chamber brings them back (see
+  // renderClinic()). Down pets (still within their 5-min window) heal
+  // here same as any hurt-but-conscious pet.
+  const fixableHere = p => !['error', 'incubating', 'ready'].includes(petState(p));
+  const hurt = G.roster.filter(p => fixableHere(p) && p.hp < statsOf(p).mhp).length;
   const restBtn = $('npc-opt-rest');
   if (restBtn) {
     restBtn.textContent = hurt ? `พักฟื้น (${hurt} ตัวบาดเจ็บ)` : 'ทุกตัวสมบูรณ์แล้ว';
     restBtn.disabled = !hurt;
     restBtn.onclick = () => {
-      G.roster.forEach(p => p.hp = statsOf(p).mhp);
+      G.roster.forEach(p => { if (fixableHere(p)) reviveDownPet(p); });
       G.day++;
       save(); renderSafeSpot(); renderHUD();
       toast('พักฟื้นเรียบร้อย\nHP เต็มทุกตัว');
@@ -4838,6 +4998,10 @@ async function checkBattleEnd() {
       vibrate(VIBE_DEATH);
     }
   });
+  // A fallen ally goes Down for a real 5 minutes instead of the old
+  // auto-patch-to-10%-HP-at-battle-end — see markDown()/petState() in
+  // engine.js and renderClinic()/renderSafeSpot() for how it's fixed.
+  battle.team.forEach(p => markDown(p));
 
   // Credit exp for any enemy that just died THIS check, priced against
   // whichever ally fighter is currently active (the one that would have
@@ -4933,7 +5097,6 @@ function endBattle(win) {
 
   if (battle.mode === 'raid') {
     const { rival, loot } = battle.raid;
-    battle.team.forEach(p => { if (p.hp <= 0) p.hp = Math.max(1, Math.floor(statsOf(p).mhp * 0.1)); });
     const done = $('battle-done');
     if (done) {
       done.style.display = '';
@@ -4952,7 +5115,6 @@ function endBattle(win) {
   // the World map section) is awaiting battle.mimicResolve and takes
   // it from here: reward-card picker on a win, then resume the ride.
   if (battle.mode === 'mimic') {
-    battle.team.forEach(p => { if (p.hp <= 0) p.hp = Math.max(1, Math.floor(statsOf(p).mhp * (TUNING.loseHpRestore || 0.1))); });
     save();
     const resolve = battle.mimicResolve;
     const mimic = battle.enemies[0];
@@ -4998,9 +5160,6 @@ function endBattle(win) {
     blog(`สำเร็จ! +${battle.totalExp} EXP · +${battle.totalBitz} Bitz`, 'win');
     log(`ชนะ ${battle.mode === 'hack' || battle.mode === 'boss' ? battle.target.name : 'Arena'} · +${battle.totalBitz} Bitz`, 'win');
   } else {
-    battle.team.forEach(p => {
-      if (p.hp <= 0) p.hp = Math.max(1, Math.floor(statsOf(p).mhp * (TUNING.loseHpRestore || 0.1)));
-    });
     blog('การเจาะล้มเหลว — ทีมถูกตรวจจับ', 'lose');
     log(`แพ้ ${battle.mode === 'hack' || battle.mode === 'boss' ? battle.target.name : 'Arena'}`, 'lose');
   }

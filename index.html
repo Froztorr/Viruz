@@ -1030,7 +1030,29 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .pc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
 .pc-attr{font-size:20px}
 .pc-rar{font-family:var(--pixel);font-size:17px;color:var(--rar);letter-spacing:.5px;line-height:1}
-.pc-sprite{width:86px;height:86px;display:block;margin:0 auto 4px;overflow:visible}
+.pc-sprite-wrap{position:relative;width:86px;height:86px;margin:0 auto 4px}
+.pc-sprite{width:86px;height:86px;display:block;overflow:visible}
+/* Down: a grey wipe grows counter-clockwise (mirrored conic-gradient)
+   around the sprite over the real 5-minute window, transparent ->
+   fully grey, driven by --frac (0-1) set inline at render time. */
+.ps-wipe{position:absolute;inset:-4px;border-radius:50%;pointer-events:none;
+  background:conic-gradient(rgba(110,110,120,.9) calc(var(--frac,0)*360deg),transparent 0);
+  transform:scaleX(-1)}
+/* Error: a glitchy RGB-split/jitter filter over the sprite itself. */
+.ps-glitch{position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(255,60,220,.18) 0 2px,rgba(60,220,255,.18) 2px 4px,transparent 4px 6px);
+  mix-blend-mode:screen;animation:psGlitchJitter .25s steps(2) infinite}
+@keyframes psGlitchJitter{
+  0%,100%{clip-path:inset(0 0 0 0);transform:translate(0,0)}
+  30%{clip-path:inset(10% 0 55% 0);transform:translate(-2px,1px)}
+  60%{clip-path:inset(55% 0 8% 0);transform:translate(2px,-1px)}
+  80%{clip-path:inset(30% 0 35% 0);transform:translate(-1px,2px)}}
+.pet-card.ps-error .pc-sprite{animation:psGlitchJitter .25s steps(2) infinite}
+.pc-state{font-size:14px;text-align:center;margin:2px 0;font-weight:bold}
+.pc-state.down{color:#9fb0c8}
+.pc-state.error{color:#ff5a5a}
+.pc-state.incubating{color:#5fd6ff}
+.pc-state.ready{color:var(--green)}
 .pc-name{font-family:var(--pixel);font-size:26px;line-height:1.05;text-align:center;
   margin-bottom:4px;text-shadow:0 2px 0 rgba(0,0,0,.6)}
 .pc-trait{font-size:16px}
@@ -1159,10 +1181,15 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 
 .clinic-row{display:flex;align-items:center;gap:10px;padding:8px;
   border:1px solid var(--line);background:var(--panel);margin-bottom:7px}
+.clinic-row.down{border-color:rgba(159,176,200,.5)}
+.clinic-row.error{border-color:rgba(255,90,90,.6);box-shadow:0 0 12px rgba(255,60,60,.15)}
+.clinic-row.incubating{border-color:rgba(95,214,255,.5)}
+.clinic-row.ready{border-color:var(--green);box-shadow:0 0 12px rgba(77,255,158,.2)}
 .cr-sprite{width:44px;height:44px;display:block;overflow:visible}
 .cr-info{flex:1;display:flex;flex-direction:column;gap:2px}
 .cr-info b{font-family:var(--pixel);font-size:21px}
 .cr-info span{font-size:20px;color:var(--muted)}
+.btn.danger{border-color:var(--red);color:var(--red)}
 
 /* ── HACK ── */
 .hack-card{
@@ -2536,6 +2563,10 @@ img.bu-sprite.is-art2{--raster-mult:2}
     <div class="section">
       <div class="section-title">// ไอเทม //</div>
       <div id="shop-items" class="grid"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">// ฉุกเฉิน //</div>
+      <div id="shop-revive" class="grid"></div>
     </div>
     <div class="section">
       <div class="section-title">// บอทป้องกันฐาน //</div>

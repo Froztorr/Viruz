@@ -157,6 +157,40 @@ export function statsOf(pet) {
   return out;
 }
 
+// ── DOWN / ERROR (real-world timers, not battle turns) ──
+// A pet whose HP hits 0 in battle no longer just gets patched back up
+// to 10% at battle end — it goes "Down" for a real 5 minutes. Heal it
+// (Clinic, a World safe-zone rest stop, or a Revive Potion) before that
+// runs out and it's back to normal. Miss the window and it flips to
+// "Error" — only a Real World Clinic can fix that now, by paying to
+// put it in an incubation chamber that cools down for a real hour
+// before the pet can be revived.
+export const DOWN_MS = 5 * 60 * 1000;
+export const INCUBATE_MS = 60 * 60 * 1000;
+
+export function petState(pet) {
+  if (!pet || pet.hp > 0) return 'alive';
+  if (pet.incubatingUntil) return Date.now() >= pet.incubatingUntil ? 'ready' : 'incubating';
+  if (!pet.downUntil) return 'down';
+  return Date.now() < pet.downUntil ? 'down' : 'error';
+}
+// Called whenever a pet's HP lands at/below 0 — starts the Down clock
+// exactly once (repeated calls while already down/incubating are a
+// no-op, so re-checking every turn or every render doesn't reset it).
+export function markDown(pet) {
+  if (!pet || pet.hp > 0) return;
+  if (!pet.downUntil && !pet.incubatingUntil) pet.downUntil = Date.now() + DOWN_MS;
+}
+export function reviveDownPet(pet) {
+  pet.hp = statsOf(pet).mhp;
+  pet.downUntil = null;
+  pet.incubatingUntil = null;
+}
+export function startIncubation(pet) {
+  pet.incubatingUntil = Date.now() + INCUBATE_MS;
+  pet.downUntil = null;
+}
+
 // Sum the flat stat bonuses from whatever's equipped in payload/
 // exploit/rootkit — same pattern as treeBonuses(), just a different
 // source. `int` is deliberately left out; equipment boosts combat
