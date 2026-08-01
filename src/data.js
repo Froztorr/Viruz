@@ -552,7 +552,7 @@ export const ANTIVIRUZ = {
   // the `.bu-sprite.no-float` CSS rule keyed off this species.
   mimic: { id:'mimic', name:'Mimic', gif:'mimic', ext:'png', faces:'right', scale:1.1,
     base:{atk:30,def:16,spd:10,mhp:70}, attr:null, habitColor:'dark', habitType:'conjuration',
-    noFloat:true },
+    noFloat:true, specials:['mesmerise'] },
 
   // ── SECURITY GUARDS (raid defense) ──
   // Not wild encounters — never appear in a zone `pool`, so they never
@@ -1216,7 +1216,13 @@ export const SPECIALS = {
   cp_decay:       { id:'cp_decay',       name:'Data Decay',      thai:'ข้อมูลเสื่อม',   mp:13, cd:3.6, pw:0.9, hits:1, vfx:'poison', ailment:{ id:'corrupt', turns:3, atk:-0.20, def:-0.15 }, desc:'x0.9 + ATK-20% DEF-15% ศัตรู' },
   cp_corruptstrike:{ id:'cp_corruptstrike',name:'Corrupt Strike', thai:'จู่โจมเสื่อม',   mp:19, cd:3.8, pw:1.2, hits:1, vfx:'poison', ailment:{ id:'corrupt', turns:3, atk:-0.25, spd:-0.20 }, desc:'x1.2 + ATK-25% SPD-20% ศัตรู' },
   cp_plague:      { id:'cp_plague',      name:'Plague Protocol', thai:'ไวรัสระบาด',     mp:28, cd:4.1, pw:1.3, hits:1, vfx:'poison', ailment:{ id:'corrupt', turns:4, atk:-0.25, def:-0.20, spd:-0.20 }, desc:'x1.3 + ATK/DEF/SPD-20~25% 4 เทิร์น' },
-  cp_oblivion:    { id:'cp_oblivion',    name:'Oblivion Protocol',thai:'ล่มระบบสมบูรณ์', mp:44, cd:4.8, pw:1.8, hits:1, vfx:'meteor', ailment:{ id:'corrupt', turns:4, atk:-0.35, def:-0.30, spd:-0.25 }, desc:'x1.8 + ลดสถานะศัตรูมหาศาล 4 เทิร์น' },
+  cp_oblivion:    { id:'cp_oblivion',    name:'Oblivion Protocol',thai:'ล่มระบบสมบูรณ์', mp:44, cd:4.8, pw:1.8, hits:1, vfx:'meteor', ailment:{ id:'corrupt', turns:4, atk:-0.35, def:-0.30, spd:-0.25 }, desc:'x1.8 + ลดสถานะระบบสมบูรณ์ 4 เทิร์น' },
+
+  // ── MONSTER-ONLY (granted natively via ANTIVIRUZ.specials, not the
+  // skill tree — see spawnAntiviruz() in engine.js) ──
+  mesmerise: { id:'mesmerise', name:'Mesmerise', thai:'สะกดจิต', mp:0, cd:6, pw:0, hits:0,
+    vfx:'charm', ailment:{ id:'charm', turns:3 }, ailmentChance:0.30,
+    desc:'มีโอกาส 30% สะกดให้ VIRUZ หลงเสน่ห์ 3 เทิร์น' },
 };
 
 // Rarer pets unlock a bonus tier of skills at the deep nodes.
@@ -1505,6 +1511,34 @@ export const POTIONS = [
   { id:'pot_m', name:'Large Potion', icon:'⚗️', cost:320, heal:0.70, desc:'ฟื้น HP 70% ระหว่างสู้' },
   { id:'pot_f', name:'Full Elixir',  icon:'🍶', cost:700, heal:1.00, desc:'ฟื้น HP เต็ม ระหว่างสู้' },
 ];
+// ── THROWABLE BATTLE ITEMS ──
+// The in-battle potion/poison bar is now two pouches (see #potion-bar
+// in index.html, wireThrowPouches() in game.js): press-hold-drag opens
+// a radial wheel of up to 5 slotted items, dragging past the wheel
+// locks a selection and the icon follows your finger until you flick
+// it at a side of the battlefield. Whichever unit it actually lands
+// on gets the effect — flick a heal/buff potion at the enemy and it
+// heals THEM; flick a curse at your own ally and it curses THEM. Every
+// item shares one 10s real-time cooldown per its own id (see
+// itemOnCooldown()/startItemCooldown() in game.js).
+//
+// The potion pouch's wheel pool is the shop-bought POTIONS above
+// (still heal from the same G.potions bag count, just thrown instead
+// of tapped) PLUS these free utility potions — no Bitz cost, no bag
+// count, gated only by the shared cooldown.
+export const THROW_UTILITY_POTIONS = [
+  { id:'tp_mp',      name:'MP Potion',     icon:'💧', kind:'mp',       amt:0.5,  desc:'ฟื้น MP 50% ของสูงสุด' },
+  { id:'tp_spd',     name:'Speed Draught', icon:'🥤', kind:'spd_buff', amt:0.40, desc:'SPD +40% ตลอดการต่อสู้นี้' },
+  { id:'tp_crit',    name:'Crit Elixir',   icon:'🍸', kind:'crit_buff',amt:0.5,  desc:'CRIT +50% ตลอดการต่อสู้นี้' },
+  { id:'tp_cleanse', name:'Cleanse Tonic', icon:'✨', kind:'cleanse',  desc:'ล้างสถานะติดลบทั้งหมด' },
+];
+// The poison pouch's whole pool — free, same cooldown gate.
+export const THROW_POISONS = [
+  { id:'tx_freeze', name:'Freeze Curse', icon:'❄️', kind:'ailment', ailment:'freeze', turns:5, desc:'แช่แข็ง 5 เทิร์น' },
+  { id:'tx_stone',  name:'Stone Curse',  icon:'🗿', kind:'ailment', ailment:'stoned', turns:5, desc:'กลายเป็นหิน 5 เทิร์น' },
+  { id:'tx_charm',  name:'Charm Curse',  icon:'💗', kind:'ailment', ailment:'charm',  turns:5, desc:'สะกดให้หลงเสน่ห์ 5 เทิร์น' },
+];
+
 // Sold separately at the Tech Shop (not a safe-spot potion) — an
 // emergency out for a Down pet (see petState()/DOWN_MS in engine.js)
 // bought in advance and used later from the Inventory bag's Potions

@@ -5,7 +5,8 @@
 
 import {
   ATTR, ATTR_KEYS, RARITY, RARITY_KEYS, SPECIES, SPECIES_KEYS,
-  MAPS, ZONES, zonesOfMap, zoneById, ANTIVIRUZ, EGGS, ITEMS, POTIONS, REVIVE_POTION, DEFENSE_BOTS, MAP_NODES, TUNING,
+  MAPS, ZONES, zonesOfMap, zoneById, ANTIVIRUZ, EGGS, ITEMS, POTIONS, REVIVE_POTION,
+  THROW_UTILITY_POTIONS, THROW_POISONS, DEFENSE_BOTS, MAP_NODES, TUNING,
   GUARD_TIERS, guardTierForLevel,
   SYNERGY, WHITE_TRAITS,
   LOYALTY_TIERS, loyaltyTier, loyaltyProgress, SIGNATURE_SKILLS,
@@ -242,6 +243,7 @@ async function boot() {
   wireCareGame();
   wirePetDetail();
   wireInventoryTabs();
+  wireThrowPouches();
   startTopBarClock();
   startDownStateTicker();
   wireClickRipple();
@@ -717,6 +719,10 @@ function wireGlobalUI() {
     };
   });
   $('flee-btn').onclick = fleeBattle;
+  $('hit-btn').onclick = () => {
+    const ally = activeAlly();
+    if (ally) requestBonusCrit(ally);
+  };
 }
 
 function buildMapNodes() {
@@ -2233,7 +2239,7 @@ function renderWorld() {
     pin.innerHTML = `
       <span class="pin-dot"></span>
       <span class="pin-card"><b>🌀 Warp Gate</b><span class="pin-extra"><i>จุดเริ่มต้น</i></span></span>`;
-    pin.onclick = () => { if (!isAtWorldNode('warpIn')) travelTo('warpIn', () => {}); };
+    pin.onclick = () => { if (isAtWorldNode('warpIn')) openWarpInMenu(map); else travelTo('warpIn', () => {}); };
     layer.appendChild(pin);
   }
   const mapIdx = MAPS.findIndex(m => m.id === map.id);
@@ -2315,6 +2321,35 @@ function openWarpGate(map, nextMap) {
   });
 }
 
+// Standing at a map's own warpIn gate (the entry point) offers two
+// exits instead of a plain travel target: step back to the PREVIOUS
+// realm (arriving at ITS warpOut, mirroring the forward warpOut trip),
+// or leave the warp-gate world entirely for the Real World hub map.
+function openWarpInMenu(map) {
+  const mapIdx = MAPS.findIndex(m => m.id === map.id);
+  const prevMap = MAPS[mapIdx - 1];
+  modal('🌀 Warp Gate', wrap => {
+    const box = el('div', 'zone-brief');
+    box.innerHTML = `<div class="zb-desc">จุดเริ่มต้นของ ${map.name} (${map.thai})</div>`;
+    if (prevMap) {
+      const back = el('button', 'btn wide', `◀ ย้อนกลับไปยัง ${prevMap.name}`);
+      back.onclick = () => {
+        closeModal();
+        currentMapId = prevMap.id;
+        G.currentMapId = prevMap.id;
+        G.worldPos = { mapId: prevMap.id, nodeId: 'warpOut' };
+        save();
+        renderWorld();
+      };
+      box.appendChild(back);
+    }
+    const home = el('button', 'btn primary wide', '🏠 กลับสู่โลกจริง');
+    home.onclick = () => { closeModal(); showScreen('map'); };
+    box.appendChild(home);
+    wrap.appendChild(box);
+  });
+}
+
 // ── TRAIN TRAVEL ──
 // A pixel-style train rides from the player's current node to the
 // destination, drawing a broken trail line behind it (a "rail" div
@@ -2380,7 +2415,7 @@ async function travelTo(destNodeId, onArrive) {
     await wait(650);
     flash.remove();
     const teamLv = Math.max(1, ...activeTeam().map(p => p.level));
-    const mimicLevel = teamLv + 5 + Math.floor(Math.random() * 6);
+    const mimicLevel = teamLv + 10 + Math.floor(Math.random() * 6);
     const { win, mimic } = await startMimicAmbush(mimicLevel);
     if (win) await showMimicRewardCards(mimic);
     await animateRailTo(rail, dist, duration * (1 - ambushFrac), dist * ambushFrac);
@@ -2657,8 +2692,12 @@ function openSkillExplainer(pet, tree, nodeId, originScreen) {
         if (!res.ok) { toast(res.why); return; }
         if (node.kind === 'skill') {
           const sp = SPECIALS[node.skill];
-          pet.autoCast = pet.autoCast || {};
-          pet.autoCast[sp.id] = true;
+          // Unlocking a skill no longer force-enables auto-cast — it used
+          // to flip this on immediately, so a fresh unlock could silently
+          // burn a pet's MP on turn 1 of its very next fight before the
+          // player ever touched the skill bar. Stays off until they
+          // explicitly toggle it on (see renderSkillBar()), matching the
+          // note below this button.
           toast(`ปลดล็อก ${sp.name}!\n${sp.desc}`);
           log(`✦ ${pet.name} ปลดล็อก ${sp.name}`, 'win');
         } else {
@@ -2732,6 +2771,46 @@ function renderInventory() {
   renderInvPotions();
   renderEquipBag();
   renderCraft();
+  renderInvThrowLoadout();
+}
+
+// "Wheel" tab — pick which up-to-5 potions/poisons show up in each
+// battle pouch's radial wheel (see throwLoadout() in the battle
+// section). Tapping an item toggles it in/out of that side's loadout;
+// the order tapped is the order it'll appear around the wheel (shown
+// as a numbered badge) — a full drag-to-reorder UI would be nicer but
+// tap-to-toggle-with-order is far simpler and still lets the player
+// fully control which 5 (and in what order) they get.
+function renderInvThrowLoadout() {
+  ['potion', 'poison'].forEach(kind => {
+    const box = $(kind === 'potion' ? 'inv-loadout-potion' : 'inv-loadout-poison');
+    if (!box) return;
+    box.innerHTML = '';
+    G.throwLoadout = G.throwLoadout || {};
+    const chosen = G.throwLoadout[kind] || throwPool(kind).map(x => x.id).slice(0, 5);
+    throwPool(kind).forEach(item => {
+      const idx = chosen.indexOf(item.id);
+      const on = idx !== -1;
+      const chip = el('div', 'throw-loadout-chip' + (on ? ' on' : ''));
+      chip.innerHTML = `<span class="tlc-icon">${item.icon}</span>
+        <span class="tlc-name">${item.name}</span>
+        ${on ? `<span class="tlc-n">${idx + 1}</span>` : ''}`;
+      chip.title = item.desc;
+      chip.onclick = () => {
+        const list = (G.throwLoadout[kind] || throwPool(kind).map(x => x.id).slice(0, 5)).slice();
+        const i = list.indexOf(item.id);
+        if (i !== -1) list.splice(i, 1);
+        else {
+          if (list.length >= 5) { toast('เลือกได้สูงสุด 5 อย่าง'); return; }
+          list.push(item.id);
+        }
+        G.throwLoadout[kind] = list;
+        save();
+        renderInvThrowLoadout();
+      };
+      box.appendChild(chip);
+    });
+  });
 }
 
 // "Items" tab — everything that isn't a potion or gear: foods,
@@ -2887,7 +2966,7 @@ let invPage = 0;
 function goInvPage(i) {
   const track = $('inv-track');
   if (!track) return;
-  invPage = Math.max(0, Math.min(2, i));
+  invPage = Math.max(0, Math.min(3, i));
   track.style.transform = `translateX(-${invPage * 100}%)`;
   document.querySelectorAll('.inv-tab').forEach((t, idx) => t.classList.toggle('on', idx === invPage));
 }
@@ -4927,9 +5006,16 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
     if (vfxIsEnemyFacing && !(sp.pw > 0 && sp.hits > 0)) {
       playSpellVFX(sp.vfx, caster, target, side);
     }
-    addAilment(target, { ...sp.ailment });
-    const A = AILMENTS[sp.ailment.id];
-    if (A) blog(`${A.icon} ${target.name} ติด${A.thai}`, side);
+    // ailmentChance (e.g. Mimic's Mesmerise, a flat 30%) makes the
+    // status itself a coin flip instead of a guaranteed landing — most
+    // ailment specials omit it and always apply, as before.
+    if (sp.ailmentChance == null || Math.random() < sp.ailmentChance) {
+      addAilment(target, { ...sp.ailment });
+      const A = AILMENTS[sp.ailment.id];
+      if (A) blog(`${A.icon} ${target.name} ติด${A.thai}`, side);
+    } else {
+      blog(`${caster.name} ใช้ ${sp.name} แต่ไม่สำเร็จ`, side);
+    }
   }
   refreshBattleUnits();
 }
@@ -5496,14 +5582,11 @@ function refreshUnitVitals(pet, isEnemy) {
   }
   const buffsEl = plate.querySelector('.np-buffs');
   if (buffsEl) buffsEl.innerHTML = statBuffChips(pet);
-  const spdPip = plate.querySelector('.spd-pip');
-  if (spdPip) spdPip.textContent = `⚡ ${Math.round(Math.min(1, pet.spdCounter || 0) * 100)}%`;
+  const spdPct = Math.round(Math.min(1, pet.spdCounter || 0) * 100);
+  updateGaugeBar(plate.querySelector('.gauge-bar.spd'), spdPct, false);
   const critPct = Math.round(Math.min(1, pet.critGauge || 0) * 100);
-  const critPip = plate.querySelector('.crit-pip');
-  if (critPip) {
-    critPip.textContent = `💥 ${critPct}%`;
-    critPip.classList.toggle('ready', critPct >= 100);
-  }
+  updateGaugeBar(plate.querySelector('.gauge-bar.crit'), critPct, critPct >= 100);
+  if (!isEnemy) refreshHitButton(pet);
 
   // Ailment badges/stoned overlay/tappable-ready glow can all change
   // turn-to-turn (freeze/charm/corrupt expiring, poison/frenzy gaining
@@ -5840,11 +5923,42 @@ function renderBattleSide(pet, elId, isEnemy) {
       <div class="np-buffs">${statBuffChips(pet)}</div>
       ${vitalsHtml}
       ${bossBar}
-      <div class="gauge-pips">
-        <div class="spd-pip">⚡ ${spdPct}%</div>
-        <div class="crit-pip${critPct >= 100 ? ' ready' : ''}">💥 ${critPct}%</div>
+      <div class="gauge-bars">
+        ${gaugeBarHtml('spd', spdPct)}
+        ${gaugeBarHtml('crit', critPct)}
       </div>`;
   }
+  if (!isEnemy) refreshHitButton(pet);
+}
+
+// Vertical liquid-fill gauge (SPD/CRIT) — same clip-path-from-the-top
+// mechanic as vitalHtml()'s HP/MP gauges, just a plain bar shape.
+function gaugeBarHtml(kind, pct) {
+  const clipTop = Math.max(0, Math.min(100, 100 - pct));
+  const ready = kind === 'crit' && pct >= 100;
+  return `<div class="gauge-bar ${kind}${ready ? ' ready' : ''}">
+    <div class="gauge-bar-bg"></div>
+    <div class="gauge-bar-fill" style="clip-path:inset(${clipTop}% 0 0 0)"></div>
+  </div>`;
+}
+function updateGaugeBar(container, pct, ready) {
+  if (!container) return;
+  const clipTop = Math.max(0, Math.min(100, 100 - pct));
+  const fill = container.querySelector('.gauge-bar-fill');
+  if (fill) fill.style.clipPath = `inset(${clipTop}% 0 0 0)`;
+  container.classList.toggle('ready', !!ready);
+}
+
+// Shows/hides the manual "HIT!" button (#hit-btn-row) in lockstep with
+// the active ally's crit gauge — the button is the alternative entry
+// point to fireBonusCrit() alongside tapping the ally's own sprite (see
+// wireCritGaugeTap()), and disappears the instant the gauge is spent.
+function refreshHitButton(pet) {
+  const row = $('hit-btn-row');
+  if (!row) return;
+  const ready = pet === activeAlly() && (pet.critGauge || 0) >= 1;
+  const btn = $('hit-btn');
+  if (btn) btn.classList.toggle('show', ready);
 }
 
 // Shared HP/MP "liquid" gauge markup — see the .vital CSS rules for
@@ -5941,52 +6055,227 @@ function startSkillCooldownTicker() {
   }, 100);
 }
 
-// ── COMBAT POTIONS ──
-// Click during a fight to heal the ACTIVE VIRUZ. Using one costs the
-// player their tempo — the enemy still gets its swing — so it's a real
-// decision rather than a free heal.
-function renderPotionBar() {
-  const bar = $('potion-bar');
-  if (!bar || !battle) return;
-  bar.innerHTML = '';
-  const owned = G.potions || {};
-  const any = POTIONS.some(p => (owned[p.id] || 0) > 0);
-  if (!any) {
-    bar.innerHTML = `<div class="potion-empty">ไม่มียา — ซื้อได้ที่จุดพัก</div>`;
-    return;
-  }
-  POTIONS.forEach(pt => {
-    const n = owned[pt.id] || 0;
-    if (!n) return;
-    const b = el('button','potion-btn');
-    b.innerHTML = `<span class="pb-icon">${pt.icon}</span>
-                   <span class="pb-n">${n}</span>`;
-    b.title = `${pt.name} — ${pt.desc}`;
-    b.onclick = () => usePotion(pt);
-    bar.appendChild(b);
-  });
+// ── THROWABLE POTIONS / POISONS ──
+// Two pouches now sit where the old tap-to-heal potion row was: a
+// potion satchel (left, self-applying — heals from the same G.potions
+// bag as before, plus free utility buffs) and a poison pouch (right,
+// curses meant for the enemy). Press-hold-drag opens a radial wheel of
+// up to 5 slotted items (see G.throwLoadout / renderInvThrowLoadout()
+// for how the player picks which 5), dragging past the wheel's lock
+// radius picks a wedge, then the icon follows the finger until
+// released ("flicked") over a side of the battlefield — whichever unit
+// is ACTUALLY under the release point gets the effect, which is what
+// makes flicking a potion at the enemy heal them, or a curse at your
+// own ally curse them instead, for free (see resolveThrow() below).
+function throwPool(kind) {
+  return kind === 'potion' ? [...POTIONS, ...THROW_UTILITY_POTIONS] : THROW_POISONS;
+}
+function throwLoadout(kind) {
+  const pool = throwPool(kind);
+  const ids = (G.throwLoadout && G.throwLoadout[kind] && G.throwLoadout[kind].length)
+    ? G.throwLoadout[kind] : pool.map(x => x.id).slice(0, 5);
+  return ids.map(id => pool.find(x => x.id === id)).filter(Boolean).slice(0, 5);
+}
+// A potion item is only actually throwable right now if it's a free
+// utility one, OR a bag potion the player still has stock of.
+function throwItemAvailable(item) {
+  if (item.heal == null) return true;
+  return (G.potions && G.potions[item.id] > 0);
+}
+function itemOnCooldown(id) {
+  if (!battle) return false;
+  const until = battle.itemCooldowns && battle.itemCooldowns[id];
+  return !!(until && Date.now() < until);
+}
+function startItemCooldown(id) {
+  if (!battle) return;
+  battle.itemCooldowns = battle.itemCooldowns || {};
+  battle.itemCooldowns[id] = Date.now() + 10000;
 }
 
-function usePotion(pt) {
+function renderPotionBar() {
+  const potionPouch = $('throw-potion-pouch');
+  const poisonPouch = $('throw-poison-pouch');
+  if (potionPouch) {
+    const any = throwLoadout('potion').some(it => throwItemAvailable(it) && !itemOnCooldown(it.id));
+    potionPouch.classList.toggle('on-cd', !any);
+  }
+  if (poisonPouch) {
+    const any = throwLoadout('poison').some(it => !itemOnCooldown(it.id));
+    poisonPouch.classList.toggle('on-cd', !any);
+  }
+}
+
+let throwGesture = null;
+function wireThrowPouches() {
+  ['potion', 'poison'].forEach(kind => {
+    const pouch = $(kind === 'potion' ? 'throw-potion-pouch' : 'throw-poison-pouch');
+    if (!pouch) return;
+    pouch.addEventListener('pointerdown', e => startThrowGesture(e, kind));
+  });
+  window.addEventListener('pointermove', onThrowPointerMove);
+  window.addEventListener('pointerup', onThrowPointerUp);
+  window.addEventListener('pointercancel', onThrowPointerUp);
+}
+
+const THROW_LOCK_R = 34;   // px dragged from the pouch before a wedge locks in
+const THROW_WHEEL_R = 78;  // px radius the wedges sit at
+
+function startThrowGesture(e, kind) {
   if (!battle || battle.over) return;
-  const pet = activeAlly();
-  if (!pet) { toast('ไม่มี VIRUZ ที่สู้อยู่'); return; }
-  const owned = G.potions || {};
-  if (!(owned[pt.id] > 0)) return;
-  const mhp = statsOf(pet).mhp;
-  if (pet.hp >= mhp) { toast('HP เต็มแล้ว'); return; }
+  const items = throwLoadout(kind).filter(it => throwItemAvailable(it) && !itemOnCooldown(it.id));
+  if (!items.length) { toast(kind === 'potion' ? 'ยาหมดหรือติดคูลดาวน์ทั้งหมด' : 'พิษติดคูลดาวน์ทั้งหมด'); return; }
+  e.preventDefault();
+  const layer = $('throw-layer');
+  if (!layer) return;
+  layer.innerHTML = '';
+  const cx = e.clientX, cy = e.clientY;
+  const n = items.length;
+  const arc = Math.min(200, 40 * n);
+  const startDeg = -90 - arc / 2;
+  const wedges = items.map((item, i) => {
+    const deg = n === 1 ? -90 : startDeg + (arc * i) / (n - 1);
+    const rad = deg * Math.PI / 180;
+    const wx = cx + THROW_WHEEL_R * Math.cos(rad);
+    const wy = cy + THROW_WHEEL_R * Math.sin(rad);
+    const w = el('div', 'throw-wedge');
+    w.style.left = wx + 'px';
+    w.style.top = wy + 'px';
+    w.innerHTML = `<span class="tw-icon">${item.icon}</span><span class="tw-name">${item.name}</span>`;
+    w.title = item.desc;
+    layer.appendChild(w);
+    return { item, x: wx, y: wy, el: w };
+  });
+  throwGesture = { kind, cx, cy, wedges, locked: false, item: null, carryEl: null, pointerId: e.pointerId };
+}
 
-  owned[pt.id]--;
-  G.potions = owned;
-  const before = pet.hp;
-  pet.hp = clamp(Math.floor(pet.hp + mhp * pt.heal), 0, mhp);
-  const healed = pet.hp - before;
+function onThrowPointerMove(e) {
+  const g = throwGesture;
+  if (!g || (g.pointerId != null && e.pointerId !== g.pointerId)) return;
+  const dx = e.clientX - g.cx, dy = e.clientY - g.cy;
+  const dist = Math.hypot(dx, dy);
+  if (!g.locked) {
+    // Highlight whichever wedge is currently closest, direction-wise.
+    let best = null, bestScore = -Infinity;
+    g.wedges.forEach(w => {
+      const wdx = w.x - g.cx, wdy = w.y - g.cy;
+      const score = (dx * wdx + dy * wdy) / (Math.hypot(wdx, wdy) || 1);
+      w.el.classList.toggle('hot', false);
+      if (score > bestScore) { bestScore = score; best = w; }
+    });
+    if (best) best.el.classList.add('hot');
+    if (dist > THROW_LOCK_R && best) {
+      g.locked = true;
+      g.item = best.item;
+      g.wedges.forEach(w => w.el.remove());
+      const carry = el('div', 'throw-carry', best.item.icon);
+      $('throw-layer').appendChild(carry);
+      g.carryEl = carry;
+    }
+    return;
+  }
+  if (g.carryEl) {
+    g.carryEl.style.left = e.clientX + 'px';
+    g.carryEl.style.top = e.clientY + 'px';
+    g.carryEl.classList.toggle('over-target', !!throwHitSide(e.clientX, e.clientY));
+  }
+}
 
-  healPop(pet, healed);
-  blog(`${pt.icon} ใช้ ${pt.name} · +${healed} HP`, 'buff');
+function onThrowPointerUp(e) {
+  const g = throwGesture;
+  if (!g || (g.pointerId != null && e.pointerId !== g.pointerId)) return;
+  throwGesture = null;
+  const layer = $('throw-layer');
+  if (g.locked && g.item) {
+    const side = throwHitSide(e.clientX, e.clientY);
+    if (side) resolveThrow(g.kind, g.item, side, e.clientX, e.clientY);
+    if (g.carryEl) g.carryEl.remove();
+  } else {
+    g.wedges.forEach(w => w.el.remove());
+  }
+  if (layer) layer.innerHTML = '';
+}
+
+// Which side of the battlefield a screen point landed on — checked
+// against the actual ally/enemy sprite containers first, falling back
+// to a plain left/right split of the stage so a slightly-off flick
+// still counts as long as it's over the fighting scene at all.
+function throwHitSide(x, y) {
+  const inRect = (elId) => {
+    const r = $(elId) && $(elId).getBoundingClientRect();
+    return r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  };
+  if (inRect('battle-allies')) return 'ally';
+  if (inRect('battle-enemies')) return 'foe';
+  const stage = $('battle-stage');
+  if (!stage) return null;
+  const r = stage.getBoundingClientRect();
+  if (x < r.left || x > r.right || y < r.top || y > r.bottom) return null;
+  return x < r.left + r.width / 2 ? 'ally' : 'foe';
+}
+
+function resolveThrow(kind, item, side, x, y) {
+  if (!battle || battle.over) return;
+  const pet = side === 'ally' ? activeAlly() : activeFoe();
+  if (!pet) return;
+  if (item.heal != null && !(G.potions && G.potions[item.id] > 0)) { toast('ยาหมดแล้ว'); return; }
+
+  glassBreakBurst(x, y, kind === 'potion' ? 'rgba(140,220,255,.9)' : 'rgba(200,140,255,.9)');
+  startItemCooldown(item.id);
+
+  const wrongSide = (kind === 'potion' && side === 'foe') || (kind === 'poison' && side === 'ally');
+  const tag = wrongSide ? ' (ปาพลาด!)' : '';
+
+  if (item.heal != null) {
+    G.potions[item.id]--;
+    const mhp = statsOf(pet).mhp;
+    const before = pet.hp;
+    pet.hp = clamp(Math.floor(pet.hp + mhp * item.heal), 0, mhp);
+    healPop(pet, pet.hp - before);
+    blog(`${item.icon} ${item.name}${tag} · ${pet.name} +${pet.hp - before} HP`, side === 'ally' ? 'buff' : 'sys');
+  } else if (item.kind === 'mp') {
+    const mx = statsOf(pet).int;
+    pet.mp = Math.min(mx, (pet.mp || 0) + Math.floor(mx * item.amt));
+    blog(`${item.icon} ${item.name}${tag} · ${pet.name} ฟื้น MP`, side === 'ally' ? 'buff' : 'sys');
+  } else if (item.kind === 'spd_buff') {
+    // turns:200 reads as "for the rest of this fight" — battles never
+    // run remotely that long, same trick used for other whole-fight
+    // effects elsewhere, just without an actually-infinite sentinel
+    // that would show a silly turn count in the buff chip.
+    addAilment(pet, { id: 'throw_spd_buff', turns: 200, spd: item.amt });
+    blog(`${item.icon} ${item.name}${tag} · ${pet.name} SPD+${Math.round(item.amt*100)}%`, side === 'ally' ? 'buff' : 'sys');
+  } else if (item.kind === 'crit_buff') {
+    addAilment(pet, { id: 'throw_crit_buff', turns: 200, crit: item.amt });
+    blog(`${item.icon} ${item.name}${tag} · ${pet.name} CRIT+${Math.round(item.amt*100)}%`, side === 'ally' ? 'buff' : 'sys');
+  } else if (item.kind === 'cleanse') {
+    clearAilments(pet);
+    blog(`${item.icon} ${item.name}${tag} · ${pet.name} ล้างสถานะ`, side === 'ally' ? 'buff' : 'sys');
+  } else if (item.kind === 'ailment') {
+    addAilment(pet, { id: item.ailment, turns: item.turns });
+    const A = AILMENTS[item.ailment];
+    blog(`${item.icon} ${item.name}${tag} · ${pet.name} ติด${A ? A.thai : item.ailment}`, side === 'ally' ? 'sys' : 'buff');
+  }
+
   refreshBattleUnits();
   renderPotionBar();
   save();
+}
+
+function glassBreakBurst(x, y, color) {
+  const layer = $('throw-layer');
+  if (!layer) return;
+  const burst = el('div', 'glass-break');
+  burst.style.left = x + 'px';
+  burst.style.top = y + 'px';
+  burst.style.setProperty('--gb-color', color);
+  let inner = '';
+  for (let i = 0; i < 9; i++) {
+    const ang = Math.random() * 360;
+    inner += `<i style="--ga:${ang.toFixed(0)}deg;--gd:${(22 + Math.random() * 20).toFixed(0)}px"></i>`;
+  }
+  burst.innerHTML = inner;
+  layer.appendChild(burst);
+  setTimeout(() => burst.remove(), 550);
 }
 
 // ── CAMERA ──
