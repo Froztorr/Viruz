@@ -2202,8 +2202,7 @@ function renderWorld() {
         <span class="pin-dot"></span>
         <span class="pin-card">
           <b>${z.name}</b>
-          <i>${z.thai}</i>
-          <em>พักฟื้น · ร้านยา</em>
+          <span class="pin-extra"><i>${z.thai}</i><em>พักฟื้น · ร้านยา</em></span>
         </span>`;
       const go = () => { G.lastSafe = z.id; showScreen('safe'); };
       pin.onclick = () => { if (isAtWorldNode(z.id)) go(); else travelTo(z.id, go); };
@@ -2216,8 +2215,7 @@ function renderWorld() {
         <span class="pin-dot"></span>
         <span class="pin-card">
           <b>${z.name}</b>
-          <i>${z.thai}</i>
-          <em>Lv ${z.lv[0]}–${z.lv[1]}</em>
+          <span class="pin-extra"><i>${z.thai}</i><em>Lv ${z.lv[0]}–${z.lv[1]}</em></span>
         </span>`;
       pin.onclick = () => { if (isAtWorldNode(z.id)) openZone(z); else travelTo(z.id, () => openZone(z)); };
     }
@@ -2234,7 +2232,7 @@ function renderWorld() {
     pin.style.top  = map.warpIn.y + '%';
     pin.innerHTML = `
       <span class="pin-dot"></span>
-      <span class="pin-card"><b>🌀 Warp Gate</b><i>จุดเริ่มต้น</i></span>`;
+      <span class="pin-card"><b>🌀 Warp Gate</b><span class="pin-extra"><i>จุดเริ่มต้น</i></span></span>`;
     pin.onclick = () => { if (!isAtWorldNode('warpIn')) travelTo('warpIn', () => {}); };
     layer.appendChild(pin);
   }
@@ -2246,7 +2244,7 @@ function renderWorld() {
     pin.style.top  = map.warpOut.y + '%';
     pin.innerHTML = `
       <span class="pin-dot"></span>
-      <span class="pin-card"><b>🌀 Warp Gate</b><em>ไปยัง ${nextMap.name}</em></span>`;
+      <span class="pin-card"><b>🌀 Warp Gate</b><span class="pin-extra"><em>ไปยัง ${nextMap.name}</em></span></span>`;
     const go = () => openWarpGate(map, nextMap);
     pin.onclick = () => { if (isAtWorldNode('warpOut')) go(); else travelTo('warpOut', go); };
     layer.appendChild(pin);
@@ -2273,8 +2271,7 @@ function renderWorld() {
         <span class="pin-dot boss-dot"></span>
         <span class="pin-card boss-card">
           <b>⚠ Region Boss</b>
-          <i>${bz.name}</i>
-          <em>Boss Lv???</em>
+          <span class="pin-extra"><i>${bz.name}</i><em>Boss Lv???</em></span>
         </span>`;
       pin.onclick = () => openBossBrief(map.id, bossSt, bz);
       layer.appendChild(pin);
