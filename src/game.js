@@ -2108,21 +2108,13 @@ function renderTree() {
   setText('tree-thai', tree.thai);
   setText('tree-pts', pet.growthPts || 0);
 
-  // current stats readout
-  const st = statsOf(pet);
-  const sb = $('tree-stats');
-  if (sb) {
-    sb.innerHTML = STAT_KEYS.map(k => {
-      const meta = STAT_META[k];
-      const val = k === 'crit' || k === 'eva' ? st[k] + '%' : st[k];
-      return `<span class="ts-stat"><i>${meta.icon}</i>${meta.name} <b>${val}</b></span>`;
-    }).join('');
-  }
-
   // canvas
   const host = $('tree-canvas');
   if (!host) return;
   host.style.setProperty('--tree-color', tree.color);
+  // Stained-glass background art, one per attribute/mutation — matches
+  // the tree currently being viewed (toggle switches attr <-> mutation).
+  const bgKey = (treeViewMode === 'mutation' && mutTree) ? pet.mutation : pet.attr;
 
   // branches first (SVG under the nodes)
   const lines = tree.nodes.flatMap(n =>
@@ -2159,6 +2151,8 @@ function renderTree() {
   }).join('');
 
   host.innerHTML = `
+    <img class="tree-canvas-bg" src="assets/ui/tree_bg_${bgKey}.jpg" alt="">
+    <div class="tree-canvas-scrim"></div>
     <svg class="tree-lines" viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>
     ${nodesHtml}`;
 
