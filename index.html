@@ -1014,6 +1014,10 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .pet-card.in-team{border-color:var(--cyan);
   box-shadow:inset 0 1px 0 var(--rim),0 0 22px rgba(61,240,255,.45),0 6px 18px rgba(0,0,0,.5)}
 .pet-card.in-team::after{background:var(--cyan)}
+/* bench-slot card (reserve, swappable in any time) — violet ring */
+.pet-card.in-bench{border-color:var(--violet);
+  box-shadow:inset 0 1px 0 var(--rim),0 0 22px rgba(165,107,255,.45),0 6px 18px rgba(0,0,0,.5)}
+.pet-card.in-bench::after{background:var(--violet)}
 /* defense-slot card (base guard) — gold ring marks it as guarding the base */
 .pet-card.in-def{border-color:var(--gold);
   box-shadow:inset 0 1px 0 var(--rim),0 0 22px rgba(255,207,63,.45),0 6px 18px rgba(0,0,0,.5)}
@@ -1286,8 +1290,12 @@ body.pet-detail-open{overflow:hidden}
 .pd-track{display:flex;height:100%;transition:transform .25s ease}
 .pd-page{flex:0 0 100%;overflow-y:auto;padding:4px 2px;-webkit-overflow-scrolling:touch}
 
-.pd-team-btn{margin-top:14px}
+.pd-team-btns{display:flex;gap:8px;margin-top:14px}
+.pd-team-btn{flex:1;margin-top:0}
 .pd-team-btn.danger{border-color:var(--red);color:var(--red)}
+.pd-team-btn:disabled{opacity:.4}
+#pd-dismiss-btn{margin-top:8px}
+#pd-dismiss-btn:disabled{opacity:.35}
 
 .pd-tree-title{font-family:var(--pixel);font-size:18px;margin-bottom:8px;text-align:center}
 .pd-tree-title i{font-style:normal;font-size:15px;margin-left:4px}
@@ -2365,7 +2373,12 @@ img.bu-sprite.is-art2{--raster-mult:2}
     </div>
 
     <div class="section">
-      <div class="section-title">// คลัง VIRUZ — แตะเพื่อสลับเข้าทีม //</div>
+      <div class="section-title">// ตัวสำรอง (สูงสุด 2) //</div>
+      <div id="bench-slots" class="card-row"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">// คลัง VIRUZ — แตะเพื่อดูสถานะ //</div>
       <div id="roster-grid" class="grid"></div>
     </div>
 
@@ -2375,6 +2388,30 @@ img.bu-sprite.is-art2{--raster-mult:2}
       <div id="defense-slots" class="card-row" style="margin-bottom:10px"></div>
       <div id="bot-list"></div>
       <div id="guard-status" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <!-- ═══ CHARACTER (quick team/bench manager — reachable from the
+       drawer knob's Characters button, anywhere in the game, unlike
+       Home Base which is only walked to from the map) ═══ -->
+  <section id="screen-character" class="pane">
+    <div class="screen-head">
+      <button class="back-btn" data-fallback="map">← กลับ</button>
+      <h2>🧬 Character</h2>
+    </div>
+    <div class="section">
+      <div class="section-title">// ทีมออกรบ (สูงสุด 3) //</div>
+      <div id="char-synergy-banner" class="syn-banner"></div>
+      <div id="char-support-line"></div>
+      <div id="char-team-slots" class="card-row"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">// ตัวสำรอง (สูงสุด 2) //</div>
+      <div id="char-bench-slots" class="card-row"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">// คลัง VIRUZ — แตะเพื่อดูสถานะ //</div>
+      <div id="char-roster-grid" class="grid"></div>
     </div>
   </section>
 
@@ -2680,7 +2717,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
       <span class="chip pw">⚡ <b id="drawer-power">0</b></span>
     </div>
     <div class="drawer-grid">
-      <button class="drawer-tab" data-goto="home" id="drawer-characters">
+      <button class="drawer-tab" data-goto="character" id="drawer-characters">
         <span class="dt-icon">🧬</span><span class="dt-text">Characters</span>
       </button>
       <button class="drawer-tab" data-goto="inventory" id="drawer-inventory">
