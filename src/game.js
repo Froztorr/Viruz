@@ -222,6 +222,9 @@ async function boot() {
     G.teamIds    = (G.teamIds || []).filter(id => ids.has(id));
     G.defenseIds = (G.defenseIds || []).filter(id => ids.has(id));
     if (!G.teamIds.length && G.roster.length) G.teamIds = [G.roster[0].uid];
+    // Bench: up to 2 reserve pets, swappable into the active team any
+    // time — must not overlap the active team itself.
+    G.benchIds = (G.benchIds || []).filter(id => ids.has(id) && !G.teamIds.includes(id)).slice(0, 2);
     // Resume where the player actually left off, not always the city.
     const resumeScreen = G.lastScreen && ['map','world','safe','home','clinic','shop','foodshop','care','raid'].includes(G.lastScreen)
       ? G.lastScreen : 'map';
@@ -305,11 +308,11 @@ const WIN_TITLES = {
   map:'Map', home:'Home Base', clinic:'Clinic', shop:'Shop',
   foodshop:'Food Shop', world:'World Map', battle:'Battle',
   raid:'Raid', safe:'Safe Spot', care:'Care', hack:'Hack Terminal',
-  steal:'Steal', inventory:'Inventory', drawer:'Menu',
+  steal:'Steal', inventory:'Inventory', character:'Character', drawer:'Menu',
 };
 const MAIN_SCENE_IDS = [
   'map', 'home', 'clinic', 'shop', 'foodshop', 'world', 'safe', 'care',
-  'raid', 'hack', 'steal', 'inventory', 'battle',
+  'raid', 'hack', 'steal', 'inventory', 'character', 'battle',
 ];
 
 let currentScreenId = null;        // 'intro' | 'win-main' | 'drawer'
@@ -387,6 +390,7 @@ function runScreenRenderer(id) {
   if (id === 'safe')   renderSafeSpot();
   if (id === 'care')   renderCare();
   if (id === 'inventory') renderInventory();
+  if (id === 'character') renderCharacter();
   if (id === 'raid')   renderRaidList();
   if (id === 'map')    renderFeed();
   if (id === 'battle') playArenaEntrance();
@@ -1035,7 +1039,11 @@ function renderPdStats() {
     <div class="ps-passives"></div>
     <div class="ps-skills-title">// สกิลพิเศษ //</div>
     <div class="ps-skills"></div>
-    <button class="btn wide pd-team-btn" id="pd-team-btn"></button>`;
+    <div class="pd-team-btns">
+      <button class="btn pd-team-btn" id="pd-team-btn"></button>
+      <button class="btn pd-team-btn" id="pd-bench-btn"></button>
+    </div>
+    <button class="btn wide" id="pd-dismiss-btn">🗑 สลายเป็น Bitz</button>`;
 
   const passiveList = page.querySelector('.ps-passives');
   const passiveEntries = [];
@@ -1089,17 +1097,41 @@ function renderPdStats() {
   refreshPdTeamBtn();
 }
 function refreshPdTeamBtn() {
-  const btn = $('pd-team-btn');
-  if (!btn || !PD) return;
-  const inTeam = G.teamIds.includes(PD.pet.uid);
-  btn.textContent = inTeam ? '➖ นำออกจากทีม' : '➕ เพิ่มเข้าทีม';
-  btn.classList.toggle('primary', !inTeam);
-  btn.classList.toggle('danger', inTeam);
-  btn.onclick = () => {
-    if (inTeam) removeFromTeam(PD.pet.uid);
-    else addToTeam(PD.pet.uid);
+  const teamBtn = $('pd-team-btn');
+  const benchBtn = $('pd-bench-btn');
+  if (!teamBtn || !benchBtn || !PD) return;
+  const uid = PD.pet.uid;
+  const inTeam = G.teamIds.includes(uid);
+  const inBench = (G.benchIds || []).includes(uid);
+  teamBtn.textContent = inTeam ? '➖ นำออกจากทีมหลัก' : '➕ ทีมหลัก';
+  teamBtn.classList.toggle('primary', !inTeam);
+  teamBtn.classList.toggle('danger', inTeam);
+  teamBtn.onclick = () => {
+    if (inTeam) removeFromTeam(uid);
+    else addToTeam(uid);
     refreshPdTeamBtn();
   };
+  benchBtn.textContent = inBench ? '➖ นำออกจากสำรอง' : '➕ ตัวสำรอง';
+  benchBtn.classList.toggle('primary', !inBench && !inTeam);
+  benchBtn.classList.toggle('danger', inBench);
+  benchBtn.disabled = inTeam;
+  benchBtn.onclick = () => {
+    if (inBench) removeFromBench(uid);
+    else addToBench(uid);
+    refreshPdTeamBtn();
+  };
+
+  const dismissBtn = $('pd-dismiss-btn');
+  if (dismissBtn) {
+    const canDismiss = !inTeam && !inBench && G.roster.length > 1;
+    dismissBtn.disabled = !canDismiss;
+    dismissBtn.onclick = () => {
+      const pet = PD.pet;
+      if (!confirm(`สลาย ${pet.name} เป็น Bitz ถาวร?`)) return;
+      dismissPet(pet);
+      closePetDetail();
+    };
+  }
 }
 
 // ── Page 2: Equipment — same 3 slots as before, now embedded ──
@@ -1235,13 +1267,20 @@ function openEquipPicker(pet, slotId) {
 }
 
 // ═══════════════ SCREEN: HOME ═══════════════
-function renderHome() {
+function benchTeam() { return (G.benchIds || []).map(petById).filter(Boolean); }
+
+// Shared by both the full Home Base screen and the lightweight
+// Character screen (reachable from anywhere via the drawer knob) —
+// both let the player rearrange their active team (max 3) and bench
+// (max 2 reserves, swappable in any time), just via differently-
+// prefixed element ids so the two screens' DOM stays independent.
+function renderTeamBenchPanel(prefix) {
   const team = activeTeam();
+  const bench = benchTeam();
   const syn = synergyOf(team);
   const sup = supportOf(team);
 
-  // Synergy banner
-  const banner = $('synergy-banner');
+  const banner = $(prefix + 'synergy-banner');
   if (banner) {
     if (syn.label) {
       const a = ATTR[syn.attr];
@@ -1253,7 +1292,7 @@ function renderHome() {
       banner.innerHTML = `ยังไม่มีซินเนอร์จี — จัดทีมให้มีธาตุซ้ำ 2 หรือ 3 ตัว`;
     }
   }
-  const supLine = $('support-line');
+  const supLine = $(prefix + 'support-line');
   if (supLine) {
     if (sup.auraPct > 0 || sup.regenPct > 0) {
       const bits = [];
@@ -1266,46 +1305,106 @@ function renderHome() {
     }
   }
 
-  // Team slots
-  const slots = $('team-slots');
-  slots.innerHTML = '';
-  for (let i = 0; i < 3; i++) {
-    const pet = team[i];
-    if (pet) {
-      const c = petCard(pet, { onClick: p => openPetDetail(p, 0) });
-      c.classList.add('in-team');
-      slots.appendChild(c);
-    } else {
-      const empty = el('div', 'pet-card empty', `<div class="empty-mark">+</div><div class="empty-t">ช่องว่าง</div>`);
-      slots.appendChild(empty);
+  const slots = $(prefix + 'team-slots');
+  if (slots) {
+    slots.innerHTML = '';
+    for (let i = 0; i < 3; i++) {
+      const pet = team[i];
+      if (pet) {
+        const c = petCard(pet, { onClick: p => openPetDetail(p, 0) });
+        c.classList.add('in-team');
+        slots.appendChild(c);
+      } else {
+        const empty = el('div', 'pet-card empty', `<div class="empty-mark">+</div><div class="empty-t">ช่องว่าง</div>`);
+        slots.appendChild(empty);
+      }
     }
   }
 
-  // Roster
-  const roster = $('roster-grid');
-  roster.innerHTML = '';
-  G.roster.forEach(pet => {
-    const inTeam = G.teamIds.includes(pet.uid);
-    const c = petCard(pet, {
-      selected: inTeam,
-      onClick: p => openPetDetail(p, 0),
-    });
-    roster.appendChild(c);
-  });
+  const benchSlots = $(prefix + 'bench-slots');
+  if (benchSlots) {
+    benchSlots.innerHTML = '';
+    for (let i = 0; i < 2; i++) {
+      const pet = bench[i];
+      if (pet) {
+        const c = petCard(pet, { onClick: p => openPetDetail(p, 0) });
+        c.classList.add('in-bench');
+        benchSlots.appendChild(c);
+      } else {
+        const empty = el('div', 'pet-card empty small', `<div class="empty-mark">+</div><div class="empty-t">สำรอง</div>`);
+        benchSlots.appendChild(empty);
+      }
+    }
+  }
 
+  const roster = $(prefix + 'roster-grid');
+  if (roster) {
+    roster.innerHTML = '';
+    G.roster.forEach(pet => {
+      const inTeam = G.teamIds.includes(pet.uid);
+      const inBench = (G.benchIds || []).includes(pet.uid);
+      const c = petCard(pet, {
+        selected: inTeam || inBench,
+        onClick: p => openPetDetail(p, 0),
+      });
+      if (inBench) c.classList.add('in-bench');
+      roster.appendChild(c);
+    });
+  }
+}
+
+function renderHome() {
+  renderTeamBenchPanel('');
   renderDefensePanel();
+  renderHUD();
+}
+function renderCharacter() {
+  renderTeamBenchPanel('char-');
   renderHUD();
 }
 
 function addToTeam(id) {
   if (G.teamIds.includes(id)) return;
   if (G.teamIds.length >= 3) { toast('ทีมเต็มแล้ว (สูงสุด 3)'); return; }
+  G.benchIds = (G.benchIds || []).filter(x => x !== id);
   G.teamIds.push(id);
-  save(); renderHome();
+  save(); renderHome(); renderCharacter();
 }
 function removeFromTeam(id) {
   G.teamIds = G.teamIds.filter(x => x !== id);
-  save(); renderHome();
+  save(); renderHome(); renderCharacter();
+}
+function addToBench(id) {
+  G.benchIds = G.benchIds || [];
+  if (G.benchIds.includes(id) || G.teamIds.includes(id)) return;
+  if (G.benchIds.length >= 2) { toast('ตัวสำรองเต็มแล้ว (สูงสุด 2)'); return; }
+  G.benchIds.push(id);
+  save(); renderHome(); renderCharacter();
+}
+function removeFromBench(id) {
+  G.benchIds = (G.benchIds || []).filter(x => x !== id);
+  save(); renderHome(); renderCharacter();
+}
+
+// Dismissing a spare pet for Bitz — only ever offered for pets that
+// aren't on the active team or bench (those must be pulled first),
+// scaled the same way equipment's sellValueOf() is: a flat rate off
+// level, nudged up for rarer pets.
+function bitzValueOfPet(pet) {
+  const rar = RARITY[pet.rarity] || {};
+  return Math.round(20 * pet.level * (1 + (rar.statPL || 0) * 0.3));
+}
+function dismissPet(pet) {
+  if (G.teamIds.includes(pet.uid) || (G.benchIds || []).includes(pet.uid)) {
+    toast('ถอดออกจากทีม/สำรองก่อนสลาย'); return;
+  }
+  if (G.roster.length <= 1) { toast('ต้องมี VIRUZ อย่างน้อย 1 ตัว'); return; }
+  const val = bitzValueOfPet(pet);
+  G.roster = G.roster.filter(p => p.uid !== pet.uid);
+  G.bitz += val;
+  save();
+  toast(`สลาย ${pet.name} +${val} Bitz`);
+  renderHome(); renderCharacter();
 }
 
 function renderDefensePanel() {
