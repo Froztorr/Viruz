@@ -241,6 +241,7 @@ async function boot() {
   wireDrawer();
   wireCareGame();
   wirePetDetail();
+  wireInventoryTabs();
   startTopBarClock();
   wireClickRipple();
   wireDoubleTapGuard();
@@ -2388,85 +2389,112 @@ function addLoyalty(pet, amount) {
   return t;
 }
 
-// ── INVENTORY ── read-only view of owned potions/foods/toys, opened
-// from the drawer's Inventory tab.
+// ── INVENTORY ── 3 swipeable sub-tabs of dense icon-box grids, opened
+// from the drawer's Inventory tab. Each box shows only an icon + a
+// single number badge (owned count for stackables, level for gear);
+// tapping one opens the full description in the shared modal.
+function invBox(iconHtml, num, onClick, gradeColor) {
+  const box = el('div', 'inv-box');
+  if (gradeColor) box.style.setProperty('--grade', gradeColor);
+  box.innerHTML = `<div class="inv-box-icon">${iconHtml}</div>` +
+    (num != null ? `<div class="inv-box-num">${num}</div>` : '');
+  if (onClick) box.onclick = onClick;
+  return box;
+}
+function showItemDetail(iconHtml, name, desc, extraHtml) {
+  modal(name, body => {
+    body.innerHTML = `
+      <div style="text-align:center;font-size:40px;margin-bottom:8px">${iconHtml}</div>
+      <div class="muted" style="text-align:center;margin-bottom:10px">${desc}</div>
+      ${extraHtml || ''}`;
+  });
+}
 function renderInventory() {
-  const potBox = $('inv-potions');
-  if (potBox) {
-    potBox.innerHTML = '';
-    const owned = G.potions || {};
-    const any = POTIONS.some(p => (owned[p.id] || 0) > 0);
-    if (!any) potBox.innerHTML = `<div class="muted" style="padding:10px">ยังไม่มียา</div>`;
-    POTIONS.forEach(p => {
-      const n = owned[p.id] || 0;
-      if (!n) return;
-      const card = el('div', 'shop-card');
-      card.innerHTML = `<div class="sc-icon">${p.icon}</div><div class="sc-name">${p.name}</div>
-        <div class="sc-desc">${p.desc}</div><div class="sc-owned">มี ${n} ชิ้น</div>`;
-      potBox.appendChild(card);
-    });
-  }
-  const foodBox = $('inv-foods');
-  if (foodBox) {
-    foodBox.innerHTML = '';
-    const owned = G.foods || {};
-    const allFoods = [...FOODS, ...RECIPES];
-    const any = allFoods.some(f => (owned[f.id] || 0) > 0);
-    if (!any) foodBox.innerHTML = `<div class="muted" style="padding:10px">ยังไม่มีอาหาร</div>`;
-    allFoods.forEach(f => {
-      const n = owned[f.id] || 0;
-      if (!n) return;
-      const card = el('div', 'shop-card');
-      card.innerHTML = `<div class="sc-icon">${f.icon}</div><div class="sc-name">${f.name}</div>
-        <div class="sc-desc">${f.desc}</div><div class="sc-owned">มี ${n} ชิ้น</div>`;
-      foodBox.appendChild(card);
-    });
-  }
-  const toyBox = $('inv-toys');
-  if (toyBox) {
-    toyBox.innerHTML = '';
-    const owned = G.toys || [];
-    if (!owned.length) toyBox.innerHTML = `<div class="muted" style="padding:10px">ยังไม่มีของเล่น</div>`;
-    TOYS.forEach(t => {
-      if (!owned.includes(t.id)) return;
-      const card = el('div', 'shop-card');
-      card.innerHTML = `<div class="sc-icon">${t.icon}</div><div class="sc-name">${t.name}</div>
-        <div class="sc-desc">${t.desc}</div><div class="sc-owned">มีแล้ว</div>`;
-      toyBox.appendChild(card);
-    });
-  }
+  renderInvItems();
+  renderInvPotions();
   renderEquipBag();
   renderCraft();
 }
 
-// Item cards in the equipment bag — each can be sold for Bitz or
-// dusted (disenchanted) into Dust, the crafting currency below.
+// "Items" tab — everything that isn't a potion or gear: foods,
+// recipes, toys, crafting materials, and cooking ingredients.
+function renderInvItems() {
+  const box = $('inv-grid-items');
+  if (!box) return;
+  box.innerHTML = '';
+  let any = false;
+  const ownedFoods = G.foods || {};
+  [...FOODS, ...RECIPES].forEach(f => {
+    const n = ownedFoods[f.id] || 0;
+    if (!n) return;
+    any = true;
+    box.appendChild(invBox(f.icon, n, () => showItemDetail(f.icon, f.name, f.desc)));
+  });
+  (G.toys || []).forEach(id => {
+    const t = TOYS.find(x => x.id === id);
+    if (!t) return;
+    any = true;
+    box.appendChild(invBox(t.icon, null, () => showItemDetail(t.icon, t.name, t.desc)));
+  });
+  const ownedMats = G.materials || {};
+  Object.keys(MATERIALS).forEach(id => {
+    const n = ownedMats[id] || 0;
+    if (!n) return;
+    any = true;
+    const m = MATERIALS[id];
+    box.appendChild(invBox(m.icon, n, () => showItemDetail(m.icon, m.name, m.desc)));
+  });
+  const ing = G.ingredients || {};
+  [['veg', INGREDIENTS[0]], ['bun', INGREDIENTS[1]], ['meat', MEAT_ITEM]].forEach(([key, def]) => {
+    const n = ing[key] || 0;
+    if (!n || !def) return;
+    any = true;
+    box.appendChild(invBox(def.icon, n, () => showItemDetail(def.icon, def.name, def.desc)));
+  });
+  if (!any) box.innerHTML = `<div class="inv-empty-msg">ยังไม่มีไอเทม</div>`;
+}
+
+function renderInvPotions() {
+  const box = $('inv-grid-potions');
+  if (!box) return;
+  box.innerHTML = '';
+  const owned = G.potions || {};
+  let any = false;
+  POTIONS.forEach(p => {
+    const n = owned[p.id] || 0;
+    if (!n) return;
+    any = true;
+    box.appendChild(invBox(p.icon, n, () => showItemDetail(p.icon, p.name, p.desc)));
+  });
+  if (!any) box.innerHTML = `<div class="inv-empty-msg">ยังไม่มียา</div>`;
+}
+
+// Item boxes in the equipment bag — tapping one shows its full stats
+// plus sell/dust buttons (each can be sold for Bitz or dusted
+// (disenchanted) into Dust, the crafting currency used below).
 function renderEquipBag() {
-  const box = $('inv-equip');
+  const box = $('inv-grid-parts');
   if (!box) return;
   box.innerHTML = '';
   const bag = G.equipBag || [];
   if (!bag.length) {
-    box.innerHTML = `<div class="muted" style="padding:10px">ยังไม่มีอุปกรณ์ — ดรอปจากศัตรู หรือคราฟต์เองด้านล่าง</div>`;
+    box.innerHTML = `<div class="inv-empty-msg">ยังไม่มีอุปกรณ์ — ดรอปจากศัตรู หรือคราฟต์เองด้านล่าง</div>`;
     return;
   }
   const sorted = [...bag].sort((a,b) => EQUIP_GRADE_KEYS.indexOf(b.grade) - EQUIP_GRADE_KEYS.indexOf(a.grade));
   sorted.forEach(item => {
     const g = equipGradeMeta(item);
     const slot = EQUIP_SLOTS[item.slotId];
-    const card = el('div', 'shop-card eq-card');
-    card.style.setProperty('--grade', g.color);
-    card.innerHTML = `
-      <div class="sc-icon">${equipIconHtml(item, slot.icon)}</div>
-      <div class="sc-name" style="color:${g.color}">${item.name}</div>
-      <div class="sc-desc">${slot.name} · Lv.${item.lvlReq}<br>${equipStatLine(item)}</div>
-      <div class="eq-card-btns">
-        <button class="btn small" data-act="sell">💰 ${sellValueOf(item)}</button>
-        <button class="btn small" data-act="dust">🧬 ${dustValueOf(item)}</button>
-      </div>`;
-    card.querySelector('[data-act="sell"]').onclick = () => { sellEquip(item); renderEquipBag(); };
-    card.querySelector('[data-act="dust"]').onclick = () => { dustEquip(item); renderEquipBag(); renderCraft(); };
-    box.appendChild(card);
+    const iconHtml = equipIconHtml(item, slot.icon);
+    box.appendChild(invBox(iconHtml, item.lvlReq, () => {
+      showItemDetail(iconHtml, item.name, `${slot.name} · Lv.${item.lvlReq}<br>${equipStatLine(item)}`, `
+        <div class="eq-card-btns">
+          <button class="btn small" data-act="sell">💰 ${sellValueOf(item)}</button>
+          <button class="btn small" data-act="dust">🧬 ${dustValueOf(item)}</button>
+        </div>`);
+      $('modal-body').querySelector('[data-act="sell"]').onclick = () => { sellEquip(item); closeModal(); renderEquipBag(); };
+      $('modal-body').querySelector('[data-act="dust"]').onclick = () => { dustEquip(item); closeModal(); renderEquipBag(); renderCraft(); };
+    }, g.color));
   });
 }
 
@@ -2475,30 +2503,58 @@ function renderEquipBag() {
 // guarantee one; slot/stats/level/affix still roll randomly.
 function renderCraft() {
   setText('craft-dust', G.dust || 0);
-  const box = $('inv-craft');
+  const box = $('inv-grid-craft');
   if (!box) return;
   box.innerHTML = '';
   const maxLevel = Math.max(1, ...G.roster.map(p => p.level || 1));
   CRAFT_RECIPES.forEach(r => {
-    const afford = (G.dust || 0) >= r.dust;
-    const card = el('div', 'shop-card');
-    card.innerHTML = `<div class="sc-icon">${r.icon}</div><div class="sc-name">${r.name}</div>
-      <div class="sc-desc">โอกาสได้เกรดสูงขึ้นตามด่าน</div><div class="sc-cost">🧬 ${r.dust} Dust</div>`;
-    const btn = el('button', 'btn small' + (afford ? ' primary' : ''), afford ? 'คราฟต์' : 'Dust ไม่พอ');
-    if (!afford) btn.disabled = true;
-    btn.onclick = () => {
-      if ((G.dust || 0) < r.dust) { toast('Dust ไม่พอ'); return; }
-      G.dust -= r.dust;
-      const item = craftEquipment(r.id, maxLevel);
-      G.equipBag = G.equipBag || [];
-      G.equipBag.push(item);
-      save();
-      toast(`✨ ได้ ${item.name}!`);
-      renderCraft(); renderEquipBag();
-    };
-    card.appendChild(btn);
-    box.appendChild(card);
+    box.appendChild(invBox(r.icon, r.dust, () => {
+      const afford = (G.dust || 0) >= r.dust;
+      showItemDetail(r.icon, r.name, `โอกาสได้เกรดสูงขึ้นตามด่าน · 🧬 ${r.dust} Dust`, `
+        <button class="btn wide${afford ? ' primary' : ''}" id="craft-go-btn">${afford ? 'คราฟต์' : 'Dust ไม่พอ'}</button>`);
+      const btn = $('craft-go-btn');
+      if (!afford) { btn.disabled = true; return; }
+      btn.onclick = () => {
+        if ((G.dust || 0) < r.dust) { toast('Dust ไม่พอ'); return; }
+        G.dust -= r.dust;
+        const item = craftEquipment(r.id, maxLevel);
+        G.equipBag = G.equipBag || [];
+        G.equipBag.push(item);
+        save();
+        toast(`✨ ได้ ${item.name}!`);
+        closeModal();
+        renderCraft(); renderEquipBag();
+      };
+    }));
   });
+}
+
+// ── Inventory tab bar — same swipe/tap pattern as the pet detail
+// modal's tab track, just on a free-scrolling page instead of a
+// fixed-height overlay.
+let invPage = 0;
+function goInvPage(i) {
+  const track = $('inv-track');
+  if (!track) return;
+  invPage = Math.max(0, Math.min(2, i));
+  track.style.transform = `translateX(-${invPage * 100}%)`;
+  document.querySelectorAll('.inv-tab').forEach((t, idx) => t.classList.toggle('on', idx === invPage));
+}
+function wireInventoryTabs() {
+  document.querySelectorAll('.inv-tab').forEach(t => {
+    t.onclick = () => goInvPage(+t.dataset.page);
+  });
+  const vp = $('inv-viewport');
+  if (vp) {
+    let x0 = null;
+    vp.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, {passive:true});
+    vp.addEventListener('touchend', e => {
+      if (x0 == null) return;
+      const dx = e.changedTouches[0].clientX - x0;
+      if (Math.abs(dx) > 40) goInvPage(invPage + (dx < 0 ? 1 : -1));
+      x0 = null;
+    }, {passive:true});
+  }
 }
 
 function renderCare() {

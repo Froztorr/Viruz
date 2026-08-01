@@ -1066,6 +1066,32 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 #support-line{font-size:15px;color:var(--green);margin-bottom:8px}
 .grid{display:flex;gap:10px;flex-wrap:wrap}
 .muted{color:var(--muted);font-size:15px;padding:8px}
+
+/* ── INVENTORY — swipeable sub-tabs of dense icon-box grids ──
+   Same tab+track+swipe pattern as the pet detail modal (.pd-tabs/
+   .pd-viewport/.pd-track), just under an inv- prefix since this lives
+   on a free-scrolling page rather than a fixed-height modal — the
+   track's height is simply whichever sub-tab is tallest, with
+   #inv-viewport clipping the other two off-screen horizontally. */
+.inv-tabs{display:flex;gap:6px;margin:8px 0}
+.inv-tab{flex:1;padding:7px 4px;font-size:16px;text-align:center;
+  background:var(--panel2);border:1px solid var(--line2);color:var(--muted)}
+.inv-tab.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 10px rgba(61,240,255,.3)}
+.inv-viewport{overflow:hidden}
+.inv-track{display:flex;transition:transform .25s ease}
+.inv-page{flex:0 0 100%;min-width:0;padding:2px}
+.inv-subtitle{font-family:var(--pixel);font-size:16px;color:var(--cyan);margin:10px 0 6px}
+.inv-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:5px}
+.inv-box{position:relative;aspect-ratio:1;background:var(--panel2);border:1px solid var(--line);
+  border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.inv-box:active{transform:scale(.93)}
+.inv-box-icon{font-size:22px;line-height:1;display:flex;align-items:center;
+  justify-content:center;width:100%;height:100%}
+.inv-box-icon img{width:68%;height:68%;object-fit:contain;image-rendering:pixelated;
+  filter:drop-shadow(0 0 3px var(--grade,transparent))}
+.inv-box-num{position:absolute;bottom:1px;right:2px;font-size:11px;color:var(--gold);
+  background:rgba(0,0,0,.65);border-radius:3px;padding:0 3px;line-height:1.35}
+.inv-empty-msg{grid-column:1/-1;color:var(--muted);font-size:15px;padding:14px;text-align:center}
 .bot-chip{display:inline-flex;align-items:center;gap:6px;font-size:20px;
   padding:5px 9px;border:1px solid var(--line);background:var(--panel);margin:0 6px 6px 0}
 .bot-chip small{color:var(--muted)}
@@ -2330,27 +2356,39 @@ img.bu-sprite.is-art2{--raster-mult:2}
          keeps playing underneath. -->
   </section>
 
-  <!-- ═══ INVENTORY ═══ -->
+  <!-- ═══ INVENTORY ═══
+       3 swipeable sub-tabs (Items/Potions/Accessory Parts), same
+       tab+track+swipe pattern as the pet detail modal (see .pd-tabs/
+       .pd-viewport/.pd-track and wireInventoryTabs() in game.js). Each
+       page is a dense grid of small square boxes (icon + a single
+       number badge — count for stackables, level for gear) instead of
+       the old full-detail list rows; tapping a box opens a modal with
+       the full description. -->
   <section id="screen-inventory" class="pane">
-    <div class="section">
-      <div class="section-title">// POTIONS //</div>
-      <div id="inv-potions" class="grid"></div>
+    <div class="screen-head">
+      <button class="back-btn" data-fallback="map">← กลับ</button>
+      <h2>🎒 กระเป๋า</h2>
     </div>
-    <div class="section">
-      <div class="section-title">// FOODS //</div>
-      <div id="inv-foods" class="grid"></div>
+    <div class="inv-tabs">
+      <button class="inv-tab on" data-page="0">ไอเทม</button>
+      <button class="inv-tab" data-page="1">ยา</button>
+      <button class="inv-tab" data-page="2">อุปกรณ์</button>
     </div>
-    <div class="section">
-      <div class="section-title">// TOYS //</div>
-      <div id="inv-toys" class="grid"></div>
-    </div>
-    <div class="section">
-      <div class="section-title">// EQUIPMENT //</div>
-      <div id="inv-equip" class="grid"></div>
-    </div>
-    <div class="section">
-      <div class="section-title">// CRAFT — DUST: <span id="craft-dust">0</span> //</div>
-      <div id="inv-craft" class="grid"></div>
+    <div id="inv-viewport" class="inv-viewport">
+      <div id="inv-track" class="inv-track">
+        <div class="inv-page">
+          <div id="inv-grid-items" class="inv-grid"></div>
+        </div>
+        <div class="inv-page">
+          <div id="inv-grid-potions" class="inv-grid"></div>
+        </div>
+        <div class="inv-page">
+          <div class="inv-subtitle">// อุปกรณ์ //</div>
+          <div id="inv-grid-parts" class="inv-grid"></div>
+          <div class="inv-subtitle">// คราฟต์ — DUST: <span id="craft-dust">0</span> //</div>
+          <div id="inv-grid-craft" class="inv-grid"></div>
+        </div>
+      </div>
     </div>
   </section>
 
