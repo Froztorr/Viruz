@@ -381,15 +381,18 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   padding:8px 10px;background:var(--panel);border:1px solid var(--line);margin-bottom:10px}
 .tree-pts{font-size:20px;color:var(--muted)}
 .tree-pts b{color:var(--gold);font-size:17px}
-.tree-stats{display:flex;gap:9px;flex-wrap:wrap;flex:1}
-.ts-stat{font-size:16px;color:var(--muted);display:flex;align-items:center;gap:3px}
-.ts-stat i{font-style:normal}
-.ts-stat b{color:var(--cyan);font-weight:400}
 
 #tree-canvas{position:relative;width:100%;aspect-ratio:3/4;max-height:66vh;
-  background:radial-gradient(ellipse at 50% 60%,rgba(20,26,48,.9),rgba(6,8,18,.98));
+  background:#06080f;
   border:1px solid var(--line2);overflow:hidden}
-.tree-lines{position:absolute;inset:0;width:100%;height:100%}
+/* Cathedral stained-glass window art, themed per attribute/mutation —
+   see EQ_SOCKET_LAYOUT-style comment at renderTree()'s bgKey. A dark
+   scrim sits between the art and the node graph so small node icons
+   and lines stay legible against a busy, richly colored window. */
+.tree-canvas-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+.tree-canvas-scrim{position:absolute;inset:0;z-index:0;
+  background:linear-gradient(180deg,rgba(6,8,18,.55) 0%,rgba(6,8,18,.68) 50%,rgba(6,8,18,.85) 100%)}
+.tree-lines{position:absolute;inset:0;width:100%;height:100%;z-index:1}
 .tree-line{stroke:rgba(255,255,255,.12);stroke-width:.8;vector-effect:non-scaling-stroke}
 .tree-line.on{stroke:var(--tree-color,#3ddc84);stroke-width:2.4;
   filter:drop-shadow(0 0 4px var(--tree-color,#3ddc84))}
@@ -2657,7 +2660,6 @@ img.bu-sprite.is-art2{--raster-mult:2}
         <div class="pd-tree-title">🌳 <span id="tree-name">—</span> <i id="tree-thai" class="muted"></i></div>
         <div class="tree-bar">
           <span class="tree-pts">แต้มเติบโต: <b id="tree-pts">0</b></span>
-          <div id="tree-stats" class="tree-stats"></div>
         </div>
         <div id="tree-canvas"></div>
         <p class="muted" style="margin-top:10px;font-size:13px">
