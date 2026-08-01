@@ -220,8 +220,6 @@ async function boot() {
   wireClickRipple();
   wireDoubleTapGuard();
   wireDayNightTheme();
-  wireMacWindowChrome();
-  wireWindowDrag();
 }
 
 async function save() {
@@ -269,94 +267,259 @@ async function claimStarter() {
   log(`เริ่มต้นด้วย ${pet.name} [${a.name}] · ${TUNING.startBitz} Bitz`, 'win');
 }
 
-// ═══════════════ SCREENS ═══════════════
-const SCREENS = ['intro','map','home','clinic','shop','foodshop','world','battle','arena','raid','safe','care','hack','steal','inventory'];
-
-// Rough navigation depth so a transition can tell "going deeper" from
-// "coming back" and slide the right direction. Screens not listed count
-// as depth 1 (same level as map). Battle/hack/steal are treated as
-// full-screen takeovers (depth 9) so they always feel like an overlay
-// sliding UP rather than sideways.
-const SCREEN_DEPTH = {
-  intro:0, map:1,
-  home:2, world:2, care:2, raid:2, shop:2,
-  clinic:3, safe:3, tree:3,
-  arena:4,
-  battle:9, hack:9, steal:9,
+// ═══════════════ SCREENS AS FLOATING WINDOWS ═══════════════
+// Every screen (plus the drawer) is an independent Mac-style window —
+// several can be open (or minimized) at once, each with its own
+// traffic lights, each draggable/closable/minimizable/maximizable.
+// showScreen(id) (called from ~50 places across the file, mostly via
+// data-goto buttons) is now a thin wrapper around openWindow(id): it
+// no longer hides everything else, it opens-or-focuses one window on
+// top of whatever else is already open.
+const WIN_TITLES = {
+  map:'Map', home:'Home Base', clinic:'Clinic', shop:'Shop',
+  foodshop:'Food Shop', world:'World Map', battle:'Battle', arena:'Arena',
+  raid:'Raid', safe:'Safe Spot', care:'Care', hack:'Hack Terminal',
+  steal:'Steal', inventory:'Inventory', drawer:'Menu',
 };
 
 let currentScreenId = null;
-let screenTransitioning = false;
+let windowStack = [];              // z-order, back to front
+let minimizedWindows = new Set();
 
-function showScreen(id) {
+function winElId(id) { return id === 'drawer' ? 'drawer-panel' : 'screen-' + id; }
+function windowEl(id) { return $(winElId(id)); }
+
+// Kept well below the persistent chrome's own z-index (drawer knob,
+// dock, topbar, menu bar — see index.html) so open windows can never
+// cover the controls used to reach/close/restore them.
+function restackWindowsZ() {
+  windowStack.forEach((id, i) => {
+    const node = windowEl(id);
+    if (node) node.style.zIndex = 10 + i;
+  });
+}
+
+// Lazily wraps a .screen's existing content in a .win-body and
+// prepends a generated .win-titlebar (dots + drag handle) the first
+// time it's ever opened — cheaper and less error-prone than hand-
+// authoring the same chrome into 14 separate HTML sections. The
+// drawer already carries its own hand-authored head in index.html
+// (wired separately in wireDrawer()), so it's skipped here.
+function ensureWindowChrome(id) {
+  const container = windowEl(id);
+  if (!container || id === 'drawer' || container.dataset.chromed) return container;
+  container.dataset.chromed = '1';
+
+  const bar = el('div', 'win-titlebar');
+  bar.innerHTML = `
+    <div class="win-traffic-lights">
+      <button class="win-dot win-dot-red" data-act="close" aria-label="Close"></button>
+      <button class="win-dot win-dot-yellow" data-act="min" aria-label="Minimize"></button>
+      <button class="win-dot win-dot-green" data-act="max" aria-label="Maximize"></button>
+    </div>
+    <div class="win-title">${WIN_TITLES[id] || id}</div>`;
+  const body = el('div', 'win-body');
+  while (container.firstChild) body.appendChild(container.firstChild);
+  container.appendChild(bar);
+  container.appendChild(body);
+
+  bar.querySelector('[data-act="close"]').onclick = (e) => { e.stopPropagation(); closeWindow(id); };
+  bar.querySelector('[data-act="min"]').onclick = (e) => { e.stopPropagation(); minimizeWindow(id); };
+  bar.querySelector('[data-act="max"]').onclick = (e) => { e.stopPropagation(); toggleMaximizeWindow(id); };
+  makeWindowDraggable(container, bar.querySelector('.win-title'));
+  container.addEventListener('pointerdown', () => focusWindow(id));
+  return container;
+}
+
+// Runs whichever render/side-effect a given screen needs on open —
+// the exact per-screen dispatch the old showScreen() did inline.
+function runScreenRenderer(id) {
+  const vid = $('bg-video');
+  if (vid) { if (id === 'map') vid.play().catch(() => {}); else vid.pause(); }
+  if (id === 'home')   renderHome();
+  if (id === 'clinic') renderClinic();
+  if (id === 'shop')   renderShop();
+  if (id === 'foodshop') renderFoodShop();
+  if (id === 'world')  renderWorld();
+  if (id === 'safe')   renderSafeSpot();
+  if (id === 'care')   renderCare();
+  if (id === 'inventory') renderInventory();
+  if (id === 'raid')   renderRaidList();
+  if (id === 'map')    renderFeed();
+  if (id === 'battle') playArenaEntrance();
+  if (id === 'drawer') {
+    setText('drawer-bitz', G.bitz.toLocaleString());
+    setText('drawer-power', teamPower(activeTeam()).toLocaleString());
+    renderFeed();
+  }
+}
+
+// Brings an already-open window to the front without re-rendering it
+// — used when tapping anywhere inside a window that isn't currently
+// focused (see ensureWindowChrome's pointerdown listener).
+function focusWindow(id) {
+  if (!windowStack.includes(id) || minimizedWindows.has(id)) return;
+  windowStack = windowStack.filter(x => x !== id);
+  windowStack.push(id);
+  restackWindowsZ();
+  currentScreenId = id;
+  $('app').dataset.screen = id;
+}
+
+function openWindow(id) {
+  if (id === 'intro') {
+    // Pre-game screen — no game state exists yet, so it stays outside
+    // the window system entirely (plain show, per its own #screen-intro
+    // CSS override).
+    const introEl = $('screen-intro');
+    if (introEl) introEl.classList.add('on');
+    currentScreenId = 'intro';
+    return;
+  }
   closeCareGame();
   closePetDetail();
   if (id !== 'care') stopCareWander();
-  if (screenTransitioning || id === currentScreenId) {
-    // Still allow a hard switch if nothing is currently shown (boot).
-    if (currentScreenId != null) return;
+
+  // Already open, already frontmost, not minimized: no-op, matching
+  // the old "re-showing the current screen does nothing" behavior.
+  if (id === currentScreenId && windowStack.includes(id) && !minimizedWindows.has(id)) return;
+
+  const container = ensureWindowChrome(id);
+  if (!container) return;
+
+  const isNewOpen = !windowStack.includes(id);
+  minimizedWindows.delete(id);
+  container.classList.add('on');
+  windowStack = windowStack.filter(x => x !== id);
+  windowStack.push(id);
+  if (isNewOpen) {
+    container.classList.remove('win-pop-in'); void container.offsetWidth;
+    container.classList.add('win-pop-in');
   }
-  const fromId = currentScreenId;
-  const fromEl = fromId ? $('screen-' + fromId) : null;
-  const toEl = $('screen-' + id);
-  if (!toEl) return;
+  restackWindowsZ();
+  renderWinDock();
 
-  const fromDepth = SCREEN_DEPTH[fromId] ?? 1;
-  const toDepth = SCREEN_DEPTH[id] ?? 1;
-  const goingDeeper = toDepth >= fromDepth;
+  currentScreenId = id;
+  // Persist "where the player is" for LOCATION screens only — never a
+  // transient state like battle/hack/steal. On next load, boot()
+  // restores here instead of always dropping the player back at the
+  // city map, so warping to Hell and closing the app keeps you in
+  // Hell until you travel back yourself.
+  const PERSISTABLE = ['map','world','safe','home','clinic','shop','foodshop','care','raid'];
+  if (PERSISTABLE.includes(id)) { G.lastScreen = id; save(); }
+  $('app').dataset.screen = id;
 
-  const finishSwitch = () => {
-    SCREENS.forEach(s => {
-      const e = $('screen-' + s);
-      if (e) e.classList.toggle('on', s === id);
-    });
-    toEl.classList.remove('nav-in-l','nav-in-r','nav-in-up');
-    toEl.classList.add(id === 'battle' || id === 'hack' || id === 'steal' ? 'nav-in-up'
-                        : goingDeeper ? 'nav-in-r' : 'nav-in-l');
-    // Let the browser register the starting position before animating.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      toEl.classList.add('nav-settle');
-      setTimeout(() => {
-        toEl.classList.remove('nav-in-l','nav-in-r','nav-in-up','nav-settle');
-        screenTransitioning = false;
-      }, 260);
-    }));
-
-    currentScreenId = id;
-    // Persist "where the player is" for LOCATION screens only — never
-    // a transient state like battle/hack/steal. On next load, boot()
-    // restores here instead of always dropping the player back at the
-    // city map, so warping to Hell and closing the app keeps you in
-    // Hell until you travel back yourself.
-    const PERSISTABLE = ['map','world','safe','home','clinic','shop','foodshop','care','raid'];
-    if (PERSISTABLE.includes(id)) { G.lastScreen = id; save(); }
-    const vid = $('bg-video');
-    if (vid) { if (id === 'map') vid.play().catch(()=>{}); else vid.pause(); }
-    $('app').dataset.screen = id;
-    if (id === 'home')   renderHome();
-    if (id === 'clinic') renderClinic();
-    if (id === 'shop')   renderShop();
-    if (id === 'foodshop') renderFoodShop();
-    if (id === 'world')  renderWorld();
-    if (id === 'safe')   renderSafeSpot();
-    if (id === 'care')   renderCare();
-    if (id === 'inventory') renderInventory();
-    if (id === 'raid')   renderRaidList();
-    if (id === 'map')    renderFeed();
-    if (id === 'battle') playArenaEntrance();
-  };
-
-  if (!fromEl || fromEl === toEl) { finishSwitch(); return; }
-
-  screenTransitioning = true;
-  fromEl.classList.add(id === 'battle' || id === 'hack' || id === 'steal' ? 'nav-out-up'
-                        : goingDeeper ? 'nav-out-l' : 'nav-out-r');
-  setTimeout(() => {
-    fromEl.classList.remove('on','nav-out-l','nav-out-r','nav-out-up');
-    finishSwitch();
-  }, 170);
-  return;
+  runScreenRenderer(id);
 }
+
+function closeWindow(id) {
+  const container = windowEl(id);
+  windowStack = windowStack.filter(x => x !== id);
+  minimizedWindows.delete(id);
+  if (container) container.classList.remove('on', 'maximized');
+  renderWinDock();
+  if (!windowStack.length) { openWindow('map'); return; }
+  const front = windowStack[windowStack.length - 1];
+  restackWindowsZ();
+  currentScreenId = front;
+  $('app').dataset.screen = front;
+}
+
+function minimizeWindow(id) {
+  const container = windowEl(id);
+  if (!container) return;
+  minimizedWindows.add(id);
+  container.classList.remove('on');
+  renderWinDock();
+  const nextVisible = [...windowStack].reverse().find(x => x !== id && !minimizedWindows.has(x));
+  if (nextVisible) { currentScreenId = nextVisible; $('app').dataset.screen = nextVisible; }
+}
+
+function toggleMaximizeWindow(id) {
+  const container = windowEl(id);
+  if (!container) return;
+  const wasMax = container.classList.contains('maximized');
+  container.classList.toggle('maximized', !wasMax);
+  // Dragging freezes explicit left/top/width/height inline — maximizing
+  // has to clear those so the .maximized CSS rule (inset:0) can take
+  // over, otherwise un-maximizing later would restore the stale
+  // pre-drag box instead of a fresh windowed layout.
+  if (!wasMax) {
+    container.style.left = ''; container.style.top = '';
+    container.style.width = ''; container.style.height = '';
+    container.style.right = ''; container.style.bottom = '';
+  }
+}
+
+function renderWinDock() {
+  const dock = $('win-dock');
+  if (!dock) return;
+  dock.innerHTML = '';
+  minimizedWindows.forEach(id => {
+    const chip = el('button', 'win-dock-chip');
+    chip.innerHTML = `<span class="wdc-dot"></span>${WIN_TITLES[id] || id}`;
+    chip.onclick = () => openWindow(id);
+    dock.appendChild(chip);
+  });
+}
+
+// ── DRAGGABLE WINDOW (generic) ──
+// Used for every open window's title-bar drag handle. Freezes the
+// window's CURRENT rendered box to explicit left/top/width/height (and
+// cancels any right/bottom/margin a stylesheet's `inset` shorthand was
+// still applying) the moment a drag starts — dragging only `left`
+// while a stylesheet `right` was still set would resize the window
+// instead of moving it. The position/offsetParent math is the same
+// whether the window is position:absolute (every .screen, relative to
+// #app) or position:fixed (the drawer, relative to the real viewport).
+function makeWindowDraggable(winNode, handleEl) {
+  const MARGIN = 50;
+  let dragging = false;
+  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  let dxMin = 0, dxMax = 0, dyMin = 0, dyMax = 0;
+
+  handleEl.addEventListener('pointerdown', (e) => {
+    if (winNode.classList.contains('maximized')) return;
+    dragging = true;
+    winNode.classList.add('dragging');
+    try { handleEl.setPointerCapture(e.pointerId); } catch (err) {}
+
+    const r = winNode.getBoundingClientRect();
+    const isFixed = getComputedStyle(winNode).position === 'fixed';
+    const parentRect = isFixed ? { left: 0, top: 0 } : winNode.offsetParent.getBoundingClientRect();
+    const baseLeft = r.left - parentRect.left;
+    const baseTop = r.top - parentRect.top;
+
+    winNode.style.width = r.width + 'px';
+    winNode.style.height = r.height + 'px';
+    winNode.style.left = baseLeft + 'px';
+    winNode.style.top = baseTop + 'px';
+    winNode.style.right = 'auto';
+    winNode.style.bottom = 'auto';
+    winNode.style.margin = '0';
+
+    startX = e.clientX; startY = e.clientY;
+    startLeft = baseLeft; startTop = baseTop;
+
+    const vw = window.innerWidth, vh = window.innerHeight;
+    dxMin = MARGIN - r.right;
+    dxMax = vw - MARGIN - r.left;
+    dyMin = -r.top;
+    dyMax = Math.max(dyMin, vh - 60 - r.top);
+  });
+  handleEl.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = Math.min(dxMax, Math.max(dxMin, e.clientX - startX));
+    const dy = Math.min(dyMax, Math.max(dyMin, e.clientY - startY));
+    winNode.style.left = (startLeft + dx) + 'px';
+    winNode.style.top = (startTop + dy) + 'px';
+  });
+  const endDrag = () => { dragging = false; winNode.classList.remove('dragging'); };
+  handleEl.addEventListener('pointerup', endDrag);
+  handleEl.addEventListener('pointercancel', endDrag);
+}
+
+function showScreen(id) { openWindow(id); }
 
 // ── GLOBAL CLICK RIPPLE ──
 // Event-delegated so it covers every current and future tappable
@@ -426,106 +589,28 @@ function wireDayNightTheme() {
   setInterval(applyDayNightTheme, 60000);
 }
 
-// ── macOS WINDOW CHROME ──
-// Red/yellow/green traffic-light buttons in #mac-titlebar (index.html).
-// Real macOS semantics adapted to a screen-based (not window-based) app:
-// red closes the current screen back to the map (there's no separate
-// window to actually destroy), yellow "minimizes" into the existing
-// side drawer instead of inventing a new mechanic, green is the real
-// Fullscreen API — an actual maximize/fullscreen toggle exists here,
-// unlike the other two.
-function wireMacWindowChrome() {
-  const redBtn = $('mac-btn-red');
-  const yellowBtn = $('mac-btn-yellow');
-  const greenBtn = $('mac-btn-green');
-  if (redBtn) redBtn.onclick = () => {
-    if (currentScreenId && currentScreenId !== 'map' && currentScreenId !== 'intro') showScreen('map');
-  };
-  if (yellowBtn) yellowBtn.onclick = () => toggleDrawer();
-  if (greenBtn) greenBtn.onclick = () => {
-    if (!document.fullscreenElement) {
-      (document.documentElement.requestFullscreen ? document.documentElement.requestFullscreen() : Promise.resolve()).catch(() => {});
-    } else {
-      (document.exitFullscreen ? document.exitFullscreen() : Promise.resolve()).catch(() => {});
-    }
-  };
-}
-
-// ── DRAGGABLE WINDOW ──
-// Grab #mac-drag-handle (the title text, deliberately NOT the whole
-// bar so the traffic-light buttons keep working) to reposition the
-// whole titlebar+topbar+app unit, like moving a real Mac window —
-// only outside actual Fullscreen mode, where there's nowhere to move
-// it anyway. Bounds are computed once at pointerdown from the
-// titlebar's rect at that moment (its CURRENT, possibly-already-
-// dragged position), so they stay correct without re-measuring on
-// every move: the drag delta is clamped to whatever range keeps at
-// least a graspable sliver of the titlebar on screen.
-function wireWindowDrag() {
-  const win = $('mac-window');
-  const handle = $('mac-drag-handle');
-  const bar = $('mac-titlebar');
-  if (!win || !handle || !bar) return;
-  const MARGIN = 50;
-  let dragging = false;
-  let startX = 0, startY = 0, startLeft = 0, startTop = 0;
-  let dxMin = 0, dxMax = 0, dyMin = 0, dyMax = 0;
-
-  handle.addEventListener('pointerdown', (e) => {
-    if (document.fullscreenElement) return;
-    dragging = true;
-    win.classList.add('dragging');
-    try { handle.setPointerCapture(e.pointerId); } catch (err) {}
-    startX = e.clientX; startY = e.clientY;
-    startLeft = parseFloat(win.style.left) || 0;
-    startTop = parseFloat(win.style.top) || 0;
-    const r = bar.getBoundingClientRect();
-    const vw = window.innerWidth, vh = window.innerHeight;
-    dxMin = MARGIN - r.right;
-    dxMax = vw - MARGIN - r.left;
-    dyMin = -r.top;
-    dyMax = Math.max(dyMin, vh - 100 - r.top);
-  });
-  handle.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    const dx = Math.min(dxMax, Math.max(dxMin, e.clientX - startX));
-    const dy = Math.min(dyMax, Math.max(dyMin, e.clientY - startY));
-    win.style.left = (startLeft + dx) + 'px';
-    win.style.top = (startTop + dy) + 'px';
-  });
-  const endDrag = () => { dragging = false; win.classList.remove('dragging'); };
-  handle.addEventListener('pointerup', endDrag);
-  handle.addEventListener('pointercancel', endDrag);
-
-  // Entering real fullscreen: snap back to 0,0 so it isn't left
-  // offset (or worse, out of the clamp bounds computed for a
-  // non-fullscreen viewport) once the window has nowhere else to go.
-  document.addEventListener('fullscreenchange', () => {
-    if (document.fullscreenElement) {
-      win.style.left = '0px';
-      win.style.top = '0px';
-    }
-  });
-}
-
-// ── PULL-OUT DRAWER ──
-function openDrawer() {
-  document.body.classList.add('drawer-open');
-  setText('drawer-bitz', G.bitz.toLocaleString());
-  setText('drawer-power', teamPower(activeTeam()).toLocaleString());
-  renderFeed();
-}
-function closeDrawer() { document.body.classList.remove('drawer-open'); }
+// ── DRAWER, AS A WINDOW ──
+// The drawer's head is hand-authored in index.html (not generated by
+// ensureWindowChrome — see the comment there) since it already needed
+// its own distinct content, but it's wired through the exact same
+// openWindow()/closeWindow()/minimizeWindow()/toggleMaximizeWindow()/
+// makeWindowDraggable() as every .screen, so it behaves identically:
+// draggable, closable, minimizable (into #win-dock), maximizable.
 function toggleDrawer() {
-  document.body.classList.contains('drawer-open') ? closeDrawer() : openDrawer();
+  if (windowStack.includes('drawer') && !minimizedWindows.has('drawer')) closeWindow('drawer');
+  else openWindow('drawer');
 }
 function wireDrawer() {
   const knob = $('drawer-knob');
-  const backdrop = $('drawer-backdrop');
-  const closeBtn = $('drawer-close');
+  const panel = $('drawer-panel');
   if (knob) knob.onclick = toggleDrawer;
-  if (backdrop) backdrop.onclick = closeDrawer;
-  if (closeBtn) closeBtn.onclick = closeDrawer;
+  if (panel) {
+    panel.querySelector('[data-act="close"]').onclick = (e) => { e.stopPropagation(); closeWindow('drawer'); };
+    panel.querySelector('[data-act="min"]').onclick = (e) => { e.stopPropagation(); minimizeWindow('drawer'); };
+    panel.querySelector('[data-act="max"]').onclick = (e) => { e.stopPropagation(); toggleMaximizeWindow('drawer'); };
+    makeWindowDraggable(panel, panel.querySelector('.proc-title'));
+    panel.addEventListener('pointerdown', () => focusWindow('drawer'));
+  }
 
   // Same convention for the generic modal — click the dark backdrop
   // (not the content box itself) to dismiss it.

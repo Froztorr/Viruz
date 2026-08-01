@@ -176,14 +176,15 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
    body::before atmospheric background below exists specifically to
    fill the resulting side margins, so this was always the intended
    shape — 1100px was just too generous a cap. */
+/* Each .screen inside is now its own position:absolute floating
+   window (see the SCREENS section further down), so #app itself no
+   longer needs to be draggable as a whole unit — deliberately plain
+   position:relative (just an anchor for its absolutely-positioned
+   .screen children), not a transformed/offset element, so it never
+   becomes the containing block for any position:fixed descendant
+   (the map screen's video layer, the evolution overlay, etc. all
+   expect the real viewport). */
 #app{position:relative;min-height:100vh;max-width:480px;margin:0 auto}
-
-/* Draggable "window" wrapper — see wireWindowDrag() (game.js). Plain
-   position:relative + left/top (not transform) so it never becomes the
-   containing block for the position:fixed descendants living inside
-   #app (map screen, drawer, evolution overlay, ...). Only active
-   (grabbable) outside real Fullscreen mode. */
-#mac-window{position:relative;left:0;top:0}
 
 /* ── macOS-STYLE TITLE BAR ──
    Sticky bar above #topbar; both stack (topbar's `top` offset equals
@@ -193,26 +194,48 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
    backdrop (body::before) shows around it — on a phone (the common
    case, narrower than 480px) they just clip the two top screen
    corners, which still reads fine as an iOS-style rounded notch. */
+/* Now a static system MENU BAR, not a draggable window itself — real
+   macOS menu bars don't carry traffic lights either; those belong to
+   individual document windows, which is what every .screen (plus the
+   drawer) now is — see .win-titlebar below and wireWindowManager() in
+   game.js. */
 #mac-titlebar{
-  position:sticky;top:0;z-index:80;max-width:480px;margin:0 auto;
+  position:sticky;top:0;z-index:500;max-width:480px;margin:0 auto;
   display:flex;align-items:center;justify-content:center;
-  height:34px;background:var(--mac-titlebar);
-  border-bottom:1px solid var(--line2);border-radius:14px 14px 0 0;
+  height:28px;background:var(--mac-titlebar);
+  border-bottom:1px solid var(--line2);
 }
-.mac-traffic-lights{position:absolute;left:12px;display:flex;gap:8px}
-.mac-dot{width:12px;height:12px;border-radius:50%;padding:0;
-  box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);flex:0 0 auto}
-.mac-dot:active{filter:brightness(.82)}
-.mac-dot-red{background:var(--mac-red)}
-.mac-dot-yellow{background:var(--mac-yellow)}
-.mac-dot-green{background:var(--mac-green)}
 .mac-titlebar-title{font-family:var(--pixel);font-size:10px;color:var(--txt);
   opacity:.7;letter-spacing:.5px}
-/* Drag handle — the "middle top of the tab" per spec, not the whole
-   bar, so it never fights the traffic-light buttons' own clicks. */
-#mac-drag-handle{cursor:grab;padding:4px 14px;user-select:none;-webkit-user-select:none;touch-action:none}
-#mac-drag-handle:active{cursor:grabbing}
-#mac-window.dragging{user-select:none}
+
+/* ── PER-WINDOW CHROME ──
+   Every open .screen (and the drawer) gets one of these, injected by
+   ensureWindowChrome()/the drawer's own markup — a real draggable,
+   closable, minimizable, maximizable Mac window. Shared .win-dot-*
+   colors intentionally reuse the --mac-red/yellow/green tokens (Apple's
+   own traffic-light colors), matching the (now-undecorated) menu bar. */
+.win-titlebar{
+  position:relative;flex:0 0 auto;height:32px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--mac-titlebar);border-bottom:1px solid var(--line2);
+  border-radius:11px 11px 0 0;
+}
+.win-traffic-lights{position:absolute;left:10px;display:flex;gap:8px;z-index:1}
+.win-dot{width:12px;height:12px;border-radius:50%;padding:0;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);flex:0 0 auto}
+.win-dot:active{filter:brightness(.82)}
+.win-dot-red{background:var(--mac-red)}
+.win-dot-yellow{background:var(--mac-yellow)}
+.win-dot-green{background:var(--mac-green)}
+.win-title{font-family:var(--pixel);font-size:11px;color:var(--txt);
+  opacity:.75;letter-spacing:.5px;cursor:grab;user-select:none;
+  -webkit-user-select:none;touch-action:none;padding:4px 16px}
+.win-title:active{cursor:grabbing}
+/* position:relative so any position:absolute;inset:0 content inside
+   (the map screen's video layer, in particular) fills just the body
+   area below the title bar, not the whole (unpositioned-parent-
+   skipping) window box. */
+.win-body{position:relative;flex:1;overflow-y:auto;padding:12px;-webkit-overflow-scrolling:touch}
 
 /* ── HUD ── */
 #topbar{
@@ -223,6 +246,20 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   min-height:28px;
 }
 #topbar.hidden{display:none}
+
+/* ── MINIMIZED-WINDOW DOCK ── */
+#win-dock{
+  position:sticky;top:74px;z-index:65;
+  max-width:480px;margin:0 auto;
+  display:flex;gap:6px;overflow-x:auto;padding:0;
+  background:var(--topbar-bg);border-bottom:1px solid var(--line);
+}
+#win-dock:empty{display:none;border:none}
+.win-dock-chip{flex:0 0 auto;display:flex;align-items:center;gap:5px;
+  padding:5px 10px;font-family:var(--pixel);font-size:11px;color:var(--txt);
+  border-right:1px solid var(--line)}
+.win-dock-chip .wdc-dot{width:8px;height:8px;border-radius:50%;background:var(--mac-yellow);flex:0 0 auto}
+
 .topbar-left{display:flex;align-items:center;gap:8px;min-width:0}
 #tb-clock{font-family:var(--pixel);font-size:13px;color:var(--cyan);flex:0 0 auto}
 .tb-activity{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gold);
@@ -707,30 +744,27 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .ts-stats{font-size:16px;color:var(--cyan);margin-top:2px}
 
 
-/* ── SCREENS ── */
-.screen{display:none;padding:12px}
-.screen.on{display:block}
-
-/* ── DIRECTIONAL SCREEN TRANSITIONS ──
-   Outgoing screen slides/fades away, incoming screen starts offset and
-   settles to place. Direction depends on navigation depth: deeper
-   screens slide in from the right, going back slides in from the left,
-   full-screen takeovers (battle/hack) rise up from below. */
-.screen.nav-out-l{display:block;animation:navOutL .17s ease forwards}
-.screen.nav-out-r{display:block;animation:navOutR .17s ease forwards}
-.screen.nav-out-up{display:block;animation:navOutUp .17s ease forwards}
-@keyframes navOutL{to{opacity:0;transform:translateX(-26px)}}
-@keyframes navOutR{to{opacity:0;transform:translateX(26px)}}
-@keyframes navOutUp{to{opacity:0;transform:translateY(-18px)}}
-
-.screen.nav-in-r{opacity:0;transform:translateX(34px)}
-.screen.nav-in-l{opacity:0;transform:translateX(-34px)}
-.screen.nav-in-up{opacity:0;transform:translateY(26px)}
-.screen.nav-settle{
-  opacity:1;transform:none;
-  transition:opacity .26s cubic-bezier(.2,.8,.3,1),
-             transform .26s cubic-bezier(.2,.8,.3,1);
+/* ── SCREENS AS FLOATING WINDOWS ──
+   Each .screen is now an independent Mac-style window (see
+   ensureWindowChrome()/openWindow() in game.js) rather than a single
+   full-bleed panel swapped for another. Several can be open (or
+   minimized) at once; "windowed" (the default open state) leaves a
+   small margin so the desktop/whatever's behind peeks through and the
+   window can be dragged; "maximized" fills #app edge to edge, same
+   footprint the old single-screen model always used. z-index is set
+   inline per-window from its position in the stack (restackZ()). */
+.screen{
+  display:none;flex-direction:column;
+  position:absolute;inset:26px 6px 6px 6px;
+  background:var(--panel-solid);border:1px solid var(--line2);
+  border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.22);
+  overflow:hidden;
 }
+:root[data-theme="dark"] .screen{box-shadow:0 14px 40px rgba(0,0,0,.5)}
+.screen.on{display:flex}
+.screen.maximized{inset:0;border-radius:0;border:none}
+.screen.win-pop-in{animation:winPopIn .18s cubic-bezier(.2,.8,.3,1)}
+@keyframes winPopIn{0%{opacity:0;transform:scale(.97)}100%{opacity:1;transform:scale(1)}}
 
 .screen-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .screen-head h2{font-family:var(--pixel);font-size:28px;letter-spacing:1px;color:var(--cyan)}
@@ -818,64 +852,68 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
              0 3px 0 rgba(80,45,0,.6),0 0 24px rgba(255,200,60,.55)}
 
 /* ── MAP ── */
-/* Fullscreen portrait map — the whole viewport, not a boxed panel.
-   The video is genuinely portrait (540x960) so it fills the screen
-   with object-fit:cover and no letterboxing, matching the reference
-   screenshot's framing exactly (that's also why the node % coords line
-   up correctly now — the old landscape aspect-ratio was squashing/
-   cropping a portrait video into a wide box, which threw every
-   measured coordinate off). */
-#screen-map{padding:0;position:fixed;inset:0;z-index:1}
+/* Map is a normal floating .screen window now (position/inset/
+   maximize all come from the generic .screen rules) rather than
+   permanently pinned to the true fullscreen viewport — object-fit:cover
+   on the video re-crops to whatever box it's actually given, so the
+   pin % coordinates (measured against a portrait frame) still line up
+   at the near-fullscreen "windowed" default or fully maximized; only
+   an extreme drag/resize would visibly skew them. */
+#screen-map .win-body{padding:0}
 #map-stage{position:absolute;inset:0;overflow:hidden;background:#05060f}
 #bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 #map-scrim{position:absolute;inset:0;
   background:radial-gradient(ellipse at 50% 55%,transparent 35%,rgba(5,6,15,.5) 100%)}
 #map-nodes{position:absolute;inset:0;z-index:2}
 
-/* ── PULL-OUT DRAWER ──
-   A knob on the right-middle edge. Tapping it slides a menu tab out
-   OVER the current screen (not a screen change, not a fullscreen
-   expansion) — sized to content, not the whole viewport. */
+/* ── KNOB + DRAWER-AS-WINDOW ──
+   The knob opens the drawer as a real floating window now (same
+   openWindow()/closeWindow()/minimizeWindow()/toggleMaximize() as
+   every .screen — see wireWindowManager() in game.js), not a slide-
+   from-the-edge panel, so its own head carries the same traffic-light
+   trio as everything else. */
 #drawer-knob{
-  position:fixed;right:0;top:50%;transform:translateY(-50%);
-  z-index:50;width:26px;height:64px;
+  position:fixed;right:6px;top:50%;transform:translateY(-50%);
+  /* Above every open window's z-index range (10-30ish, see
+     restackWindowsZ() in game.js) so it's always reachable — like a
+     real Dock icon staying clickable under full-screen windows. */
+  z-index:60;width:36px;height:36px;
   background:var(--knob-bg);
-  border:1px solid var(--line2);border-right:none;border-radius:10px 0 0 10px;
-  box-shadow:-3px 0 12px rgba(0,0,0,.18);
+  border:1px solid var(--line2);border-radius:9px;
+  box-shadow:0 3px 12px rgba(0,0,0,.18);
   display:flex;align-items:center;justify-content:center;
   color:var(--cyan);font-size:16px;transition:.2s;
 }
-:root[data-theme="dark"] #drawer-knob{box-shadow:-3px 0 12px rgba(0,0,0,.4)}
+:root[data-theme="dark"] #drawer-knob{box-shadow:0 3px 12px rgba(0,0,0,.4)}
 #drawer-knob:active{background:var(--knob-bg-active)}
-/* Knob is now global — visible on every screen (town, dungeon,
-   battle, everywhere) rather than map-only. Hidden only on the intro
-   screen since there's no game state to show yet. */
+/* Knob is global — visible on every screen (town, dungeon, battle,
+   everywhere), hidden only on the intro screen since there's no game
+   state to show yet. */
 #drawer-knob{display:flex}
 #app[data-screen="intro"] #drawer-knob{display:none}
-.knob-arrow{transition:transform .25s ease}
-#drawer-panel.open ~ #drawer-knob .knob-arrow,
-body.drawer-open .knob-arrow{transform:rotate(180deg)}
-
-#drawer-backdrop{position:fixed;inset:0;z-index:48;
-  background:rgba(4,5,12,.5);opacity:0;pointer-events:none;transition:opacity .22s ease}
-body.drawer-open #drawer-backdrop{opacity:1;pointer-events:auto}
 
 #drawer-panel{
-  position:fixed;top:0;right:0;bottom:0;z-index:49;
-  width:78vw;max-width:340px;
-  background:var(--drawer-panel-bg);
-  border-left:1px solid var(--line2);
-  box-shadow:-8px 0 30px rgba(0,0,0,.25);
-  transform:translateX(100%);transition:transform .28s cubic-bezier(.2,.8,.3,1);
-  display:flex;flex-direction:column;
+  display:none;flex-direction:column;
+  position:fixed;inset:60px 8px 8px 8px;max-width:420px;margin:0 auto;
+  background:var(--drawer-panel-bg);border:1px solid var(--line2);
+  border-radius:12px;box-shadow:0 14px 40px rgba(0,0,0,.25);
+  /* Overridden by restackWindowsZ() (game.js) the moment it's opened —
+     it's a real member of windowStack like any .screen, same 10-30ish
+     range. This is just the harmless pre-open resting value. */
+  z-index:10;overflow:hidden;
 }
-:root[data-theme="dark"] #drawer-panel{box-shadow:-8px 0 30px rgba(0,0,0,.5)}
-body.drawer-open #drawer-panel{transform:translateX(0)}
-.drawer-head{display:flex;align-items:center;justify-content:space-between;
-  padding:14px 14px 10px;border-bottom:1px solid var(--line)}
-.drawer-head .proc-title{font-family:var(--pixel);font-size:16px;color:var(--cyan)}
-#drawer-close{background:none;border:none;color:var(--muted);font-size:18px;padding:4px 8px}
-.drawer-body{flex:1;overflow-y:auto;padding:14px}
+:root[data-theme="dark"] #drawer-panel{box-shadow:0 14px 40px rgba(0,0,0,.5)}
+#drawer-panel.on{display:flex}
+#drawer-panel.maximized{inset:0;border-radius:0;border:none;max-width:none}
+#drawer-panel.win-pop-in{animation:winPopIn .18s cubic-bezier(.2,.8,.3,1)}
+.drawer-head{position:relative;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  height:32px;padding:0;border-bottom:1px solid var(--line2);
+  background:var(--mac-titlebar);border-radius:11px 11px 0 0}
+#drawer-panel.maximized .drawer-head{border-radius:0}
+.drawer-head .proc-title{font-family:var(--pixel);font-size:11px;color:var(--txt);
+  opacity:.75;letter-spacing:.5px;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none}
+.drawer-head .proc-title:active{cursor:grabbing}
+.drawer-body{flex:1;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
 .drawer-hud{display:flex;gap:8px;margin-bottom:14px}
 .drawer-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
 .drawer-tab{display:flex;flex-direction:column;align-items:center;gap:4px;
@@ -1461,7 +1499,7 @@ body.care-game-open{overflow:hidden}
   100%{opacity:0;transform:translate(-50%,-115%) scale(.85)}}
 
 /* ── BATTLE ── */
-#screen-battle{padding:0}
+#screen-battle .win-body{padding:0}
 #battle-top{display:flex;align-items:center;gap:10px;padding:10px 12px;
   border-bottom:1px solid var(--line);background:var(--panel)}
 #battle-title{font-family:var(--pixel);font-size:22px;color:var(--cyan)}
@@ -2131,28 +2169,13 @@ img.bu-sprite.is-art2{--raster-mult:2}
 </style>
 </head>
 <body>
-<!-- ═══ macOS-STYLE WINDOW TITLE BAR ═══
-     Red/yellow/green traffic lights at the top-left, like the whole
-     game is a Mac window. Wired in wireMacWindowChrome() (game.js):
-     red = close (back to the map, abandoning the current screen),
-     yellow = minimize (tucks away into the existing side drawer),
-     green = fullscreen (real Fullscreen API). -->
-<!-- #mac-window wraps the titlebar+topbar+app as one draggable unit
-     (see wireWindowDrag() in game.js). It uses position:relative with
-     left/top offsets rather than transform — transform on an ancestor
-     would make it the containing block for every position:fixed
-     descendant inside #app (the map screen, the drawer, the evolution
-     overlay, etc. are all position:fixed and expect the real
-     viewport), silently breaking all of them the moment a drag
-     started. left/top carries no such gotcha. -->
-<div id="mac-window">
+<!-- ═══ SYSTEM MENU BAR ═══
+     A static bar, like the real macOS menu bar — no traffic lights
+     here; those now belong to each individual window (every .screen,
+     plus the drawer) via .win-titlebar, since each is independently
+     open/closable/draggable. See wireWindowManager() in game.js. -->
 <div id="mac-titlebar">
-  <div class="mac-traffic-lights">
-    <button id="mac-btn-red" class="mac-dot mac-dot-red" title="ปิด" aria-label="Close"></button>
-    <button id="mac-btn-yellow" class="mac-dot mac-dot-yellow" title="ย่อ" aria-label="Minimize"></button>
-    <button id="mac-btn-green" class="mac-dot mac-dot-green" title="เต็มจอ" aria-label="Fullscreen"></button>
-  </div>
-  <div class="mac-titlebar-title" id="mac-drag-handle">VIRUZ PET</div>
+  <div class="mac-titlebar-title">VIRUZ PET</div>
 </div>
 <!-- ═══ PERSISTENT TOP STATUS BAR ═══
      Shows on every screen (unlike the old #hud which only appeared on
@@ -2171,6 +2194,11 @@ img.bu-sprite.is-art2{--raster-mult:2}
     <span class="tb-pets">🧬 <b id="tb-pets">0</b></span>
   </div>
 </div>
+
+<!-- Minimized-window dock — like the macOS Dock holding a yellow-
+     minimized window. Hidden (via :empty) when nothing's minimized;
+     populated by renderWinDock() in game.js. -->
+<div id="win-dock"></div>
 
 <div id="app" data-screen="intro">
 
@@ -2490,7 +2518,6 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
 </div>
-</div> <!-- /#mac-window -->
 
 <!-- MODAL -->
 <div id="modal-back">
@@ -2557,20 +2584,20 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </div>
 </div>
 
-<!-- ═══ GLOBAL PULL-OUT DRAWER ═══
-     Lives OUTSIDE every screen section (sibling of #app, not nested
-     inside screen-map) so it's genuinely global — present on every
-     screen, town or dungeon, not just the city map. A knob on the
-     right-middle edge slides a menu tab out OVER whatever screen is
-     currently showing. -->
-<button id="drawer-knob" aria-label="เมนู">
-  <span class="knob-arrow">‹</span>
-</button>
-<div id="drawer-backdrop"></div>
+<!-- ═══ GLOBAL DRAWER WINDOW ═══
+     Lives OUTSIDE every screen section (sibling of #app) so it's
+     genuinely global — present on every screen, town or dungeon, not
+     just the city map. The knob opens it as a real floating window
+     (openWindow('drawer') in game.js), same as any other tab. -->
+<button id="drawer-knob" aria-label="เมนู">☰</button>
 <aside id="drawer-panel">
   <div class="drawer-head">
+    <div class="win-traffic-lights">
+      <button class="win-dot win-dot-red" data-act="close" aria-label="Close"></button>
+      <button class="win-dot win-dot-yellow" data-act="min" aria-label="Minimize"></button>
+      <button class="win-dot win-dot-green" data-act="max" aria-label="Maximize"></button>
+    </div>
     <span class="proc-title">▮ MENU</span>
-    <button id="drawer-close">✕</button>
   </div>
   <div class="drawer-body">
     <div class="drawer-hud">
