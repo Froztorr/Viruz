@@ -33,6 +33,118 @@ export const ATTR = {
 };
 export const ATTR_KEYS = ['red', 'green', 'yellow', 'white'];
 
+// ══════════════════════════════════════════════════════════════
+// HABIT / DATA-SYNC CARDS — a second, independent system layered on
+// top of ATTR. Every wild enemy has a fixed Color + Type ("Habits");
+// killing one has a low chance to drop a card named after it (see
+// HABIT_CARD_DROP_CHANCE/rollHabitCard() below). Socketing that card
+// into a pet's new `habit` equip slot (see EQUIP_SLOTS) grants the
+// pet BOTH habits plus that card's own unique passive — none of which
+// apply until it's actually equipped.
+//
+// Every iconImg below points at a PNG that doesn't exist yet —
+// habitIcon() (game.js) renders the emoji fallback until one actually
+// lands at that path, then switches over automatically. No code
+// changes needed to add the real art later, just drop the file in.
+// ══════════════════════════════════════════════════════════════
+
+// ── HABIT COLORS (6) ──
+// A 4-way cycle (Green > Red > Yellow > Blue > Green, each +20%) plus
+// Dark/White as a separate pair: Dark edges everything else by +10%,
+// but White beats Dark outright (+20%) and is neutral against the
+// four-cycle colors. See habitColorMult() below for the actual lookup.
+export const HABIT_COLORS = {
+  green:  { id:'green',  name:'Green',  thai:'เขียว', icon:'🌿', iconImg:'assets/icons/habit_green.png',
+    color:'#3ddc84', desc:'ชนะ Red +20%' },
+  red:    { id:'red',    name:'Red',    thai:'แดง',   icon:'🔥', iconImg:'assets/icons/habit_red.png',
+    color:'#ff6a2b', desc:'ชนะ Yellow +20%' },
+  yellow: { id:'yellow', name:'Yellow', thai:'เหลือง', icon:'🌍', iconImg:'assets/icons/habit_yellow.png',
+    color:'#c98f1e', desc:'ชนะ Blue +20%' },
+  blue:   { id:'blue',   name:'Blue',   thai:'น้ำเงิน', icon:'💧', iconImg:'assets/icons/habit_blue.png',
+    color:'#4fc3f7', desc:'ชนะ Green +20%' },
+  white:  { id:'white',  name:'White',  thai:'ขาว',   icon:'⚪', iconImg:'assets/icons/habit_white.png',
+    color:'#f6ecd8', desc:'ชนะ Dark +20% — เป็นกลางกับสีอื่น' },
+  dark:   { id:'dark',   name:'Dark',   thai:'ดำมืด', icon:'🌑', iconImg:'assets/icons/habit_dark.png',
+    color:'#7a4de0', desc:'ชนะทุกสี (ยกเว้น White) +10%' },
+};
+export const HABIT_COLOR_KEYS = ['green', 'red', 'yellow', 'blue', 'white', 'dark'];
+// attacker color -> defender color it beats, at what bonus.
+const HABIT_COLOR_CYCLE = { green:'red', red:'yellow', yellow:'blue', blue:'green' };
+// Damage multiplier when `atkColor` attacks `defColor` (1 = no advantage).
+// Either side may be null/undefined (no card equipped) — always neutral.
+export function habitColorMult(atkColor, defColor) {
+  if (!atkColor || !defColor || atkColor === defColor) return 1;
+  if (atkColor === 'white') return defColor === 'dark' ? 1.2 : 1;
+  if (atkColor === 'dark') return defColor === 'white' ? 1 : 1.1;
+  if (HABIT_COLOR_CYCLE[atkColor] === defColor) return 1.2;
+  return 1;
+}
+
+// ── HABIT TYPES (17) ──
+// Each grants one passive, active only while its card is socketed.
+// Implemented across three hook points depending on shape:
+//  - statMods: folded into combatStats() (engine.js), like ailmentMods.
+//  - proc:     pre-hit forced outcome, merged into computeDamage's
+//              `proc` argument — see buildAttackProc() (game.js).
+//  - onHit/onHurt: post-resolution triggers — see applyHabitPostHit()
+//              (game.js), run after a hit lands.
+// Both `beast` and `magicalBeast` check the OPPONENT's type, which is
+// the one case here that's a relationship rather than a self trait.
+export const HABIT_TYPES = {
+  beast:        { id:'beast', name:'Beast', thai:'สัตว์', icon:'🐾', iconImg:'assets/icons/habit_beast.png',
+    desc:'ATK/SPD +10% เมื่อสู้กับ Beast/Magical Beast อีกตัว' },
+  magicalBeast: { id:'magicalBeast', name:'Magical Beast', thai:'สัตว์วิเศษ', icon:'🐾✨', iconImg:'assets/icons/habit_magicalbeast.png',
+    desc:'ATK/SPD +18% + เจาะเกราะ 15% เมื่อสู้กับ Beast/Magical Beast อีกตัว' },
+  insect:       { id:'insect', name:'Insect', thai:'แมลง', icon:'🪲', iconImg:'assets/icons/habit_insect.png',
+    desc:'โจมตีครั้งที่ 5 ทุกครั้งเป็นคริติคอลรับประกัน' },
+  fish:         { id:'fish', name:'Fish', thai:'ปลา', icon:'🐟', iconImg:'assets/icons/habit_fish.png',
+    desc:'EVA +12% ขณะ HP เกิน 50%' },
+  myth:         { id:'myth', name:'Myth', thai:'เทพนิยาย', icon:'⭐', iconImg:'assets/icons/habit_myth.png',
+    desc:'สแตตที่สูงสุด (ATK/DEF/SPD) +15%' },
+  goblin:       { id:'goblin', name:'Goblin', thai:'ก็อบลิน', icon:'👺', iconImg:'assets/icons/habit_goblin.png',
+    desc:'คริติคอลรับประกันเมื่อศัตรู HP ต่ำกว่า 50%' },
+  demon:        { id:'demon', name:'Demon', thai:'ปีศาจ', icon:'😈', iconImg:'assets/icons/habit_demon.png',
+    desc:'ทุกการโจมตี 15% ติดสถานะ Corrupted ให้ศัตรู' },
+  vampire:      { id:'vampire', name:'Vampire', thai:'แวมไพร์', icon:'🧛', iconImg:'assets/icons/habit_vampire.png',
+    desc:'ฟื้น HP 10% ของดาเมจที่สร้างได้' },
+  elemental:    { id:'elemental', name:'Elemental', thai:'ธาตุ', icon:'💎', iconImg:'assets/icons/habit_elemental.png',
+    desc:'DEF +15% ขณะ HP เกิน 75%' },
+  humanoid:     { id:'humanoid', name:'Humanoid', thai:'มนุษย์', icon:'🧍', iconImg:'assets/icons/habit_humanoid.png',
+    desc:'ทุกสแตต +6% เสมอ' },
+  undead:       { id:'undead', name:'Undead', thai:'อันเดด', icon:'💀', iconImg:'assets/icons/habit_undead.png',
+    desc:'รอดจากดาเมจถึงตายครั้งแรก เหลือ HP 1 (ครั้งเดียวต่อไฟต์)' },
+  plants:       { id:'plants', name:'Plants', thai:'พืช', icon:'🌱', iconImg:'assets/icons/habit_plants.png',
+    desc:'ฟื้น HP 5% เมื่อจบเทิร์นที่ไม่โดนโจมตี' },
+  fungi:        { id:'fungi', name:'Fungi', thai:'เชื้อรา', icon:'🍄', iconImg:'assets/icons/habit_fungi.png',
+    desc:'ทุกการโจมตี 12% ติดพิษ 1 สแตคให้ศัตรู' },
+  machine:      { id:'machine', name:'Machine', thai:'จักรกล', icon:'⚙️', iconImg:'assets/icons/habit_machine.png',
+    desc:'ต้านทาน Freeze/Stoned แต่รับดาเมจ +15% ขณะติด Corrupted' },
+  conjuration:  { id:'conjuration', name:'Conjuration', thai:'เวทเรียกของ', icon:'👻', iconImg:'assets/icons/habit_conjuration.png',
+    desc:'20% โอกาสไม่รับดาเมจเลยจากการโจมตี (ภาพลวงตา)' },
+  aberration:   { id:'aberration', name:'Aberration', thai:'สิ่งพิกล', icon:'👁️', iconImg:'assets/icons/habit_aberration.png',
+    desc:'EVA/CRIT +12% แต่ DEF -10%' },
+  dragon:       { id:'dragon', name:'Dragon', thai:'มังกร', icon:'🐉', iconImg:'assets/icons/habit_dragon.png',
+    desc:'ATK +15% ขณะ HP เกิน 50%, ATK -15% เมื่อต่ำกว่า' },
+  fey:          { id:'fey', name:'Fey', thai:'เฟย์', icon:'🧚', iconImg:'assets/icons/habit_fey.png',
+    desc:'เมื่อโดนโจมตี 15% โอกาสสะกดผู้โจมตีกลับ (Charm)' },
+};
+export const HABIT_TYPE_KEYS = [
+  'beast', 'magicalBeast', 'insect', 'fish', 'myth', 'goblin', 'demon',
+  'vampire', 'elemental', 'humanoid', 'undead', 'plants', 'fungi',
+  'machine', 'conjuration', 'aberration', 'dragon', 'fey',
+];
+
+// Generic UI badges for the new equip slot + "has an active card
+// passive" indicator — see EQUIP_SLOTS.habit and wherever a pet's
+// roster card renders its equipped gear.
+export const HABIT_CARD_ICON = { icon:'🎴', iconImg:'assets/icons/habit_card.png' };
+export const HABIT_PASSIVE_ICON = { icon:'⚡', iconImg:'assets/icons/habit_passive.png' };
+
+// Low-rate drop, per kill, from a wild World/Raid encounter — see
+// rollHabitCard() (engine.js) and its call site in checkBattleEnd()
+// (game.js), same pattern as EQUIP_DROP_CHANCE/codePartDropChance.
+export const HABIT_CARD_DROP_CHANCE = 0.05;
+
 // White support traits. Every white viruz has `buff` (scales with level).
 // One of these is rolled on top at hatch time.
 export const WHITE_TRAITS = {
@@ -396,34 +508,34 @@ export const ANTIVIRUZ = {
   // Placement follows habitat: bugs in the woods, a kappa at the
   // waterfall, reptiles in the sand, otter/frog at the water, and
   // island wildlife out at sea.
-  greenworm:    { id:'greenworm',    name:'GreenWorm',   gif:'greenworm',     ext:'png', faces:'left', scale:0.54, base:{atk:15,def:7, spd:10, mhp:38}, attr:'green'  },
-  beetle:       { id:'beetle',       name:'JadeBeetle',  gif:'beetle',        ext:'png', faces:'right', scale:0.5, base:{atk:18,def:12,spd:9,  mhp:48}, attr:'yellow' },
-  stone_imp:    { id:'stone_imp',    name:'StoneImp',    shape:'steelcrab',   palette:'steel_crab',   base:{atk:19,def:14,spd:8,  mhp:58}, attr:'yellow' },
-  kappa:        { id:'kappa',        name:'Kappa',       gif:'kappa',         ext:'png', faces:'right', scale:0.69, base:{atk:23,def:13,spd:14, mhp:60}, attr:null     },
-  fang_stalker: { id:'fang_stalker', name:'FangStalker', shape:'shadowbat',   palette:'shadow_bat',   base:{atk:26,def:10,spd:17, mhp:54}, attr:'red'    },
+  greenworm:    { id:'greenworm',    name:'GreenWorm',   gif:'greenworm',     ext:'png', faces:'left', scale:0.54, base:{atk:15,def:7, spd:10, mhp:38}, attr:'green'  , habitColor:'green', habitType:'insect' },
+  beetle:       { id:'beetle',       name:'JadeBeetle',  gif:'beetle',        ext:'png', faces:'right', scale:0.5, base:{atk:18,def:12,spd:9,  mhp:48}, attr:'yellow' , habitColor:'green', habitType:'insect' },
+  stone_imp:    { id:'stone_imp',    name:'StoneImp',    shape:'steelcrab',   palette:'steel_crab',   base:{atk:19,def:14,spd:8,  mhp:58}, attr:'yellow' , habitColor:'yellow', habitType:'elemental' },
+  kappa:        { id:'kappa',        name:'Kappa',       gif:'kappa',         ext:'png', faces:'right', scale:0.69, base:{atk:23,def:13,spd:14, mhp:60}, attr:null     , habitColor:'blue', habitType:'myth' },
+  fang_stalker: { id:'fang_stalker', name:'FangStalker', shape:'shadowbat',   palette:'shadow_bat',   base:{atk:26,def:10,spd:17, mhp:54}, attr:'red'    , habitColor:'dark', habitType:'beast' },
   // Source art for these two is drawn the OPPOSITE of what `faces` said —
   // SandWorm/SandTurtle were rendering mirrored (backwards) as enemies.
-  sand_worm:    { id:'sand_worm',    name:'SandWorm',    gif:'sand_worm',     ext:'png', faces:'left', scale:1.31, base:{atk:30,def:12,spd:13, mhp:68}, attr:'yellow' },
-  sand_turtle:  { id:'sand_turtle',  name:'SandTurtle',  gif:'sand_turtle',   ext:'png', faces:'right', scale:1.23, base:{atk:26,def:22,spd:7,  mhp:88}, attr:'yellow' },
-  oasis_otter:  { id:'oasis_otter',  name:'OasisOtter',  gif:'oasis_otter',   ext:'png', faces:'right', scale:0.62, base:{atk:33,def:14,spd:19, mhp:70}, attr:'green'  },
-  rainbow_frog: { id:'rainbow_frog', name:'RainbowFrog', gif:'rainbow_frog',  ext:'png', faces:'right', scale:0.56, base:{atk:35,def:15,spd:16, mhp:74}, attr:null     },
+  sand_worm:    { id:'sand_worm',    name:'SandWorm',    gif:'sand_worm',     ext:'png', faces:'left', scale:1.31, base:{atk:30,def:12,spd:13, mhp:68}, attr:'yellow' , habitColor:'yellow', habitType:'insect' },
+  sand_turtle:  { id:'sand_turtle',  name:'SandTurtle',  gif:'sand_turtle',   ext:'png', faces:'right', scale:1.23, base:{atk:26,def:22,spd:7,  mhp:88}, attr:'yellow' , habitColor:'yellow', habitType:'beast' },
+  oasis_otter:  { id:'oasis_otter',  name:'OasisOtter',  gif:'oasis_otter',   ext:'png', faces:'right', scale:0.62, base:{atk:33,def:14,spd:19, mhp:70}, attr:'green'  , habitColor:'blue', habitType:'beast' },
+  rainbow_frog: { id:'rainbow_frog', name:'RainbowFrog', gif:'rainbow_frog',  ext:'png', faces:'right', scale:0.56, base:{atk:35,def:15,spd:16, mhp:74}, attr:null     , habitColor:'blue', habitType:'beast' },
   // Same mirrored-facing fix as SandWorm/SandTurtle above.
-  flying_fish:  { id:'flying_fish',  name:'FlyingFish',  gif:'flying_fish',   ext:'png', faces:'right', scale:0.59, base:{atk:36,def:14,spd:21, mhp:72}, attr:'green'  },
-  island_monkey:{ id:'island_monkey',name:'IslandMonkey',gif:'island_monkey', ext:'png', faces:'right', scale:0.66, base:{atk:40,def:18,spd:18, mhp:84}, attr:'red'    },
+  flying_fish:  { id:'flying_fish',  name:'FlyingFish',  gif:'flying_fish',   ext:'png', faces:'right', scale:0.59, base:{atk:36,def:14,spd:21, mhp:72}, attr:'green'  , habitColor:'blue', habitType:'fish' },
+  island_monkey:{ id:'island_monkey',name:'IslandMonkey',gif:'island_monkey', ext:'png', faces:'right', scale:0.66, base:{atk:40,def:18,spd:18, mhp:84}, attr:'red'    , habitColor:'red', habitType:'beast' },
 
   // ══ HELL ══
   // These use real art (assets/sprites/<gif>/still.png + attack.png).
   // `ext:'png'` tells the renderer which extension to load.
   // Same mirrored-facing fix as SandWorm/SandTurtle/FlyingFish above.
-  goblin_grunt: { id:'goblin_grunt', name:'Goblin',        gif:'goblin',       ext:'png', faces:'right', scale:0.6, base:{atk:38,def:14,spd:15, mhp:70},  attr:'green'  },
-  goblin_miner: { id:'goblin_miner', name:'MinerGoblin',   gif:'miner_goblin', ext:'png', faces:'right', scale:0.63, base:{atk:43,def:17,spd:13, mhp:80},  attr:'yellow' },
-  black_beast:  { id:'black_beast',  name:'BlackBeast',    gif:'black_beast',  ext:'png', faces:'right', scale:1.44, base:{atk:50,def:16,spd:20, mhp:86},  attr:'red'    },
-  rock_golem:   { id:'rock_golem',   name:'RockGolem',     gif:'rock_golem',   ext:'png', faces:'right', scale:1.78, base:{atk:46,def:28,spd:8,  mhp:118}, attr:'yellow' },
-  hobgoblin:    { id:'hobgoblin',    name:'RedHobgoblin',  gif:'hobgoblin',    ext:'png', faces:'right', scale:1.1, base:{atk:56,def:20,spd:16, mhp:98},  attr:'red'    },
-  fire_golem:   { id:'fire_golem',   name:'FireGolem',     gif:'fire_golem',   ext:'png', faces:'right', scale:1.85, base:{atk:60,def:26,spd:11, mhp:126}, attr:'red'    },
-  butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'right', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     },
-  vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', faces:'right', scale:1.06, base:{atk:72,def:24,spd:22, mhp:130}, attr:null     },
-  vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'right', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    },
+  goblin_grunt: { id:'goblin_grunt', name:'Goblin',        gif:'goblin',       ext:'png', faces:'right', scale:0.6, base:{atk:38,def:14,spd:15, mhp:70},  attr:'green'  , habitColor:'yellow', habitType:'goblin' },
+  goblin_miner: { id:'goblin_miner', name:'MinerGoblin',   gif:'miner_goblin', ext:'png', faces:'right', scale:0.63, base:{atk:43,def:17,spd:13, mhp:80},  attr:'yellow' , habitColor:'yellow', habitType:'goblin' },
+  black_beast:  { id:'black_beast',  name:'BlackBeast',    gif:'black_beast',  ext:'png', faces:'right', scale:1.44, base:{atk:50,def:16,spd:20, mhp:86},  attr:'red'    , habitColor:'dark', habitType:'beast' },
+  rock_golem:   { id:'rock_golem',   name:'RockGolem',     gif:'rock_golem',   ext:'png', faces:'right', scale:1.78, base:{atk:46,def:28,spd:8,  mhp:118}, attr:'yellow' , habitColor:'yellow', habitType:'elemental' },
+  hobgoblin:    { id:'hobgoblin',    name:'RedHobgoblin',  gif:'hobgoblin',    ext:'png', faces:'right', scale:1.1, base:{atk:56,def:20,spd:16, mhp:98},  attr:'red'    , habitColor:'red', habitType:'goblin' },
+  fire_golem:   { id:'fire_golem',   name:'FireGolem',     gif:'fire_golem',   ext:'png', faces:'right', scale:1.85, base:{atk:60,def:26,spd:11, mhp:126}, attr:'red'    , habitColor:'red', habitType:'elemental' },
+  butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'right', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     , habitColor:'dark', habitType:'humanoid' },
+  vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', faces:'right', scale:1.06, base:{atk:72,def:24,spd:22, mhp:130}, attr:null     , habitColor:'dark', habitType:'vampire' },
+  vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'right', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    , habitColor:'dark', habitType:'vampire' },
 
   // ── SECURITY GUARDS (raid defense) ──
   // Not wild encounters — never appear in a zone `pool`, so they never
@@ -432,10 +544,10 @@ export const ANTIVIRUZ = {
   // tier GUARD_TIERS below assigns to that rival (by level bracket).
   // `faces` corrects each source image to how it was actually drawn —
   // see GUARD_TIERS comment for which ones needed a flip.
-  guard_imp:   { id:'guard_imp',   name:'GuardImp',   gif:'guard_imp',   ext:'png', faces:'left',  scale:0.75, base:{atk:24,def:18,spd:11,mhp:72},  attr:null },
-  gunner_imp:  { id:'gunner_imp',  name:'GunnerImp',  gif:'gunner_imp',  ext:'png', faces:'right', scale:1.15, base:{atk:38,def:20,spd:15,mhp:95},  attr:null },
-  tank_imp:    { id:'tank_imp',    name:'TankImp',    gif:'tank_imp',    ext:'png', faces:'left',  scale:1.69, base:{atk:46,def:32,spd:9, mhp:135}, attr:null },
-  marshal_imp: { id:'marshal_imp', name:'MarshalImp', gif:'marshal_imp', ext:'png', faces:'right', scale:0.9,  base:{atk:68,def:30,spd:20,mhp:155}, attr:null },
+  guard_imp:   { id:'guard_imp',   name:'GuardImp',   gif:'guard_imp',   ext:'png', faces:'left',  scale:0.75, base:{atk:24,def:18,spd:11,mhp:72},  attr:null , habitColor:'dark', habitType:'demon' },
+  gunner_imp:  { id:'gunner_imp',  name:'GunnerImp',  gif:'gunner_imp',  ext:'png', faces:'right', scale:1.15, base:{atk:38,def:20,spd:15,mhp:95},  attr:null , habitColor:'dark', habitType:'demon' },
+  tank_imp:    { id:'tank_imp',    name:'TankImp',    gif:'tank_imp',    ext:'png', faces:'left',  scale:1.69, base:{atk:46,def:32,spd:9, mhp:135}, attr:null , habitColor:'yellow', habitType:'demon' },
+  marshal_imp: { id:'marshal_imp', name:'MarshalImp', gif:'marshal_imp', ext:'png', faces:'right', scale:0.9,  base:{atk:68,def:30,spd:20,mhp:155}, attr:null , habitColor:'red', habitType:'demon' },
 };
 
 // ── RAID DEFENSE TIERS ──
@@ -685,22 +797,32 @@ export const RAID_LOSS_BITZ = 300;
 // ── AILMENTS ──
 // Applied by special skills. Each is stored on a unit as
 // { id, turns, ...params } in unit.ailments[].
+//
+// POISON and FRENZY are STACKING ailments (see STACKING_AILMENT_IDS in
+// engine.js): instead of `turns`, their instances carry a `stacks` count
+// that ADDS UP across repeat applications (3 stacks + a fresh 3-stack
+// cast = 6, not a refreshed 3) and never expires on a turn countdown —
+// they last until the fight ends (or a cleanse). Their magnitude scales
+// with the `perStack` table below × current stacks, applied generically
+// by ailmentMods()/tickAilments() in engine.js.
 export const AILMENTS = {
   poison: {
     id:'poison', name:'Poison', thai:'พิษ', icon:'☠️', color:'#7ddc4a',
-    desc:'เสีย HP ทุกเทิร์น',
+    desc:'เสีย HP คงที่ทุกเทิร์นตามจำนวนสแตค ไม่หมดอายุจนจบไฟต์',
+    perStack: { dmg: 5 },   // flat HP loss per stack per turn
   },
   freeze: {
     id:'freeze', name:'Freeze', thai:'แช่แข็ง', icon:'❄️', color:'#7fd6ff',
-    desc:'โจมตีหรือใช้สกิลไม่ได้',
+    desc:'โจมตีหรือใช้สกิลไม่ได้ — โดนตีซ้ำจะ SHATTER รับดาเมจ x1.2 และหลุดสถานะทันที',
   },
   frenzy: {
     id:'frenzy', name:'Frenzy', thai:'คลั่ง', icon:'🔥', color:'#ff6a2b',
-    desc:'ATK/SPD เพิ่ม แต่ DEF ลด',
+    desc:'ATK/SPD เพิ่ม DEF ลด ตามจำนวนสแตค ไม่หมดอายุจนจบไฟต์',
+    perStack: { atk: 0.12, def: -0.08, spd: 0.08 },
   },
   charm: {
     id:'charm', name:'Charmed', thai:'เสน่ห์', icon:'💗', color:'#ff6ab0',
-    desc:'หันไปโจมตีพวกเดียวกัน',
+    desc:'ทำทุกอย่างกลับตาลปัตร — โจมตีตัวเอง และสกิลบัฟ/ฮีลจะไปเข้าฝั่งศัตรูแทน',
   },
   // Stage-2 "Corrupted" mutation debuff. Generic multi-stat drain —
   // ailmentMods() applies atk/def/spd/eva/crit off ANY ailment object
@@ -709,7 +831,32 @@ export const AILMENTS = {
     id:'corrupt', name:'Corrupted', thai:'เสื่อมสภาพ', icon:'🦠', color:'#a05fe0',
     desc:'ATK/DEF/SPD ของศัตรูลดลง',
   },
+  // Hard stun — unlike freeze, taking damage never breaks it early and
+  // it grants no bonus damage; it just runs its full `turns` count down.
+  // Rendered as a large overlay above the sprite (see .stoned-overlay in
+  // index.html) rather than just a small corner badge, since it's meant
+  // to read as a bigger deal than a normal ailment icon. Placeholder
+  // emoji until a real gif is dropped in at assets/fx/stoned.gif (see
+  // the CSS rule right next to .stoned-overlay for the one-line swap).
+  stoned: {
+    id:'stoned', name:'Stoned', thai:'กลายเป็นหิน', icon:'🗿', color:'#9c8a6e',
+    desc:'ขยับไม่ได้แม้จะโดนโจมตี ไม่หลุดก่อนเวลา',
+  },
+  // Self-buff granted by w_failsafe. Persists (no turns countdown) until
+  // consumed — see the "Last Stand" check in applyDamage() (game.js):
+  // the instant this unit's HP first dips below 40% of max, the token is
+  // consumed and HP is restored to full, once.
+  lastStand: {
+    id:'lastStand', name:'Last Stand', thai:'ยืนหยัดครั้งสุดท้าย', icon:'🛟', color:'#4ade80',
+    desc:'เมื่อ HP ต่ำกว่า 40% ครั้งแรก จะฟื้นเต็ม HP ทันที (ใช้ได้ครั้งเดียว)',
+  },
 };
+// Ailments that stack (add up) instead of just refreshing duration, and
+// never expire on their own — see addAilment()/tickAilments() in
+// engine.js. lastStand also persists without a turns countdown but
+// isn't a "stack" (it's a single consume-once flag), so it's tracked
+// separately in tickAilments() rather than listed here.
+export const STACKING_AILMENT_IDS = ['poison', 'frenzy'];
 
 // ── STAT KEYS ──
 // atk  — attack power
@@ -741,8 +888,16 @@ export const EQUIP_SLOTS = {
     desc:'ช่องโหว่เจาะระบบ — เน้นความเร็ว', bias:['spd','crit','eva'] },
   rootkit: { id:'rootkit', name:'Rootkit', icon:'🗝️', thai:'รูทคิต',
     desc:'ฝังตัวลึกในระบบ — เน้นป้องกัน/พลังชีวิต', bias:['def','vit'] },
+  // Deliberately NOT in EQUIP_SLOT_KEYS — that list drives rollEquipment()'s
+  // random slot pick for ordinary stat gear, and a habit card is a
+  // completely separate drop (rollHabitCard(), low rate, named after and
+  // shaped by the specific enemy it fell from — see HABIT_CARDS above).
+  // Rendered as a 4th slot alongside the other three via ALL_EQUIP_SLOT_KEYS.
+  habit: { id:'habit', name:'Habit', icon: HABIT_CARD_ICON.icon, thai:'นิสัย',
+    desc:'การ์ดข้อมูลจากศัตรู — ให้สี+ประเภท+พาสซีฟพิเศษ', bias:[] },
 };
 export const EQUIP_SLOT_KEYS = ['payload', 'exploit', 'rootkit'];
+export const ALL_EQUIP_SLOT_KEYS = ['payload', 'exploit', 'rootkit', 'habit'];
 
 // Grade ladder — same shape as RARITY (color/glow for UI chrome),
 // plus statMult (roll strength), dust (disenchant yield), and weight
@@ -967,8 +1122,8 @@ export const SPECIALS = {
   // ── RED: raw damage ──
   r_slash:    { id:'r_slash',    name:'Ember Slash',    thai:'ฟันเพลิง',     mp:10, cd:3.5,  pw:1.4, hits:1, vfx:'fire',   desc:'ฟันไฟ x1.4' },
   r_double:   { id:'r_double',   name:'Twin Fang',      thai:'เขี้ยวคู่',     mp:13, cd:3.7,  pw:0.9, hits:2, vfx:'slash',  desc:'โจมตี 2 ครั้ง' },
-  r_burn:     { id:'r_burn',     name:'Cinder Touch',   thai:'สัมผัสเถ้า',   mp:14, cd:3.4, pw:1.1, hits:1, vfx:'fire',   ailment:{ id:'poison', turns:3, val:0.05 }, desc:'ติดพิษไฟ 3 เทิร์น' },
-  r_frenzy:   { id:'r_frenzy',   name:'Blood Rage',     thai:'คลั่งเลือด',   mp:17, cd:3.8, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', turns:4, atk:0.35, spd:0.25, def:-0.20 }, desc:'ATK+35% SPD+25% DEF-20%' },
+  r_burn:     { id:'r_burn',     name:'Cinder Touch',   thai:'สัมผัสเถ้า',   mp:14, cd:3.4, pw:1.1, hits:1, vfx:'fire',   ailment:{ id:'poison', stacks:3 }, desc:'ติดพิษ 3 สแตค (สะสมได้ ไม่หมดอายุ)' },
+  r_frenzy:   { id:'r_frenzy',   name:'Blood Rage',     thai:'คลั่งเลือด',   mp:17, cd:3.8, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', stacks:3 }, desc:'คลั่ง 3 สแตค (ATK/SPD ขึ้น DEF ลง สะสมได้)' },
   r_pierce:   { id:'r_pierce',   name:'Kernel Pierce',  thai:'เจาะเคอร์เนล', mp:20, cd:3.7, pw:1.8, hits:1, vfx:'pierce', ignoreDef:0.5, desc:'เจาะเกราะ 50% x1.8' },
   r_triple:   { id:'r_triple',   name:'Triple Fang',    thai:'สามเขี้ยว',    mp:23, cd:4.0, pw:0.85,hits:3, vfx:'slash',  desc:'โจมตี 3 ครั้ง' },
   r_meteor:   { id:'r_meteor',   name:'Meteor Byte',    thai:'อุกกาบาต',     mp:29, cd:3.9, pw:2.4, hits:1, vfx:'meteor', desc:'ระเบิดใหญ่ x2.4' },
@@ -978,8 +1133,8 @@ export const SPECIALS = {
   // ── GREEN: speed, evasion, multi-hit ──
   g_dash:     { id:'g_dash',     name:'Static Dash',    thai:'พุ่งไฟฟ้า',    mp:10, cd:3.5,  pw:1.3, hits:1, vfx:'wind',   desc:'พุ่งเร็ว x1.3' },
   g_gust:     { id:'g_gust',     name:'Gust Cutter',    thai:'ใบมีดลม',      mp:13, cd:3.6,  pw:0.8, hits:2, vfx:'wind',   desc:'ลมคม 2 ครั้ง' },
-  g_blur:     { id:'g_blur',     name:'Blur Step',      thai:'ก้าวเลือน',    mp:14, cd:3.6, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', turns:3, spd:0.5, atk:0.1, def:0 }, desc:'SPD+50% 3 เทิร์น' },
-  g_venom:    { id:'g_venom',    name:'Venom Spray',    thai:'พ่นพิษ',       mp:16, cd:3.4, pw:1.0, hits:1, vfx:'poison', ailment:{ id:'poison', turns:4, val:0.06 }, desc:'พิษแรง 4 เทิร์น' },
+  g_blur:     { id:'g_blur',     name:'Blur Step',      thai:'ก้าวเลือน',    mp:14, cd:3.6, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', stacks:2 }, desc:'คลั่ง 2 สแตค (ATK/SPD ขึ้น DEF ลง สะสมได้)' },
+  g_venom:    { id:'g_venom',    name:'Venom Spray',    thai:'พ่นพิษ',       mp:16, cd:3.4, pw:1.0, hits:1, vfx:'poison', ailment:{ id:'poison', stacks:4 }, desc:'ติดพิษ 4 สแตค (สะสมได้ ไม่หมดอายุ)' },
   g_flurry:   { id:'g_flurry',   name:'Wind Flurry',    thai:'พายุหมุน',     mp:20, cd:3.9, pw:0.75,hits:3, vfx:'wind',   desc:'โจมตี 3 ครั้ง' },
   g_cyclone:  { id:'g_cyclone',  name:'Cyclone Rip',    thai:'ไซโคลน',       mp:26, cd:4.2, pw:0.8, hits:4, vfx:'wind',   desc:'โจมตี 4 ครั้ง' },
   g_charm:    { id:'g_charm',    name:'Siren Pulse',    thai:'คลื่นเสน่ห์',  mp:29, cd:4.3, pw:0,   hits:0, vfx:'charm',  ailment:{ id:'charm', turns:2 }, desc:'สะกดศัตรู 2 เทิร์น' },
@@ -993,6 +1148,11 @@ export const SPECIALS = {
   y_fortress: { id:'y_fortress', name:'Fortress Mode',  thai:'โหมดป้อม',     mp:26, cd:4.2, pw:0,   hits:0, vfx:'shield', shieldSelf:0.55, desc:'ลดดาเมจ 55% 3 เทิร์น' },
   y_glacier:  { id:'y_glacier',  name:'Glacier Prison', thai:'คุกน้ำแข็ง',   mp:32, cd:3.5, pw:1.2, hits:1, vfx:'ice',    ailment:{ id:'freeze', turns:2 }, desc:'แช่แข็ง 2 เทิร์น' },
   y_bastion:  { id:'y_bastion',  name:'Bastion Crush',  thai:'ป้อมบดขยี้',   mp:41, cd:4.0, pw:2.6, hits:1, vfx:'impact', ignoreDef:0.3, desc:'บดขยี้ x2.6' },
+  // A harder disable than Frost Lock/Glacier Prison: doesn't shatter or
+  // grant bonus damage when hit, and runs its full duration no matter
+  // what happens to the target meanwhile — see the 'stoned' ailment
+  // entry above and its skip-turn handling in runTurn() (game.js).
+  y_petrify: { id:'y_petrify', name:'Petrify Command', thai:'คำสั่งกลายหิน', mp:36, cd:4.6, pw:0, hits:0, vfx:'impact', ailment:{ id:'stoned', turns:2 }, desc:'กลายเป็นหิน 2 เทิร์น (ไม่หลุดแม้โดนโจมตี)' },
 
   // ── WHITE: support / heal ──
   w_mend:     { id:'w_mend',     name:'Patch Mend',     thai:'ปะแผล',        mp:11, cd:3.4,  pw:0, hits:0, vfx:'heal',  heal:0.25, desc:'ฟื้น HP 25% ตัวเอง' },
@@ -1003,6 +1163,12 @@ export const SPECIALS = {
   w_smite:    { id:'w_smite',    name:'Judgment Ray',   thai:'ลำแสงตัดสิน',  mp:23, cd:3.7, pw:1.9, hits:1, vfx:'holy', desc:'ลำแสงศักดิ์สิทธิ์ x1.9' },
   w_revive:   { id:'w_revive',   name:'System Restore', thai:'กู้ระบบ',      mp:44, cd:4.9, pw:0, hits:0, vfx:'bless', reviveTeam:0.5, desc:'ชุบชีวิตเพื่อนที่ล้ม 50% HP' },
   w_sanctuary:{ id:'w_sanctuary',name:'Sanctuary',      thai:'วิหารศักดิ์สิทธิ์',mp:38, cd:4.7,pw:0,hits:0,vfx:'bless', healTeam:0.5, buffTeam:{ turns:3, def:0.3 }, desc:'ฟื้น 50% + DEF+30%' },
+  // Doesn't act like Pokémon's "target lowest-HP ally" — this is 1v1,
+  // one fighter on stage at a time, so instead it's a condition attached
+  // to the CASTER: arm it once, and the instant your own HP first dips
+  // below 40%, it silently consumes itself and heals you to full — a
+  // one-shot safety net rather than a per-turn AI decision.
+  w_failsafe: { id:'w_failsafe', name:'Failsafe Protocol', thai:'โพรโทคอลฉุกเฉิน', mp:24, cd:5.5, pw:0, hits:0, vfx:'shield', buffSelf:{ id:'lastStand' }, desc:'ตั้งระบบฉุกเฉิน — HP ต่ำกว่า 40% ครั้งแรกจะฟื้นเต็มทันที (ครั้งเดียว)' },
 
   // ── STAGE-2 MUTATIONS ──
   // Unlocked only once a pet reaches stage 2 and rolls a mutation
@@ -1107,6 +1273,7 @@ export const SKILL_TREES = {
       statNode ('y14','vit',  6, 5, 34, 16, ['y11','y12'],32),
       skillNode('y15','y_bastion',     66, 16, ['y12','y13'],40),
       statNode ('y16','def',  6, 5, 50,  4, ['y14','y15'],45),
+      skillNode('y17','y_petrify',     26,  4, ['y16'],     50),
     ],
   },
   white: {
@@ -1128,6 +1295,7 @@ export const SKILL_TREES = {
       skillNode('w14','w_revive',      34, 16, ['w11','w12'],34),
       skillNode('w15','w_sanctuary',   66, 16, ['w12','w13'],40),
       statNode ('w16','int',  6, 5, 50,  4, ['w14','w15'],45),
+      skillNode('w17','w_failsafe',    74,  4, ['w16'],     50),
     ],
   },
 };
@@ -1368,4 +1536,20 @@ export const TUNING = {
                      // so this stays short or the fight drags
   fleePenalty: 0.0,
   loseHpRestore: 0.10,
+
+  // ── CRIT GAUGE (manual-trigger ultimate) ──
+  // Fills every time a unit takes its own turn; a higher CRIT stat fills
+  // it faster. At 100% an ally becomes tappable to fire a guaranteed-crit
+  // bonus strike on demand (see fireBonusCrit() in game.js); a foe just
+  // auto-fires the instant its gauge is full, since there's no player to
+  // tap for it.
+  critGaugeBaseGain: 0.16,     // flat portion gained per own turn
+  critGaugeCritScale: 260,     // + (unit's CRIT stat / this) per own turn
+  // Frozen units take bonus damage when hit (the ice "shatters"), which
+  // also breaks the freeze immediately — see applyFreezeShatter() in
+  // game.js.
+  freezeShatterMult: 1.2,
+  // HP fraction that arms w_failsafe's one-shot full heal (see the
+  // "Last Stand" check in applyDamage(), game.js).
+  lastStandThreshold: 0.4,
 };

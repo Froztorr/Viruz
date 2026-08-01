@@ -209,11 +209,11 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   opacity:.7;letter-spacing:.5px}
 
 /* ── PER-WINDOW CHROME ──
-   Every open .screen (and the drawer) gets one of these, injected by
-   ensureWindowChrome()/the drawer's own markup — a real draggable,
-   closable, minimizable, maximizable Mac window. Shared .win-dot-*
-   colors intentionally reuse the --mac-red/yellow/green tokens (Apple's
-   own traffic-light colors), matching the (now-undecorated) menu bar. */
+   #win-main (the single shared main-scene window) and the drawer each
+   hand-author one of these — a real draggable, closable, minimizable,
+   maximizable Mac window. Shared .win-dot-* colors intentionally reuse
+   the --mac-red/yellow/green tokens (Apple's own traffic-light colors),
+   matching the (now-undecorated) menu bar. */
 .win-titlebar{
   position:relative;flex:0 0 auto;height:32px;
   display:flex;align-items:center;justify-content:center;
@@ -227,15 +227,33 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .win-dot-red{background:var(--mac-red)}
 .win-dot-yellow{background:var(--mac-yellow)}
 .win-dot-green{background:var(--mac-green)}
+/* Browser-style "back" button — only #win-main has one, since it's the
+   only window whose content changes pages in place (see
+   MAIN_SCENE_IDS/goMainBack() in game.js). Disabled/dimmed once there's
+   nowhere to revert to (e.g. fresh boot showing the map). */
+.win-back-btn{
+  position:absolute;left:74px;top:50%;transform:translateY(-50%);
+  width:22px;height:22px;border-radius:6px;padding:0;
+  background:transparent;border:none;color:var(--txt);
+  font-size:17px;line-height:1;opacity:.75;
+}
+.win-back-btn:active{background:rgba(127,127,127,.2)}
+.win-back-btn:disabled{opacity:.25;pointer-events:none}
 .win-title{font-family:var(--pixel);font-size:11px;color:var(--txt);
   opacity:.75;letter-spacing:.5px;cursor:grab;user-select:none;
   -webkit-user-select:none;touch-action:none;padding:4px 16px}
 .win-title:active{cursor:grabbing}
 /* position:relative so any position:absolute;inset:0 content inside
-   (the map screen's video layer, in particular) fills just the body
+   (the map pane's video layer, in particular) fills just the body
    area below the title bar, not the whole (unpositioned-parent-
    skipping) window box. */
 .win-body{position:relative;flex:1;overflow-y:auto;padding:12px;-webkit-overflow-scrolling:touch}
+/* The map and battle panes want their video/arena backgrounds flush to
+   the window edge — same no-padding treatment the old per-screen
+   .win-body rules gave them, now keyed off which pane is showing since
+   there's only one shared .win-body. */
+#win-main[data-pane="map"] .win-body,
+#win-main[data-pane="battle"] .win-body{padding:0}
 
 /* ── HUD ── */
 #topbar{
@@ -639,11 +657,37 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .np-mp{display:flex;align-items:center;margin-top:4px}
 .name-plate.right .np-mp{justify-content:flex-end}
 
-/* speed counter pip */
-.spd-pip{font-size:14px;color:#ffd23f;margin-top:2px}
+/* speed / crit gauge pips */
+.gauge-pips{display:flex;gap:8px;margin-top:2px}
+.spd-pip{font-size:14px;color:#ffd23f}
+.crit-pip{font-size:14px;color:#ff6a8a;transition:.2s}
+.crit-pip.ready{color:#ff2f56;text-shadow:0 0 8px rgba(255,47,86,.8);
+  animation:critPipPulse 1s infinite}
+@keyframes critPipPulse{0%,100%{opacity:1}50%{opacity:.55}}
 .turn-banner.speed{background:rgba(180,140,20,.95);border-color:#ffd23f}
 .turn-banner.ail{background:rgba(120,40,140,.95);border-color:#d88aff}
 .turn-banner.miss{background:rgba(70,78,92,.95)}
+
+/* Tappable "bonus crit ready" glow on an ally's own sprite — see
+   wireCritGaugeTap()/fireBonusCrit() in game.js. Only ever added to the
+   ally slot (a foe auto-fires the instant it's ready, no tap needed). */
+.bunit.crit-ready{cursor:pointer}
+.bunit.crit-ready .bu-sprite-wrap{animation:critReadyGlow 1.1s infinite}
+@keyframes critReadyGlow{
+  0%,100%{filter:drop-shadow(0 0 0 rgba(255,47,86,0))}
+  50%{filter:drop-shadow(0 0 14px rgba(255,47,86,.85))}
+}
+
+/* Stoned — a bigger, more prominent overlay than a normal .ail-badge,
+   placeholder emoji until a real gif lands at assets/fx/stoned.gif (at
+   which point swap the `content`/emoji below for a plain background-image
+   on this rule, e.g. background:url(assets/fx/stoned.gif) center/contain
+   no-repeat, and remove the font-size/line-height text styling). */
+.stoned-overlay{position:absolute;top:-30px;left:50%;transform:translateX(-50%);
+  font-size:30px;line-height:1;z-index:7;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.7));
+  animation:stonedBob 1.6s ease-in-out infinite}
+@keyframes stonedBob{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-4px)}}
 
 /* ── BATTLE RESULTS PANEL ── */
 #battle-results{position:fixed;inset:0;z-index:80;display:none;
@@ -744,15 +788,17 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .ts-stats{font-size:16px;color:var(--cyan);margin-top:2px}
 
 
-/* ── SCREENS AS FLOATING WINDOWS ──
-   Each .screen is now an independent Mac-style window (see
-   ensureWindowChrome()/openWindow() in game.js) rather than a single
-   full-bleed panel swapped for another. Several can be open (or
-   minimized) at once; "windowed" (the default open state) leaves a
-   small margin so the desktop/whatever's behind peeks through and the
-   window can be dragged; "maximized" fills #app edge to edge, same
-   footprint the old single-screen model always used. z-index is set
-   inline per-window from its position in the stack (restackZ()). */
+/* ── MAIN SCENE + DRAWER AS WINDOWS ──
+   .screen is the Mac-style floating window shell (see wireMainWindow()/
+   wireDrawer() in game.js) — now just TWO instances ever exist, #win-main
+   (map, warp gate, clinic, and everything else off the map menu) and the
+   drawer. "windowed" (the default open state) leaves a small margin so
+   the desktop peeks through and the window can be dragged; "maximized"
+   fills #app edge to edge. z-index is set inline from stack position
+   (restackWindowsZ()). Navigating between the map-menu pages doesn't
+   open a new .screen — it swaps which .pane is visible inside #win-main,
+   like following a link in the same browser tab (see MAIN_SCENE_IDS/
+   showMainPane()/goMainBack() in game.js). */
 .screen{
   display:none;flex-direction:column;
   position:absolute;inset:26px 6px 6px 6px;
@@ -765,6 +811,12 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .screen.maximized{inset:0;border-radius:0;border:none}
 .screen.win-pop-in{animation:winPopIn .18s cubic-bezier(.2,.8,.3,1)}
 @keyframes winPopIn{0%{opacity:0;transform:scale(.97)}100%{opacity:1;transform:scale(1)}}
+
+/* One page of the main scene — plain content, no window chrome of its
+   own; only one is ever .on at a time inside #win-main's shared
+   .win-body. */
+.pane{display:none}
+.pane.on{display:block}
 
 .screen-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .screen-head h2{font-family:var(--pixel);font-size:28px;letter-spacing:1px;color:var(--cyan)}
@@ -852,14 +904,13 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
              0 3px 0 rgba(80,45,0,.6),0 0 24px rgba(255,200,60,.55)}
 
 /* ── MAP ── */
-/* Map is a normal floating .screen window now (position/inset/
-   maximize all come from the generic .screen rules) rather than
-   permanently pinned to the true fullscreen viewport — object-fit:cover
-   on the video re-crops to whatever box it's actually given, so the
-   pin % coordinates (measured against a portrait frame) still line up
-   at the near-fullscreen "windowed" default or fully maximized; only
-   an extreme drag/resize would visibly skew them. */
-#screen-map .win-body{padding:0}
+/* Map is a pane inside the shared #win-main window (position/inset/
+   maximize all come from the generic .screen rule on #win-main) rather
+   than permanently pinned to the true fullscreen viewport —
+   object-fit:cover on the video re-crops to whatever box it's actually
+   given, so the pin % coordinates (measured against a portrait frame)
+   still line up at the near-fullscreen "windowed" default or fully
+   maximized; only an extreme drag/resize would visibly skew them. */
 #map-stage{position:absolute;inset:0;overflow:hidden;background:#05060f}
 #bg-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 #map-scrim{position:absolute;inset:0;
@@ -1499,7 +1550,6 @@ body.care-game-open{overflow:hidden}
   100%{opacity:0;transform:translate(-50%,-115%) scale(.85)}}
 
 /* ── BATTLE ── */
-#screen-battle .win-body{padding:0}
 #battle-top{display:flex;align-items:center;gap:10px;padding:10px 12px;
   border-bottom:1px solid var(--line);background:var(--panel)}
 #battle-title{font-family:var(--pixel);font-size:22px;color:var(--cyan)}
@@ -2092,6 +2142,23 @@ img.bu-sprite.is-art2{--raster-mult:2}
   display:flex;align-items:center;justify-content:center;
   background:var(--panel2);border:1px solid var(--line)}
 .eq-slot-icon.empty{opacity:.4}
+/* Habit gets the full RPG-card art (habit_card_frame.png/habit_card_
+   empty.png — portrait, ~2:3) instead of the small square gear-slot
+   icon the other 3 slots use, so its own row's icon box is taller and
+   borderless to fit that shape. */
+.eq-slot-icon:has(.habit-card-art){
+  width:44px;height:66px;background:none;border:none;
+}
+.eq-slot-icon.empty:has(.habit-card-art){opacity:1}
+.habit-card-art{position:relative;width:100%;height:100%}
+.habit-card-frame-img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
+.habit-card-socket{position:absolute;top:6%;left:9%;width:22%;aspect-ratio:1;
+  display:flex;align-items:center;justify-content:center;overflow:hidden}
+/* !important because habitIcon() sets an inline pixel width/height on
+   its own <img> (sized for the small round gear-slot icons elsewhere)
+   — this box needs it to fill the card's socket square instead. */
+.habit-card-socket .habit-icon-img{width:100% !important;height:100% !important;object-fit:contain}
+.habit-card-socket .habit-icon-emoji{font-size:12px}
 .eq-icon-img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;
   filter:drop-shadow(0 0 3px var(--eq-glow,transparent)) drop-shadow(0 0 6px var(--eq-glow,transparent))}
 .eq-icon-img.grade-radiant{animation:gradeRadiant 1.8s ease-in-out infinite}
@@ -2233,8 +2300,29 @@ img.bu-sprite.is-art2{--raster-mult:2}
     </p>
   </section>
 
+  <!-- ═══ MAIN SCENE (single shared window) ═══
+       Map, warp gate, clinic, and everything else reachable from the
+       map menu now live INSIDE one persistent window instead of each
+       spawning its own floating tab — navigating between them just
+       swaps which .pane is visible in place, like clicking a link in a
+       browser tab, with a real back button (win-main-back) to revert
+       to whatever page you were on before. Traffic lights here close/
+       minimize/maximize the whole window, not any one page.
+       See MAIN_SCENE_IDS/showMainPane()/goMainBack() in game.js. -->
+  <div id="win-main" class="screen">
+    <div class="win-titlebar">
+      <div class="win-traffic-lights">
+        <button class="win-dot win-dot-red" data-act="close" aria-label="Close"></button>
+        <button class="win-dot win-dot-yellow" data-act="min" aria-label="Minimize"></button>
+        <button class="win-dot win-dot-green" data-act="max" aria-label="Maximize"></button>
+      </div>
+      <button id="win-main-back" class="win-back-btn" aria-label="Back" disabled>‹</button>
+      <div class="win-title" id="win-main-title">Map</div>
+    </div>
+    <div class="win-body" id="win-main-body">
+
   <!-- ═══ MAP ═══ -->
-  <section id="screen-map" class="screen">
+  <section id="screen-map" class="pane">
     <div id="map-stage">
       <video id="bg-video" src="assets/video/city2.mp4"
              autoplay muted loop playsinline
@@ -2250,7 +2338,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ INVENTORY ═══ -->
-  <section id="screen-inventory" class="screen">
+  <section id="screen-inventory" class="pane">
     <div class="section">
       <div class="section-title">// POTIONS //</div>
       <div id="inv-potions" class="grid"></div>
@@ -2274,7 +2362,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ HOME ═══ -->
-  <section id="screen-home" class="screen">
+  <section id="screen-home" class="pane">
     <div class="screen-head">
       <button class="back-btn" data-goto="map">← กลับ</button>
       <h2>🏠 ฐานของคุณ</h2>
@@ -2306,7 +2394,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ CLINIC ═══ -->
-  <section id="screen-clinic" class="screen">
+  <section id="screen-clinic" class="pane">
     <div class="screen-head">
       <button class="back-btn" data-goto="map">← กลับ</button>
       <h2>🏥 Clinic</h2>
@@ -2323,7 +2411,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ SHOP ═══ -->
-  <section id="screen-shop" class="screen">
+  <section id="screen-shop" class="pane">
     <div class="screen-head">
       <button class="back-btn" data-goto="map">← กลับ</button>
       <h2>🛒 Shop</h2>
@@ -2351,7 +2439,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ FOOD SHOP ═══ -->
-  <section id="screen-foodshop" class="screen">
+  <section id="screen-foodshop" class="pane">
     <div class="screen-head">
       <button class="back-btn" data-goto="map">← กลับ</button>
       <h2>🍱 Food Shop</h2>
@@ -2371,7 +2459,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ HACK ═══ -->
-  <section id="screen-world" class="screen">
+  <section id="screen-world" class="pane">
     <div class="screen-head">
       <button class="back-btn" data-goto="map">← กลับ</button>
       <h2>🗺️ <span id="world-name">—</span></h2>
@@ -2390,7 +2478,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
 
   <!-- ═══ SKILL TREE ═══ -->
   <!-- ═══ CARE / TAMAGOTCHI ═══ -->
-  <section id="screen-care" class="screen">
+  <section id="screen-care" class="pane">
     <div class="screen-head">
       <button class="back-btn" data-goto="home">← กลับ</button>
       <h2>💗 ดูแล VIRUZ</h2>
@@ -2411,7 +2499,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ SAFE SPOT ═══ -->
-  <section id="screen-safe" class="screen">
+  <section id="screen-safe" class="pane">
     <div class="screen-head">
       <button class="back-btn" data-goto="world">← กลับสู่แผนที่</button>
       <h2 id="safe-name">—</h2>
@@ -2442,7 +2530,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ HACK: PASSWORD TERMINAL ═══ -->
-  <section id="screen-hack" class="screen">
+  <section id="screen-hack" class="pane">
     <div class="term-frame">
       <div class="term-head">
         <span>ROBCO TERMLINK — <span id="hack-target">—</span></span>
@@ -2458,7 +2546,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ HACK: STEAL MENU ═══ -->
-  <section id="screen-steal" class="screen">
+  <section id="screen-steal" class="pane">
     <div class="term-frame">
       <div class="term-head">
         <span>ACCESS GRANTED — <span id="steal-target">—</span></span>
@@ -2471,7 +2559,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ BATTLE ═══ -->
-  <section id="screen-battle" class="screen">
+  <section id="screen-battle" class="pane">
     <div id="battle-top">
       <span id="battle-title">—</span>
       <span id="battle-wave"></span>
@@ -2508,7 +2596,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ RAID ═══ -->
-  <section id="screen-raid" class="screen">
+  <section id="screen-raid" class="pane">
     <div class="screen-head">
       <button class="back-btn" data-goto="map">← กลับ</button>
       <h2>🛰️ บุกฐานผู้เล่นอื่น</h2>
@@ -2516,6 +2604,9 @@ img.bu-sprite.is-art2{--raster-mult:2}
     <div class="stat-line">พลังทีมคุณ <b id="raid-mypower">0</b></div>
     <div id="raid-list"></div>
   </section>
+
+    </div>
+  </div>
 
 </div>
 

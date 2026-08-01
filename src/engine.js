@@ -9,10 +9,11 @@ import {
   ATTR, ATTR_KEYS, WHITE_TRAIT_ROLL, SUPPORT, SYNERGY,
   RARITY, RARITY_KEYS, SPECIES, ANTIVIRUZ, TUNING, loyaltyTier, SIGNATURE_SKILLS, LOYALTY_TIERS,
   HACK_WORDS, HACK_JUNK, hackDifficulty, wordLikeness,
-  SKILL_TREES, SPECIALS, AILMENTS, STAT_KEYS, treeFor, nodeById,
+  SKILL_TREES, SPECIALS, AILMENTS, STACKING_AILMENT_IDS, STAT_KEYS, treeFor, nodeById,
   MUTATION_KEYS, MUTATION_ROLL, treeForMutation,
   bossPoolForMap, BOSS_TUNING,
-  speedGain, SKILL_TIER_BONUS } from './data.js';
+  speedGain, SKILL_TIER_BONUS,
+  HABIT_TYPES, habitColorMult, HABIT_CARD_DROP_CHANCE } from './data.js';
 
 // ── Helpers ──
 export function uid() {
@@ -55,6 +56,7 @@ export function createPet(speciesId, rarity, forcedAttr = null) {
     autoCast: {},          // { specialId: true } — auto-use in battle
     mp: 0,                 // current MP (max = int stat)
     spdCounter: 0,         // speed accrual toward a double action
+    critGauge: 0,          // 0-1 accrual toward a bonus guaranteed-crit strike
     ailments: [],
     statPts: 0,
     base: { ...sp.base },
@@ -62,7 +64,7 @@ export function createPet(speciesId, rarity, forcedAttr = null) {
     maxLv: RARITY[rarity].maxLv,
     hp: 0,          // set below
     whiteTrait: null,
-    equip: { payload:null, exploit:null, rootkit:null },
+    equip: { payload:null, exploit:null, rootkit:null, habit:null },
   };
   if (attr === 'white') {
     pet.whiteTrait = rollWeighted(WHITE_TRAIT_ROLL);
@@ -333,20 +335,84 @@ export function supportOf(team) {
   return { auraPct, regenPct };
 }
 
-// Effective combat stats for one pet inside a team context.
-export function combatStats(pet, team) {
+// ── HABIT / DATA-SYNC CARDS ──
+// An enemy carries its Color/Type innately (its own nature/appearance —
+// see the habitColor/habitType fields on ANTIVIRUZ entries); a player
+// pet only has one via a socketed card (pet.equip.habit — see
+// EQUIP_SLOTS.habit, data.js). Returns null if neither applies.
+export function habitOf(unit) {
+  if (!unit) return null;
+  const wild = ANTIVIRUZ[unit.speciesId];
+  if (wild && wild.habitColor) return { color: wild.habitColor, type: wild.habitType };
+  const card = unit.equip && unit.equip.habit;
+  if (card && card.color) return { color: card.color, type: card.type };
+  return null;
+}
+
+// Stat-shaped Type passives (the rest — Insect/Goblin/Demon/Vampire/
+// Undead/Plants/Fungi/Machine/Conjuration/Fey — are event procs/hooks
+// applied at specific combat-resolution points in game.js instead, since
+// they don't reduce to a flat multiplier). `opponent` is optional — the
+// Beast/Magical Beast mirror-match check just no-ops without one, which
+// is fine for callers (turnOrder, the speed-gauge peek in runTurn) that
+// only care about a raw SPD comparison and don't have a fixed opponent.
+export function habitStatMods(unit, opponent) {
+  const m = { atk:1, def:1, spd:1, eva:1, crit:1 };
+  const h = habitOf(unit);
+  if (!h || !h.type) return m;
+  const oh = opponent ? habitOf(opponent) : null;
+  const oppIsBeast = oh && (oh.type === 'beast' || oh.type === 'magicalBeast');
+  switch (h.type) {
+    case 'beast':
+      if (oppIsBeast) { m.atk *= 1.10; m.spd *= 1.10; }
+      break;
+    case 'magicalBeast':
+      if (oppIsBeast) { m.atk *= 1.18; m.spd *= 1.18; }
+      break;
+    case 'humanoid':
+      m.atk *= 1.06; m.def *= 1.06; m.spd *= 1.06; m.eva *= 1.06; m.crit *= 1.06;
+      break;
+    case 'aberration':
+      m.eva *= 1.12; m.crit *= 1.12; m.def *= 0.90;
+      break;
+    case 'dragon':
+      m.atk *= (unit.hp / Math.max(1, statsOf(unit).vit) > 0.5) ? 1.15 : 0.85;
+      break;
+    case 'fish':
+      if (unit.hp / Math.max(1, statsOf(unit).vit) > 0.5) m.eva *= 1.12;
+      break;
+    case 'elemental':
+      if (unit.hp / Math.max(1, statsOf(unit).vit) > 0.75) m.def *= 1.15;
+      break;
+    case 'myth': {
+      const s = statsOf(unit);
+      const best = Math.max(s.atk, s.def, s.spd);
+      if (best === s.atk) m.atk *= 1.15;
+      else if (best === s.def) m.def *= 1.15;
+      else m.spd *= 1.15;
+      break;
+    }
+  }
+  return m;
+}
+
+// Effective combat stats for one pet inside a team context. `opponent`
+// is optional (see habitStatMods above) — pass it whenever the actual
+// foe is known so Beast/Magical Beast's mirror-match bonus can apply.
+export function combatStats(pet, team, opponent) {
   const s = statsOf(pet);
   const syn = synergyOf(team).mult;
   const sup = supportOf(team);
   const m = syn * (1 + sup.auraPct);
   const lb = loyaltyBuffs(pet);
   const ail = ailmentMods(pet);
+  const hab = habitStatMods(pet, opponent);
   return {
-    atk:  Math.floor(s.atk * m * ail.atk),
-    def:  Math.floor(s.def * m * lb.def * ail.def),
-    spd:  Math.floor(s.spd * m * lb.spd * ail.spd),
-    crit: Math.max(1, Math.round(s.crit * ail.crit)),
-    eva:  Math.max(1, Math.round(s.eva  * ail.eva)),
+    atk:  Math.floor(s.atk * m * ail.atk * hab.atk),
+    def:  Math.floor(s.def * m * lb.def * ail.def * hab.def),
+    spd:  Math.floor(s.spd * m * lb.spd * ail.spd * hab.spd),
+    crit: Math.max(1, Math.round(s.crit * ail.crit * hab.crit)),
+    eva:  Math.max(1, Math.round(s.eva  * ail.eva  * hab.eva)),
     int:  s.int,
     vit:  s.vit,
     mhp:  s.vit,
@@ -376,8 +442,8 @@ function opposedChance(mine, theirs, { cap = 0.55, k = 1.0, floor = 0.02 } = {})
 }
 
 export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpecial, proc) {
-  const a = combatStats(attacker, atkTeam);
-  const d = combatStats(defender, defTeam);
+  const a = combatStats(attacker, atkTeam, defender);
+  const d = combatStats(defender, defTeam, attacker);
 
   // ── LEVEL GAP ──
   // The stat-vs-stat contests below (evasion, mitigation) are already
@@ -429,29 +495,42 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   const soften = 60 + effDef * 0.75;
   const mitigation = Math.min(0.85, effDef / (effDef + soften));
 
+  // ── HABIT COLOR RELATION ──
+  // Green > Red > Yellow > Blue > Green (+20% each), Dark > all four
+  // (+10%), White > Dark (+20%) — see habitColorMult() (data.js). No
+  // effect if either side has no color (no card/not a wild enemy).
+  const habitMult = habitColorMult(
+    (habitOf(attacker) || {}).color,
+    (habitOf(defender) || {}).color);
+
   let base = (a.atk * pw * specialMult) * (1 - mitigation) / (DMG_SCALE * DMG_DIVISOR);
-  base = Math.max(1, base * variance * levelDmgMult);
+  base = Math.max(1, base * variance * levelDmgMult * habitMult);
 
   // ── CRIT: attacker's CRIT points vs defender's composure ──
   // Composure resists crits, built from DEF + a share of EVA, so a
   // sturdy defender is critically hit less often by a weak attacker.
+  // `proc.forceCrit` (Overclock payload / the manual crit-gauge bonus
+  // strike, see fireBonusCrit() in game.js) skips the roll entirely —
+  // it's still subject to the evasion check above, just guaranteed to
+  // crit once it lands.
   const composure = d.def * 0.62 + d.eva * 0.85;
   const critChance = opposedChance(a.crit, composure, { cap: 0.42, k: 0.55, floor: 0.06 });
-  const crit = Math.random() < critChance;
+  const crit = !!(proc && proc.forceCrit) || Math.random() < critChance;
   if (crit) base *= 2;
 
   // Multi-hit skills strike `hits` times; each hit rolls its own value.
   // hitDmgs keeps the individual per-hit rolls (not just the summed
   // total) so the battle UI can animate and apply each hit separately
   // instead of dumping the whole combined number on the first swing.
-  const hits = Math.max(1, skill.hits || 1);
+  // `proc.forceHits` (Adaptive Strike) overrides the skill's own count.
+  const hits = Math.max(1, (proc && proc.forceHits) || skill.hits || 1);
   const hitDmgs = [];
   for (let i = 0; i < hits; i++) {
     hitDmgs.push(Math.max(1, Math.floor(base * (0.94 + Math.random() * 0.12))));
   }
   const total = hitDmgs.reduce((s, d) => s + d, 0);
 
-  return { dmg: total, hits, hitDmgs, crit, evaded: false };
+  return { dmg: total, hits, hitDmgs, crit, evaded: false, habitAdvantage: habitMult > 1 };
 }
 
 // Exposed so the UI can show a pet's EFFECTIVE crit/eva against a
@@ -466,11 +545,20 @@ export function evaChanceVs(defender, defTeam, attacker, atkTeam) {
 }
 
 // ── AILMENTS ──
+// Poison/frenzy (STACKING_AILMENT_IDS) ADD their stacks together across
+// repeat casts instead of just refreshing duration, and carry no `turns`
+// at all — they persist until the fight ends or a cleanse. Everything
+// else keeps the original "refresh to the longer duration" behavior.
 export function addAilment(unit, spec) {
   if (!spec || !spec.id) return null;
   unit.ailments = unit.ailments || [];
-  // refresh if already present
   const found = unit.ailments.find(x => x.id === spec.id);
+  if (STACKING_AILMENT_IDS.includes(spec.id)) {
+    if (found) { found.stacks = (found.stacks || 1) + (spec.stacks || 1); return found; }
+    const inst = { id: spec.id, stacks: spec.stacks || 1 };
+    unit.ailments.push(inst);
+    return inst;
+  }
   if (found) { found.turns = Math.max(found.turns, spec.turns); return found; }
   const inst = { ...spec };
   unit.ailments.push(inst);
@@ -482,16 +570,20 @@ export function hasAilment(unit, id) {
 export function clearAilments(unit) { unit.ailments = []; }
 
 // Tick every ailment down one turn; returns events for the UI/log.
+// Poison deals its flat per-stack damage every turn and never expires
+// this way (STACKING_AILMENT_IDS, plus lastStand which persists until
+// consumed) — everything else counts `turns` down as before.
 export function tickAilments(unit) {
   const events = [];
   if (!unit.ailments || !unit.ailments.length) return events;
-  const stats = statsOf(unit);
   unit.ailments = unit.ailments.filter(a => {
     if (a.id === 'poison') {
-      const dmg = Math.max(1, Math.floor(stats.vit * (a.val || 0.05)));
+      const dmg = Math.max(1, Math.round(AILMENTS.poison.perStack.dmg * (a.stacks || 1)));
       unit.hp = Math.max(0, unit.hp - dmg);
       events.push({ type:'poison', dmg });
+      return true;
     }
+    if (a.id === 'frenzy' || a.id === 'lastStand') return true;
     a.turns -= 1;
     if (a.turns <= 0) { events.push({ type:'expire', id:a.id }); return false; }
     return true;
@@ -509,6 +601,18 @@ export function tickAilments(unit) {
 export function ailmentMods(unit) {
   const m = { atk:1, def:1, spd:1, eva:1, crit:1 };
   (unit.ailments || []).forEach(a => {
+    // Stacking ailments (frenzy) look up their per-stack magnitude from
+    // AILMENTS instead of carrying atk/def/etc directly on the instance.
+    const per = STACKING_AILMENT_IDS.includes(a.id) && AILMENTS[a.id] && AILMENTS[a.id].perStack;
+    if (per) {
+      const n = a.stacks || 1;
+      if (per.atk  != null) m.atk  *= 1 + per.atk  * n;
+      if (per.def  != null) m.def  *= 1 + per.def  * n;
+      if (per.spd  != null) m.spd  *= 1 + per.spd  * n;
+      if (per.eva  != null) m.eva  *= 1 + per.eva  * n;
+      if (per.crit != null) m.crit *= 1 + per.crit * n;
+      return;
+    }
     if (a.atk  != null) m.atk  *= 1 + a.atk;
     if (a.def  != null) m.def  *= 1 + a.def;
     if (a.spd  != null) m.spd  *= 1 + a.spd;

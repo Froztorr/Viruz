@@ -16,10 +16,12 @@ import {
   MUTATIONS, MUTATION_KEYS, treeForMutation,
   MATERIALS, CODE_PART_IDS, codePartDropChance, mutationWeightsFromParts,
   bossPoolForMap, BOSS_TUNING, randomBossZone,
-  EQUIP_SLOTS, EQUIP_SLOT_KEYS, EQUIP_GRADES, EQUIP_GRADE_KEYS,
+  EQUIP_SLOTS, EQUIP_SLOT_KEYS, ALL_EQUIP_SLOT_KEYS, EQUIP_GRADES, EQUIP_GRADE_KEYS,
   PAYLOAD_EFFECTS, PAYLOAD_EFFECT_KEYS, EQUIP_DROP_CHANCE, CRAFT_RECIPES,
   rollEquipment, craftEquipment, dustValueOf, sellValueOf, backfillEquipIcon,
-  ART2_SPECIES } from './data.js';
+  ART2_SPECIES,
+  HABIT_COLORS, HABIT_COLOR_KEYS, HABIT_TYPES, HABIT_TYPE_KEYS,
+  HABIT_CARD_ICON, HABIT_PASSIVE_ICON, HABIT_CARD_DROP_CHANCE } from './data.js';
 import {
   createPet, rollEgg, statsOf, combatStats, powerOf, teamPower, spawnAntiviruz,
   spawnBoss, enterBossRage,
@@ -28,7 +30,8 @@ import {
   teamAlive, availableSkills, clamp, loyaltyBuffs, signatureSkillOf, buildHackPuzzle, checkHackGuess,
   unlockedSpecials, canTakeNode, takeNode, treeBonuses,
   addAilment, hasAilment, clearAilments, tickAilments,
-  advanceSpeedCounter, maxMP, canCast, spendMP, restoreMP, uid, equipmentBonuses } from './engine.js';
+  advanceSpeedCounter, maxMP, canCast, spendMP, restoreMP, uid, equipmentBonuses,
+  habitOf } from './engine.js';
 import { NET } from './net.js';
 import { creatureMarkupFor, gifURL } from './sprites.js';
 
@@ -88,6 +91,22 @@ const $ = id => document.getElementById(id);
 function attrIcon(a, size = 16) {
   if (a.iconImg) return `<img src="${a.iconImg}" class="attr-icon-img" style="width:${size}px;height:${size}px" alt="${a.name}">`;
   return `<span class="attr-icon-emoji">${a.icon}</span>`;
+}
+
+// Same idea as attrIcon(), but for the new Habit colors/types/card/
+// passive icons (data.js): each entry's iconImg already points at the
+// exact path its real PNG should land at (no file there yet). Renders
+// an <img> with an onerror fallback to the emoji, so dropping the
+// actual art in later just starts working with zero code changes, and
+// until then it quietly shows the emoji instead of a broken image.
+function habitIcon(entry, size = 16) {
+  if (!entry) return '';
+  if (entry.iconImg) {
+    const emoji = (entry.icon || '').replace(/"/g, '');
+    return `<img src="${entry.iconImg}" class="habit-icon-img" style="width:${size}px;height:${size}px" alt="${entry.name || ''}" ` +
+      `onerror="this.outerHTML='&lt;span class=&quot;habit-icon-emoji&quot;&gt;${emoji}&lt;/span&gt;'">`;
+  }
+  return `<span class="habit-icon-emoji">${entry.icon || ''}</span>`;
 }
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -156,14 +175,16 @@ async function boot() {
       p.autoCast  = p.autoCast  || {};
       p.ailments  = [];
       p.spdCounter = 0;
+      p.critGauge = 0;
       if (typeof p.growthPts !== 'number') {
         // Retro-grant one point per level already earned so existing
         // pets aren't stuck with an empty tree.
         p.growthPts = Math.max(0, (p.level || 1) - 1);
       }
       if (typeof p.mp !== 'number') p.mp = 0;
-      p.equip = p.equip || { payload:null, exploit:null, rootkit:null };
-      EQUIP_SLOT_KEYS.forEach(sk => { if (p.equip[sk]) backfillEquipIcon(p.equip[sk]); });
+      p.equip = p.equip || { payload:null, exploit:null, rootkit:null, habit:null };
+      if (!('habit' in p.equip)) p.equip.habit = null;   // pre-Habit-System saves
+      ALL_EQUIP_SLOT_KEYS.forEach(sk => { if (p.equip[sk]) backfillEquipIcon(p.equip[sk]); });
       p.shape = sp.shape || null;
       p.gif   = sp.gif   || null;
       p.scale = sp.scale || 1;
@@ -213,6 +234,7 @@ async function boot() {
     buildStarterPicker();
   }
   wireGlobalUI();
+  wireMainWindow();
   wireDrawer();
   wireCareGame();
   wirePetDetail();
@@ -267,26 +289,36 @@ async function claimStarter() {
   log(`เริ่มต้นด้วย ${pet.name} [${a.name}] · ${TUNING.startBitz} Bitz`, 'win');
 }
 
-// ═══════════════ SCREENS AS FLOATING WINDOWS ═══════════════
-// Every screen (plus the drawer) is an independent Mac-style window —
-// several can be open (or minimized) at once, each with its own
-// traffic lights, each draggable/closable/minimizable/maximizable.
+// ═══════════════ MAIN SCENE + DRAWER AS WINDOWS ═══════════════
+// Only two Mac-style windows ever exist now: #win-main (the map and
+// everything reachable from its menu — clinic, shops, world, raid,
+// etc.) and the drawer. Both are draggable/closable/minimizable/
+// maximizable. Navigating between map-menu pages does NOT open another
+// window — it swaps which .pane is visible inside #win-main's shared
+// body, like clicking a link and staying in the same browser tab, with
+// goMainBack()/win-main-back reverting to whatever page came before.
 // showScreen(id) (called from ~50 places across the file, mostly via
-// data-goto buttons) is now a thin wrapper around openWindow(id): it
-// no longer hides everything else, it opens-or-focuses one window on
-// top of whatever else is already open.
+// data-goto buttons) stays the single entry point every call site uses;
+// openWindow() decides internally whether that id is a main-scene page
+// (swap in place) or the drawer (its own window).
 const WIN_TITLES = {
   map:'Map', home:'Home Base', clinic:'Clinic', shop:'Shop',
-  foodshop:'Food Shop', world:'World Map', battle:'Battle', arena:'Arena',
+  foodshop:'Food Shop', world:'World Map', battle:'Battle',
   raid:'Raid', safe:'Safe Spot', care:'Care', hack:'Hack Terminal',
   steal:'Steal', inventory:'Inventory', drawer:'Menu',
 };
+const MAIN_SCENE_IDS = [
+  'map', 'home', 'clinic', 'shop', 'foodshop', 'world', 'safe', 'care',
+  'raid', 'hack', 'steal', 'inventory', 'battle',
+];
 
-let currentScreenId = null;
-let windowStack = [];              // z-order, back to front
+let currentScreenId = null;        // 'intro' | 'win-main' | 'drawer'
+let currentMainId = null;          // which pane is showing inside #win-main
+let mainHistory = [];              // back-button stack of previously shown panes
+let windowStack = [];              // z-order, back to front — only ever 'win-main'/'drawer'
 let minimizedWindows = new Set();
 
-function winElId(id) { return id === 'drawer' ? 'drawer-panel' : 'screen-' + id; }
+function winElId(id) { return id === 'drawer' ? 'drawer-panel' : 'win-main'; }
 function windowEl(id) { return $(winElId(id)); }
 
 // Kept well below the persistent chrome's own z-index (drawer knob,
@@ -299,36 +331,34 @@ function restackWindowsZ() {
   });
 }
 
-// Lazily wraps a .screen's existing content in a .win-body and
-// prepends a generated .win-titlebar (dots + drag handle) the first
-// time it's ever opened — cheaper and less error-prone than hand-
-// authoring the same chrome into 14 separate HTML sections. The
-// drawer already carries its own hand-authored head in index.html
-// (wired separately in wireDrawer()), so it's skipped here.
-function ensureWindowChrome(id) {
-  const container = windowEl(id);
-  if (!container || id === 'drawer' || container.dataset.chromed) return container;
-  container.dataset.chromed = '1';
+// Swaps which main-scene page is visible inside #win-main's shared
+// body — the equivalent of a browser tab navigating to a new page.
+// Doesn't touch history; callers decide when to push onto mainHistory.
+function showMainPane(id) {
+  MAIN_SCENE_IDS.forEach(x => {
+    const p = $('screen-' + x);
+    if (p) p.classList.toggle('on', x === id);
+  });
+  currentMainId = id;
+  const winMain = $('win-main');
+  if (winMain) winMain.dataset.pane = id;
+  setText('win-main-title', WIN_TITLES[id] || id);
+  const backBtn = $('win-main-back');
+  if (backBtn) backBtn.disabled = !mainHistory.length;
+}
 
-  const bar = el('div', 'win-titlebar');
-  bar.innerHTML = `
-    <div class="win-traffic-lights">
-      <button class="win-dot win-dot-red" data-act="close" aria-label="Close"></button>
-      <button class="win-dot win-dot-yellow" data-act="min" aria-label="Minimize"></button>
-      <button class="win-dot win-dot-green" data-act="max" aria-label="Maximize"></button>
-    </div>
-    <div class="win-title">${WIN_TITLES[id] || id}</div>`;
-  const body = el('div', 'win-body');
-  while (container.firstChild) body.appendChild(container.firstChild);
-  container.appendChild(bar);
-  container.appendChild(body);
-
-  bar.querySelector('[data-act="close"]').onclick = (e) => { e.stopPropagation(); closeWindow(id); };
-  bar.querySelector('[data-act="min"]').onclick = (e) => { e.stopPropagation(); minimizeWindow(id); };
-  bar.querySelector('[data-act="max"]').onclick = (e) => { e.stopPropagation(); toggleMaximizeWindow(id); };
-  makeWindowDraggable(container, bar.querySelector('.win-title'));
-  container.addEventListener('pointerdown', () => focusWindow(id));
-  return container;
+// The title-bar "‹" back button — reverts to whichever main-scene page
+// was showing before the current one, browser-back style. Doesn't push
+// a forward-history entry; going somewhere new after a back() simply
+// starts a fresh trail from there (no forward button was asked for).
+function goMainBack() {
+  if (!mainHistory.length) return;
+  const prevId = mainHistory.pop();
+  showMainPane(prevId);
+  runScreenRenderer(prevId);
+  const PERSISTABLE = ['map','world','safe','home','clinic','shop','foodshop','care','raid'];
+  if (PERSISTABLE.includes(prevId)) { G.lastScreen = prevId; save(); }
+  $('app').dataset.screen = prevId;
 }
 
 // Runs whichever render/side-effect a given screen needs on open —
@@ -356,14 +386,14 @@ function runScreenRenderer(id) {
 
 // Brings an already-open window to the front without re-rendering it
 // — used when tapping anywhere inside a window that isn't currently
-// focused (see ensureWindowChrome's pointerdown listener).
+// focused (see wireMainWindow()/wireDrawer()'s pointerdown listeners).
 function focusWindow(id) {
   if (!windowStack.includes(id) || minimizedWindows.has(id)) return;
   windowStack = windowStack.filter(x => x !== id);
   windowStack.push(id);
   restackWindowsZ();
   currentScreenId = id;
-  $('app').dataset.screen = id;
+  $('app').dataset.screen = id === 'win-main' ? currentMainId : id;
 }
 
 function openWindow(id) {
@@ -380,18 +410,32 @@ function openWindow(id) {
   closePetDetail();
   if (id !== 'care') stopCareWander();
 
-  // Already open, already frontmost, not minimized: no-op, matching
-  // the old "re-showing the current screen does nothing" behavior.
-  if (id === currentScreenId && windowStack.includes(id) && !minimizedWindows.has(id)) return;
+  const isMainScene = MAIN_SCENE_IDS.includes(id);
+  const winId = isMainScene ? 'win-main' : id;
+  const windowCurrentlyOpen = windowStack.includes(winId) && !minimizedWindows.has(winId);
 
-  const container = ensureWindowChrome(id);
+  // Already open, already showing this exact page/window: no-op,
+  // matching the old "re-showing the current screen does nothing"
+  // behavior.
+  if (isMainScene ? (id === currentMainId && windowCurrentlyOpen)
+                  : (id === currentScreenId && windowCurrentlyOpen)) return;
+
+  // Switching which page #win-main shows — like following a link in a
+  // browser tab: push the page being left onto the back history, then
+  // swap the visible pane in place. No new window opens for this.
+  if (isMainScene && id !== currentMainId) {
+    if (currentMainId) mainHistory.push(currentMainId);
+    showMainPane(id);
+  }
+
+  const container = windowEl(winId);
   if (!container) return;
 
-  const isNewOpen = !windowStack.includes(id);
-  minimizedWindows.delete(id);
+  const isNewOpen = !windowStack.includes(winId);
+  minimizedWindows.delete(winId);
   container.classList.add('on');
-  windowStack = windowStack.filter(x => x !== id);
-  windowStack.push(id);
+  windowStack = windowStack.filter(x => x !== winId);
+  windowStack.push(winId);
   if (isNewOpen) {
     container.classList.remove('win-pop-in'); void container.offsetWidth;
     container.classList.add('win-pop-in');
@@ -399,7 +443,7 @@ function openWindow(id) {
   restackWindowsZ();
   renderWinDock();
 
-  currentScreenId = id;
+  currentScreenId = winId;
   // Persist "where the player is" for LOCATION screens only — never a
   // transient state like battle/hack/steal. On next load, boot()
   // restores here instead of always dropping the player back at the
@@ -422,7 +466,7 @@ function closeWindow(id) {
   const front = windowStack[windowStack.length - 1];
   restackWindowsZ();
   currentScreenId = front;
-  $('app').dataset.screen = front;
+  $('app').dataset.screen = front === 'win-main' ? currentMainId : front;
 }
 
 function minimizeWindow(id) {
@@ -432,7 +476,10 @@ function minimizeWindow(id) {
   container.classList.remove('on');
   renderWinDock();
   const nextVisible = [...windowStack].reverse().find(x => x !== id && !minimizedWindows.has(x));
-  if (nextVisible) { currentScreenId = nextVisible; $('app').dataset.screen = nextVisible; }
+  if (nextVisible) {
+    currentScreenId = nextVisible;
+    $('app').dataset.screen = nextVisible === 'win-main' ? currentMainId : nextVisible;
+  }
 }
 
 function toggleMaximizeWindow(id) {
@@ -456,11 +503,27 @@ function renderWinDock() {
   if (!dock) return;
   dock.innerHTML = '';
   minimizedWindows.forEach(id => {
+    const label = id === 'win-main' ? (WIN_TITLES[currentMainId] || currentMainId) : (WIN_TITLES[id] || id);
     const chip = el('button', 'win-dock-chip');
-    chip.innerHTML = `<span class="wdc-dot"></span>${WIN_TITLES[id] || id}`;
-    chip.onclick = () => openWindow(id);
+    chip.innerHTML = `<span class="wdc-dot"></span>${label}`;
+    chip.onclick = () => openWindow(id === 'win-main' ? currentMainId : id);
     dock.appendChild(chip);
   });
+}
+
+// #win-main's chrome is hand-authored in index.html (like the drawer's
+// own head), not JS-injected — wire its traffic lights, back button,
+// and drag handle once at boot.
+function wireMainWindow() {
+  const win = $('win-main');
+  if (!win) return;
+  win.querySelector('[data-act="close"]').onclick = (e) => { e.stopPropagation(); closeWindow('win-main'); };
+  win.querySelector('[data-act="min"]').onclick = (e) => { e.stopPropagation(); minimizeWindow('win-main'); };
+  win.querySelector('[data-act="max"]').onclick = (e) => { e.stopPropagation(); toggleMaximizeWindow('win-main'); };
+  const backBtn = $('win-main-back');
+  if (backBtn) backBtn.onclick = (e) => { e.stopPropagation(); goMainBack(); };
+  makeWindowDraggable(win, win.querySelector('.win-title'));
+  win.addEventListener('pointerdown', () => focusWindow('win-main'));
 }
 
 // ── DRAGGABLE WINDOW (generic) ──
@@ -590,12 +653,12 @@ function wireDayNightTheme() {
 }
 
 // ── DRAWER, AS A WINDOW ──
-// The drawer's head is hand-authored in index.html (not generated by
-// ensureWindowChrome — see the comment there) since it already needed
-// its own distinct content, but it's wired through the exact same
-// openWindow()/closeWindow()/minimizeWindow()/toggleMaximizeWindow()/
-// makeWindowDraggable() as every .screen, so it behaves identically:
-// draggable, closable, minimizable (into #win-dock), maximizable.
+// The drawer's head is hand-authored in index.html, same as #win-main's
+// (see wireMainWindow()), since it needed its own distinct content —
+// but it's wired through the exact same openWindow()/closeWindow()/
+// minimizeWindow()/toggleMaximizeWindow()/makeWindowDraggable() as
+// #win-main, so it behaves identically: draggable, closable, minimizable
+// (into #win-dock), maximizable.
 function toggleDrawer() {
   if (windowStack.includes('drawer') && !minimizedWindows.has('drawer')) closeWindow('drawer');
   else openWindow('drawer');
@@ -998,6 +1061,11 @@ function equipIconHtml(item, fallbackEmoji) {
   return `<img src="${item.icon}" class="eq-icon-img${radiant ? ' grade-radiant' : ''}" style="--eq-glow:${g.glow}" alt="">`;
 }
 function equipStatLine(item) {
+  if (item.slotId === 'habit') {
+    const c = HABIT_COLORS[item.color], t = HABIT_TYPES[item.type];
+    if (!c || !t) return '';
+    return `${habitIcon(c, 14)} ${c.name} · ${habitIcon(t, 14)} ${t.name}<br><span class="muted">${t.desc}</span>`;
+  }
   if (item.effectId) {
     const eff = PAYLOAD_EFFECTS[item.effectId];
     if (!eff) return '';
@@ -1018,22 +1086,35 @@ function renderPdEquip() {
   if (!page) return;
   page.innerHTML = '';
   const wrap = el('div', 'eq-slots');
-  EQUIP_SLOT_KEYS.forEach(slotId => {
+  ALL_EQUIP_SLOT_KEYS.forEach(slotId => {
     const slot = EQUIP_SLOTS[slotId];
     const item = pet.equip && pet.equip[slotId];
-    const row = el('div', 'eq-slot-row');
+    const row = el('div', 'eq-slot-row' + (slotId === 'habit' ? ' habit-slot-row' : ''));
     if (item) {
       const g = equipGradeMeta(item);
       row.style.setProperty('--grade', g.color);
+      // Habit gets its own full RPG-card art (habit_card_frame.png) with
+      // the card's Type badge sitting in the frame's built-in icon
+      // socket, instead of the small round gear-slot icon the other 3
+      // slots use — see equipIconHtml() for those.
+      const iconHtml = slotId === 'habit'
+        ? `<div class="habit-card-art">
+             <img src="assets/icons/habit_card_frame.png" class="habit-card-frame-img" alt="">
+             <div class="habit-card-socket">${habitIcon(HABIT_TYPES[item.type], 26)}</div>
+           </div>`
+        : equipIconHtml(item, slot.icon);
       row.innerHTML = `
-        <div class="eq-slot-icon">${equipIconHtml(item, slot.icon)}</div>
+        <div class="eq-slot-icon">${iconHtml}</div>
           <div class="eq-slot-stats">${equipStatLine(item)}</div>
         </div>
         <button class="btn small">ถอด</button>`;
       row.querySelector('button').onclick = () => { unequipItem(pet, slotId); renderPdEquip(); };
     } else {
+      const iconHtml = slotId === 'habit'
+        ? `<div class="habit-card-art"><img src="assets/icons/habit_card_empty.png" class="habit-card-frame-img" alt=""></div>`
+        : slot.icon;
       row.innerHTML = `
-        <div class="eq-slot-icon empty">${slot.icon}</div>
+        <div class="eq-slot-icon empty">${iconHtml}</div>
         <div class="eq-slot-info">
           <div class="eq-slot-name muted">${slot.name} — ว่าง</div>
           <div class="eq-slot-sub">${slot.desc}</div>
@@ -2435,7 +2516,7 @@ function wanderStep() {
   // overlay, or while some other screen is showing.
   const overlayOpen = CG != null || ($('care-game') && $('care-game').classList.contains('open'));
   const petEl = $('care-pet');
-  if (currentScreenId !== 'care' || overlayOpen || !petEl) { scheduleWanderStep(1200); return; }
+  if (currentMainId !== 'care' || overlayOpen || !petEl) { scheduleWanderStep(1200); return; }
   checkWasteSpawn();
   const x = 20 + Math.random() * 58;
   const y = 30 + Math.random() * 46;
@@ -3085,13 +3166,6 @@ function startBossFight(mapId) {
     wave: 0, turn: 0, activeIdx: 0, phase: 'ally', round: 0, over: false,
     totalExp: 0, totalBitz: 0,
   };
-  battle.team.forEach(p => {
-    p.mp = statsOf(p).int;
-    p.spdCounter = 0;
-    p.ailments = [];
-    p._shield = 0;
-    p._cooldowns = {};
-  });
   showScreen('battle');
   setText('battle-title', `${boss.name} · BOSS`);
   setText('battle-wave', 'บอสประจำภูมิภาค');
@@ -3129,14 +3203,6 @@ function startZone(target) {
     totalExp: 0,
     totalBitz: 0,
   };
-  // Fresh MP, cleared ailments and speed counters at the start of a run
-  battle.team.forEach(p => {
-    p.mp = statsOf(p).int;
-    p.spdCounter = 0;
-    p.ailments = [];
-    p._shield = 0;
-    p._cooldowns = {};
-  });
   showScreen('battle');
   setText('battle-title', target.name);
   setText('battle-wave', `คลื่น 1 / ${run.waveCount}`);
@@ -3385,12 +3451,31 @@ function payloadEffectOf(pet) {
   return { item, eff, mag: (eff.mag || [])[gi] || 0 };
 }
 
-// Just resets the first-strike flag for every fighter at battle
-// start — Overclock/Adaptive Strike are consumed on that fighter's
-// first attack, see firstStrikeProc() below. (Data Leech/Kill Reboot/
-// Toxin Injector are per-hit, handled in applyPayloadOnHit() instead.)
+// Resets every per-fight fighter field at the start of a battle: the
+// first-strike flag (Overclock/Adaptive Strike are consumed on that
+// fighter's first attack, see firstStrikeProc() below; Data Leech/Kill
+// Reboot/Toxin Injector are per-hit, handled in applyPayloadOnHit()
+// instead), MP, the speed/crit gauges, ailments (poison/frenzy now
+// persist until the fight ends, so a stale stack from a PREVIOUS fight
+// must not survive into this one), and the block/cooldown trackers.
+// Previously only startBossFight/startZone hand-rolled this reset
+// inline and startRaidFight/startArena skipped it entirely — a
+// leftover poison/frenzy stack (or a full crit gauge) from a fight that
+// just ended could otherwise carry straight into the next one.
 function applyBattleStartEquip(team) {
-  (team || []).forEach(pet => { if (pet) pet._firstStrikeUsed = false; });
+  (team || []).forEach(pet => {
+    if (!pet) return;
+    pet._firstStrikeUsed = false;
+    pet.mp = statsOf(pet).int;
+    pet.spdCounter = 0;
+    pet.critGauge = 0;
+    pet.ailments = [];
+    pet._shield = 0;
+    pet._cooldowns = {};
+    pet._habitAtkCount = 0;
+    pet._habitUndeadUsed = false;
+    pet._tookDamageThisTurn = false;
+  });
 }
 
 // Overclock (guaranteed crit) / Adaptive Strike (guaranteed double
@@ -3410,6 +3495,27 @@ function firstStrikeProc(attacker) {
     attacker._firstStrikeUsed = true;
     blog(`🌪️ ${attacker.name} — ${info.eff.name}!`, 'buff');
     return { forceHits: 2 };
+  }
+  return null;
+}
+
+// Merges the equipment first-strike proc with the two Habit Type
+// passives that force a guaranteed crit rather than reducing to a flat
+// stat multiplier: Insect (every 5th attack this fight) and Goblin (any
+// attack against a target under 50% HP). Equipment wins if it also has
+// something queued — kept simple, no stacking of forced outcomes.
+function buildAttackProc(attacker, target) {
+  const equipProc = firstStrikeProc(attacker);
+  if (equipProc) return equipProc;
+  const hab = habitOf(attacker);
+  if (!hab) return null;
+  if (hab.type === 'insect') {
+    attacker._habitAtkCount = (attacker._habitAtkCount || 0) + 1;
+    if (attacker._habitAtkCount % 5 === 0) return { forceCrit: true };
+  }
+  if (hab.type === 'goblin' && target && target.hp > 0) {
+    const mhp = statsOf(target).vit;
+    if (target.hp / mhp < 0.5) return { forceCrit: true };
   }
   return null;
 }
@@ -3480,6 +3586,27 @@ function rollMaterialDrop(enemy) {
   }
 }
 
+// Habit/Data-Sync card — low-rate drop named after whichever wild
+// ANTIVIRUZ enemy (world zone, boss, or raid guard — anything with a
+// habitColor/habitType fixed on its ANTIVIRUZ entry) landed the kill.
+// An Arena opponent (built from a player SPECIES, not ANTIVIRUZ) has no
+// such entry and never drops one. Lands in the same G.equipBag as
+// regular gear — same slotId-keyed equip/unequip flow, see equipItem().
+function rollHabitCard(enemy) {
+  if (!enemy || Math.random() >= HABIT_CARD_DROP_CHANCE) return;
+  const def = ANTIVIRUZ[enemy.speciesId];
+  if (!def || !def.habitColor) return;
+  const item = {
+    uid: uid(), slotId: 'habit', sourceId: enemy.speciesId,
+    name: `${def.name} Card`, color: def.habitColor, type: def.habitType,
+    grade: 'trojan', lvlReq: 1,
+  };
+  G.equipBag = G.equipBag || [];
+  G.equipBag.push(item);
+  toast(`🎴 ${item.name}`);
+  blog(`🎴 ดรอปการ์ด: ${item.name}`, 'win');
+}
+
 // Meat is the one cooking ingredient that can't be bought — hunting
 // is the only source, same drop-per-kill shape as equipment above.
 function rollMeatDrop(enemy) {
@@ -3497,7 +3624,7 @@ function equipGradeMeta(item) { return EQUIP_GRADES[item.grade] || EQUIP_GRADES.
 // swapping.
 function equipItem(pet, item) {
   if (!pet || !item) return;
-  pet.equip = pet.equip || { payload:null, exploit:null, rootkit:null };
+  pet.equip = pet.equip || { payload:null, exploit:null, rootkit:null, habit:null };
   const prev = pet.equip[item.slotId];
   G.equipBag = (G.equipBag || []).filter(x => x.uid !== item.uid);
   if (prev) G.equipBag.push(prev);
@@ -3618,6 +3745,26 @@ function scheduleTurn(delayMs) {
   battleTimer = setTimeout(runTurn, ms);
 }
 
+// Mutex around anything that mutates battle state / plays an attack
+// animation — runTurn holds it for its whole body, so a manually-tapped
+// bonus crit (fireBonusCrit, via a ready ally — see wireCritGaugeTap)
+// never races an in-flight auto-turn. A tap that arrives while busy
+// doesn't just get silently dropped (a real player's tap essentially
+// never lines up with the auto-loop's own internal cadence, and most
+// of any given turn IS spent "busy" mid-animation) — it's queued via
+// pendingCritTap and serviced the instant the lock clears, in
+// releaseBattleBusy() below.
+let battleBusy = false;
+let pendingCritTap = false;
+function releaseBattleBusy() {
+  battleBusy = false;
+  if (pendingCritTap) {
+    pendingCritTap = false;
+    const ally = activeAlly();
+    if (ally) requestBonusCrit(ally);
+  }
+}
+
 // ── SPECIAL SKILL COOLDOWNS ──
 // Real wall-clock seconds (per your spec: 3-5s depending on power),
 // tracked per unit per skill id in unit._cooldowns. Reset whenever a
@@ -3632,40 +3779,11 @@ function markSpecialUsed(unit, sp) {
   unit._cooldowns[sp.id] = Date.now() + (sp.cd || 3.5) * 1000;
 }
 
-async function runTurn() {
-  if (!battle || battle.over) return;
-  if (battle.phase === 'ally') {
-    await runTeamBuffCheck();
-    if (!battle || battle.over) return;
-  }
-  const ally = activeAlly();
-  const foe = activeFoe();
-  if (!ally) { promptSwap(); return; }
-  if (!foe) { await checkBattleEnd(); return; }
-
-  const goesFirst = battle.phase === 'ally' ? ally : foe;
-  const other = battle.phase === 'ally' ? foe : ally;
-  const side = battle.phase === 'ally' ? 'ally' : 'foe';
-  battle.phase = battle.phase === 'ally' ? 'foe' : 'ally';
-
-  if (hasAilment(goesFirst, 'freeze')) {
-    blog(`❄️ ${goesFirst.name} ถูกแช่แข็ง ขยับไม่ได้`, side);
-    await endOfTurnTicks(goesFirst);
-    if (await checkBattleEnd()) return;
-    scheduleTurn();
-    return;
-  }
-
-  let target = other;
-  let attacker = goesFirst;
-  if (hasAilment(attacker, 'charm')) {
-    target = attacker;
-    blog(`💗 ${attacker.name} ถูกมนต์เสน่ห์ หันมาโจมตีตัวเอง`, side);
-  }
-
-  const atkTeam = side === 'ally' ? battle.team : battle.enemies;
-  const defTeam = side === 'ally' ? battle.enemies : battle.team;
-
+// Picks and executes ONE action for `attacker` this exchange — specials-
+// vs-basic selection extracted out of runTurn so a speed-gauge bonus
+// action (see advanceSpeedCounter below) can run through the exact same
+// logic a second time in a row without duplicating it.
+async function resolveAction(attacker, target, side, atkTeam, defTeam) {
   // Only specials that are auto-cast ON, affordable, AND off cooldown
   // are eligible. Without the cooldown check a pet would burn every
   // point of MP on specials back-to-back instead of ever throwing a
@@ -3675,10 +3793,9 @@ async function runTurn() {
     .filter(sp => attacker.autoCast?.[sp.id] && canCast(attacker, sp) && specialReady(attacker, sp));
   const sig = signatureSkillOf(attacker);
   const sigReady = sig && specialReady(attacker, sig);
-  let usedSpecial = null;
 
   if (specials.length && Math.random() < 0.55) {
-    usedSpecial = specials[Math.floor(Math.random() * specials.length)];
+    const usedSpecial = specials[Math.floor(Math.random() * specials.length)];
     markSpecialUsed(attacker, usedSpecial);
     await castSpecial(attacker, target, usedSpecial, side, atkTeam, defTeam);
   } else if (sigReady && Math.random() < 0.3) {
@@ -3687,12 +3804,200 @@ async function runTurn() {
   } else {
     await basicAttack(attacker, target, side, atkTeam, defTeam);
   }
+}
 
-  await endOfTurnTicks(attacker);
-  await endOfTurnTicks(target);
+async function runTurn() {
+  if (!battle || battle.over) return;
+  // A manual bonus-crit tap (or its queued service) is currently
+  // running — retry shortly rather than stepping on the same state.
+  if (battleBusy) { scheduleTurn(50); return; }
+  battleBusy = true;
+  try {
+    if (battle.phase === 'ally') {
+      await runTeamBuffCheck();
+      if (!battle || battle.over) return;
+    }
+    const ally = activeAlly();
+    const foe = activeFoe();
+    if (!ally) { promptSwap(); return; }
+    if (!foe) { await checkBattleEnd(); return; }
 
-  if (await checkBattleEnd()) return;
-  scheduleTurn();
+    const goesFirst = battle.phase === 'ally' ? ally : foe;
+    const other = battle.phase === 'ally' ? foe : ally;
+    const side = battle.phase === 'ally' ? 'ally' : 'foe';
+    battle.phase = battle.phase === 'ally' ? 'foe' : 'ally';
+
+    // Freeze and Stoned both skip the turn entirely, but only freeze
+    // shatters (bonus damage + early removal) when hit — see
+    // applyFreezeShatter(). Stoned runs its full duration no matter
+    // what happens to it meanwhile.
+    if (hasAilment(goesFirst, 'freeze') || hasAilment(goesFirst, 'stoned')) {
+      const stunId = hasAilment(goesFirst, 'stoned') ? 'stoned' : 'freeze';
+      const stunLabel = stunId === 'stoned' ? 'กลายเป็นหิน ขยับไม่ได้' : 'ถูกแช่แข็ง ขยับไม่ได้';
+      blog(`${AILMENTS[stunId].icon} ${goesFirst.name} ${stunLabel}`, side);
+      await endOfTurnTicks(goesFirst);
+      if (await checkBattleEnd()) return;
+      scheduleTurn();
+      return;
+    }
+
+    let target = other;
+    let attacker = goesFirst;
+    if (hasAilment(attacker, 'charm')) {
+      target = attacker;
+      blog(`💗 ${attacker.name} ถูกมนต์เสน่ห์ หันมาโจมตีตัวเอง`, side);
+    }
+
+    const atkTeam = side === 'ally' ? battle.team : battle.enemies;
+    const defTeam = side === 'ally' ? battle.enemies : battle.team;
+
+    await resolveAction(attacker, target, side, atkTeam, defTeam);
+
+    // ── SPEED GAUGE: charges toward a bonus second action this exchange ──
+    if (attacker.hp > 0 && target.hp > 0 && !battle.over) {
+      const mySpd = combatStats(attacker, atkTeam).spd;
+      const foeSpd = combatStats(target, defTeam).spd;
+      if (advanceSpeedCounter(attacker, mySpd, foeSpd) === 2) {
+        await showBanner('SPEED UP!', 'speed');
+        blog(`⚡ ${attacker.name} เร็วกว่า — โจมตีซ้ำ!`, side);
+        await resolveAction(attacker, target, side, atkTeam, defTeam);
+      }
+    }
+
+    // ── CRIT GAUGE: fills toward a bonus guaranteed-crit strike ──
+    // An ally just gets marked ready (see refreshBattleUnits/renderBattleSide
+    // for the tappable glow) and waits for a tap — fireBonusCrit() only
+    // auto-fires here for a foe, since there's no player to tap for it.
+    if (attacker.hp > 0 && !battle.over) {
+      attacker.critGauge = Math.min(1, (attacker.critGauge || 0)
+        + TUNING.critGaugeBaseGain + statsOf(attacker).crit / TUNING.critGaugeCritScale);
+      if (attacker.critGauge >= 1 && side === 'foe' && target.hp > 0) {
+        await fireBonusCrit(attacker, target, side, atkTeam, defTeam);
+      }
+    }
+
+    await endOfTurnTicks(attacker);
+    await endOfTurnTicks(target);
+    refreshBattleUnits();
+
+    if (await checkBattleEnd()) return;
+    scheduleTurn();
+  } finally {
+    releaseBattleBusy();
+  }
+}
+
+// Guaranteed-crit bonus strike, fired once a unit's crit gauge fills —
+// automatically for a foe (see runTurn), or via a tap on a ready ally
+// (see wireCritGaugeTap()). An EXTRA action layered on top of the
+// normal alternating turn order, not a replacement for it: battle.phase
+// and the scheduleTurn loop are untouched, so this never steals or
+// skips anyone's actual turn.
+async function fireBonusCrit(attacker, target, side, atkTeam, defTeam) {
+  if (!battle || battle.over || !attacker || attacker.hp <= 0 || !target || target.hp <= 0) return;
+  attacker.critGauge = 0;
+  await showBanner('CRIT READY!!', 'crit');
+  const skills = availableSkills(attacker);
+  const skill = skills[Math.floor(Math.random() * skills.length)] || { n: 'Strike', pw: 40 };
+  const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false, { forceCrit: true });
+  applyFreezeShatter(target, res);
+  applyHabitPreHitMods(target, res);
+  if (!res.evaded) {
+    await playAttackSequence(attacker, target, res, side, 'impact');
+    let line = `${attacker.name} → ${skill.n} (Bonus Crit)`;
+    if (res.hits > 1) line += ` ×${res.hits}`;
+    line += ` · -${res.dmg}`;
+    blog(line, side);
+  } else {
+    await playAttackSequence(attacker, target, res, side);
+    blog(`${target.name} หลบการโจมตีโบนัสของ ${attacker.name} ได้!`, side);
+  }
+  refreshBattleUnits();
+  await checkBattleEnd();
+}
+
+// Entry point for a MANUAL bonus-crit request (a tap on a ready ally —
+// see wireCritGaugeTap()) — acquires battleBusy itself (unlike the
+// foe auto-fire call inside runTurn, which already holds the lock for
+// its whole turn) or queues via pendingCritTap if something else is
+// already running, instead of just dropping the tap.
+function requestBonusCrit(pet) {
+  if (!battle || battle.over || !pet || pet.isEnemy) return;
+  if ((pet.critGauge || 0) < 1) return;
+  if (battleBusy) { pendingCritTap = true; return; }
+  const foe = activeFoe();
+  if (!foe) return;
+  battleBusy = true;
+  fireBonusCrit(pet, foe, 'ally', battle.team, battle.enemies).finally(releaseBattleBusy);
+}
+
+// Bumps res.dmg/hitDmgs by TUNING.freezeShatterMult and clears freeze —
+// hitting a frozen target shatters the ice for bonus damage instead of
+// it just quietly wearing off. Called right after computeDamage, before
+// the hit animation, so the bumped number is what actually lands and
+// plays. A miss (res.evaded) has nothing to shatter.
+function applyFreezeShatter(target, res) {
+  if (!res || res.evaded || !hasAilment(target, 'freeze')) return;
+  const mult = TUNING.freezeShatterMult;
+  res.dmg = Math.round(res.dmg * mult);
+  res.hitDmgs = res.hitDmgs.map(d => Math.round(d * mult));
+  res.shattered = true;
+  target.ailments = target.ailments.filter(a => a.id !== 'freeze');
+}
+
+// Habit Type passives that modify a hit BEFORE it plays — called right
+// after computeDamage, same point as applyFreezeShatter, so the
+// adjusted number is what actually lands and animates.
+// Conjuration: 20% flat chance the whole hit is a "phantom duplicate"
+// and lands for 0 (checked BEFORE Machine's own modifier, since a fully
+// blocked hit has nothing left to amplify).
+// Machine: +15% damage taken while currently Corrupted.
+function applyHabitPreHitMods(target, res) {
+  if (!res || res.evaded) return;
+  const h = habitOf(target);
+  if (!h) return;
+  if (h.type === 'conjuration' && Math.random() < 0.20) {
+    res.dmg = 0;
+    res.hitDmgs = res.hitDmgs.map(() => 0);
+    res.phantomBlocked = true;
+    return;
+  }
+  if (h.type === 'machine' && hasAilment(target, 'corrupt')) {
+    res.dmg = Math.round(res.dmg * 1.15);
+    res.hitDmgs = res.hitDmgs.map(d => Math.round(d * 1.15));
+  }
+}
+
+// Habit Type passives triggered per-hit AFTER it actually lands (not
+// evaded, not a Conjuration phantom-block) — called from
+// playAttackSequence's per-hit loop, same timing as applyPayloadOnHit,
+// so a multi-hit skill gets one roll per hit like the equipment procs
+// already do. Vampire/Demon/Fungi read the ATTACKER's card; Fey reads
+// the DEFENDER's (reacting to being hit).
+function applyHabitPostHit(attacker, target, res, side) {
+  if (!res || res.evaded || res.phantomBlocked || !res.dmg) return;
+  const atkHab = habitOf(attacker);
+  if (atkHab) {
+    if (atkHab.type === 'vampire') {
+      const heal = Math.max(1, Math.round(res.dmg * 0.10));
+      const mx = statsOf(attacker).vit;
+      attacker.hp = Math.min(mx, attacker.hp + heal);
+      healPop(attacker, heal);
+    }
+    if (atkHab.type === 'demon' && target.hp > 0 && Math.random() < 0.15) {
+      addAilment(target, { id: 'corrupt', turns: 3, atk: -0.15, def: -0.15 });
+      blog(`😈 ${attacker.name} ทำให้ ${target.name} ติด Corrupted`, side);
+    }
+    if (atkHab.type === 'fungi' && target.hp > 0 && Math.random() < 0.12) {
+      addAilment(target, { id: 'poison', stacks: 1 });
+      blog(`🍄 ${attacker.name} ทำให้ ${target.name} ติดพิษ 1 สแตค`, side);
+    }
+  }
+  const defHab = habitOf(target);
+  if (defHab && defHab.type === 'fey' && target.hp > 0 && Math.random() < 0.15) {
+    addAilment(attacker, { id: 'charm', turns: 2 });
+    blog(`🧚 ${target.name} สะกด ${attacker.name} กลับ (Charm)`, side === 'ally' ? 'foe' : 'ally');
+  }
 }
 
 // ── TEAM BUFF ID ──
@@ -3816,6 +4121,37 @@ function statBuffChips(pet) {
 // side redraws the WRONG slot (this was a real bug: a raging boss
 // briefly rendered into the player's own ally slot).
 async function applyDamage(target, dmg, blogSide) {
+  // Last Stand (w_failsafe): checked BEFORE the hit lands, not after —
+  // a lethal (or merely below-threshold) blow must never get to zero
+  // HP first, or there'd be nothing left to save. The instant this
+  // strike would first drop the unit under the threshold, the token is
+  // consumed and the hit is negated entirely (healed to full) instead
+  // of applied — a one-shot safety net, not a per-turn condition (see
+  // the skill's own comment in data.js for why this replaces "AI
+  // targets lowest HP" here).
+  if (hasAilment(target, 'lastStand')) {
+    const mhp = statsOf(target).vit;
+    if ((target.hp - dmg) / mhp < TUNING.lastStandThreshold) {
+      target.ailments = target.ailments.filter(a => a.id !== 'lastStand');
+      target.hp = mhp;
+      healPop(target, mhp);
+      blog(`🛟 ${target.name} — ระบบฉุกเฉินทำงาน! ฟื้นเต็ม HP`, target.isEnemy ? 'foe' : 'ally');
+      return;
+    }
+  }
+  // Undead Habit Type: once per fight, a hit that would otherwise be
+  // lethal instead leaves it clinging on at 1 HP — weaker than Last
+  // Stand (no heal, one HP not full), matching the classic "undead
+  // barely refuses to fall" trope.
+  const undeadHab = habitOf(target);
+  if (undeadHab && undeadHab.type === 'undead' && !target._habitUndeadUsed && target.hp - dmg <= 0) {
+    target._habitUndeadUsed = true;
+    target.hp = 1;
+    target._tookDamageThisTurn = true;
+    blog(`💀 ${target.name} — Undead ปฏิเสธที่จะล้ม! เหลือ HP 1`, target.isEnemy ? 'foe' : 'ally');
+    return;
+  }
+  if (dmg > 0) target._tookDamageThisTurn = true;
   target.hp = Math.max(0, target.hp - dmg);
   if (target.hp <= 0 && target.isBoss && target.bossPhase === 1) {
     enterBossRage(target);
@@ -3829,7 +4165,9 @@ async function applyDamage(target, dmg, blogSide) {
 async function basicAttack(attacker, target, side, atkTeam, defTeam) {
   const skills = availableSkills(attacker);
   const skill = skills[Math.floor(Math.random() * skills.length)] || { n: 'Strike', pw: 40 };
-  const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false, firstStrikeProc(attacker));
+  const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false, buildAttackProc(attacker, target));
+  applyFreezeShatter(target, res);
+  applyHabitPreHitMods(target, res);
 
   if (res.evaded) {
     await playAttackSequence(attacker, target, res, side);
@@ -3850,6 +4188,7 @@ async function basicAttack(attacker, target, side, atkTeam, defTeam) {
   let line = `${attacker.name} → ${skill.n}`;
   if (res.hits > 1) line += ` ×${res.hits}`;
   if (res.crit) line += ' CRIT';
+  if (res.shattered) line += ' SHATTER!';
   line += ` · -${res.dmg}`;
   blog(line, side);
 }
@@ -3883,47 +4222,58 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
   if (side === 'ally') vibrate(VIBE_SKILL);
   await showBanner(`✦ ${sp.name} ✦`, 'sig');
 
+  // Charmed: every BENEFICIAL effect (heal/shield/buff) goes to the
+  // opposing side instead of the caster's own — damage/ailment payloads
+  // are unaffected here since runTurn already redirected `target` to the
+  // caster itself for those. `realFoe`/`realFoeTeam` are the caster's
+  // actual opponent (not `target`, which IS the caster while charmed).
+  const charmed = hasAilment(caster, 'charm');
+  const realFoe = charmed ? (side === 'ally' ? activeFoe() : activeAlly()) : null;
+  const realFoeTeam = charmed ? (side === 'ally' ? battle.enemies : battle.team) : null;
+  const healBeneficiary = charmed ? realFoe : caster;
+  const teamBeneficiary = charmed ? realFoeTeam : atkTeam;
+
   // ── SELF-SIDE FIRST (self-targeted vfx only) ──
   const vfxIsEnemyFacing = isEnemyFacingVfx(sp.vfx);
   const selfVfxMs = vfxIsEnemyFacing ? 0 : playSpellVFX(sp.vfx, caster, target, side);
-  if (sp.heal) {
-    const mx = statsOf(caster).vit;
+  if (sp.heal && healBeneficiary) {
+    const mx = statsOf(healBeneficiary).vit;
     const amt = Math.floor(mx * sp.heal);
-    caster.hp = Math.min(mx, caster.hp + amt);
-    healPop(caster, amt);
-    blog(`💚 ${caster.name} ใช้ ${sp.name} · +${amt} HP`, 'buff');
+    healBeneficiary.hp = Math.min(mx, healBeneficiary.hp + amt);
+    healPop(healBeneficiary, amt);
+    blog(`💚 ${caster.name} ใช้ ${sp.name} · ${charmed ? `${healBeneficiary.name} ได้รับ` : ''}+${amt} HP${charmed ? ' (สับสน!)' : ''}`, 'buff');
   }
-  if (sp.healTeam) {
-    atkTeam.forEach(p => {
+  if (sp.healTeam && teamBeneficiary) {
+    teamBeneficiary.forEach(p => {
       if (p.hp <= 0) return;
       const mx = statsOf(p).vit;
       const amt = Math.floor(mx * sp.healTeam);
       p.hp = Math.min(mx, p.hp + amt);
     });
-    blog(`💚 ${caster.name} ใช้ ${sp.name} · ฟื้นทั้งทีม`, 'buff');
+    blog(`💚 ${caster.name} ใช้ ${sp.name} · ฟื้น${charmed ? 'ทีมศัตรู (สับสน!)' : 'ทั้งทีม'}`, 'buff');
   }
-  if (sp.reviveTeam) {
+  if (sp.reviveTeam && teamBeneficiary) {
     let n = 0;
-    atkTeam.forEach(p => {
+    teamBeneficiary.forEach(p => {
       if (p.hp > 0) return;
       p.hp = Math.floor(statsOf(p).vit * sp.reviveTeam); n++;
       p._deathVibrated = false; // so a later re-death this fight still buzzes
     });
-    blog(`✨ ${caster.name} กู้ระบบ · ชุบชีวิต ${n} ตัว`, 'buff');
+    blog(`✨ ${caster.name} กู้ระบบ · ชุบชีวิต${charmed ? 'ฝั่งศัตรู (สับสน!)' : ''} ${n} ตัว`, 'buff');
   }
   if (sp.cleanse) { clearAilments(caster); blog(`🧼 ${caster.name} ล้างสถานะ`, 'buff'); }
-  if (sp.shieldSelf) {
-    caster._shield = sp.shieldSelf;
-    caster._shieldTurns = 3;
-    blog(`🛡 ${caster.name} ตั้งเกราะ ${Math.round(sp.shieldSelf * 100)}%`, 'buff');
+  if (sp.shieldSelf && healBeneficiary) {
+    healBeneficiary._shield = sp.shieldSelf;
+    healBeneficiary._shieldTurns = 3;
+    blog(`🛡 ${caster.name} ตั้งเกราะ${charmed ? `ให้ ${healBeneficiary.name} (สับสน!)` : ''} ${Math.round(sp.shieldSelf * 100)}%`, 'buff');
   }
-  if (sp.buffSelf) {
-    addAilment(caster, { ...sp.buffSelf });
-    blog(`🔥 ${caster.name} เข้าสู่สภาวะ ${sp.buffSelf.id}`, 'buff');
+  if (sp.buffSelf && healBeneficiary) {
+    addAilment(healBeneficiary, { ...sp.buffSelf });
+    blog(`🔥 ${charmed ? healBeneficiary.name : caster.name} เข้าสู่สภาวะ ${sp.buffSelf.id}${charmed ? ' (สับสน!)' : ''}`, 'buff');
   }
-  if (sp.buffTeam) {
-    atkTeam.forEach(p => { if (p.hp > 0) addAilment(p, { id: teamBuffAilmentId(sp), ...sp.buffTeam }); });
-    blog(`✨ ${caster.name} เสริมพลังทั้งทีม`, 'buff');
+  if (sp.buffTeam && teamBeneficiary) {
+    teamBeneficiary.forEach(p => { if (p.hp > 0) addAilment(p, { id: teamBuffAilmentId(sp), ...sp.buffTeam }); });
+    blog(`✨ ${caster.name} เสริมพลัง${charmed ? 'ทีมศัตรู (สับสน!)' : 'ทั้งทีม'}`, 'buff');
   }
   refreshBattleUnits();
 
@@ -3939,7 +4289,9 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
   }
 
   if (sp.pw > 0 && sp.hits > 0) {
-    const res = computeDamage(caster, atkTeam, target, defTeam, sp, true, firstStrikeProc(caster));
+    const res = computeDamage(caster, atkTeam, target, defTeam, sp, true, buildAttackProc(caster, target));
+    applyFreezeShatter(target, res);
+    applyHabitPreHitMods(target, res);
     if (res.evaded) {
       await showBanner('MISS!', 'miss');
       await playAttackSequence(caster, target, res, side, vfxIsEnemyFacing ? sp.vfx : null);
@@ -3957,6 +4309,7 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
       let line = `✦ ${caster.name} → ${sp.name}`;
       if (res.hits > 1) line += ` ×${res.hits}`;
       if (res.crit) line += ' CRIT';
+      if (res.shattered) line += ' SHATTER!';
       line += ` · -${res.dmg}`;
       blog(line, side);
     }
@@ -3990,6 +4343,20 @@ async function endOfTurnTicks(unit) {
     unit._shieldTurns--;
     if (unit._shieldTurns <= 0) unit._shield = 0;
   }
+  // Plants Habit Type: regen if this unit wasn't actually hit this turn
+  // (poison/ailment ticks above don't count — only a landed attack sets
+  // _tookDamageThisTurn, see applyDamage). Reset for the next turn
+  // either way.
+  const plantsHab = habitOf(unit);
+  if (plantsHab && plantsHab.type === 'plants' && !unit._tookDamageThisTurn && unit.hp > 0) {
+    const mhp = statsOf(unit).vit;
+    const heal = Math.max(1, Math.round(mhp * 0.05));
+    if (unit.hp < mhp) {
+      unit.hp = Math.min(mhp, unit.hp + heal);
+      healPop(unit, heal);
+    }
+  }
+  unit._tookDamageThisTurn = false;
   refreshBattleUnits();
 }
 
@@ -4040,6 +4407,7 @@ async function checkBattleEnd() {
         rollEquipDrop(e);
         rollMeatDrop(e);
         rollMaterialDrop(e);
+        rollHabitCard(e);
         if (e.isBoss) onBossDefeated(e);
       }
     });
@@ -4379,6 +4747,7 @@ async function playAttackSequence(attacker, target, res, side, contactVfx) {
     const speedMult = 1 + i * 0.5; // 1, 1.5, 2, 2.5, 3 — each hit faster
     await playHit(attacker, target, hits[i], res, side, speedMult, contactVfx);
     applyPayloadOnHit(attacker, target, { dmg: hits[i], evaded: false, crit: res.crit }, side);
+    applyHabitPostHit(attacker, target, { dmg: hits[i], evaded: false, phantomBlocked: res.phantomBlocked }, side);
   }
 }
 
@@ -4496,6 +4865,39 @@ function refreshUnitVitals(pet, isEnemy) {
   }
   const buffsEl = plate.querySelector('.np-buffs');
   if (buffsEl) buffsEl.innerHTML = statBuffChips(pet);
+  const spdPip = plate.querySelector('.spd-pip');
+  if (spdPip) spdPip.textContent = `⚡ ${Math.round(Math.min(1, pet.spdCounter || 0) * 100)}%`;
+  const critPct = Math.round(Math.min(1, pet.critGauge || 0) * 100);
+  const critPip = plate.querySelector('.crit-pip');
+  if (critPip) {
+    critPip.textContent = `💥 ${critPct}%`;
+    critPip.classList.toggle('ready', critPct >= 100);
+  }
+
+  // Ailment badges/stoned overlay/tappable-ready glow can all change
+  // turn-to-turn (freeze/charm/corrupt expiring, poison/frenzy gaining
+  // stacks, the crit gauge filling) — kept live here too instead of
+  // only at the next full renderBattleSide.
+  const unitEl = document.querySelector(`.bunit[data-uid="${pet.uid}"]`);
+  if (unitEl) {
+    const badgesHtml = ailBadgesHtml(pet);
+    let badgesEl = unitEl.querySelector('.ail-badges');
+    if (badgesHtml) {
+      if (!badgesEl) { badgesEl = el('div', 'ail-badges'); unitEl.prepend(badgesEl); }
+      badgesEl.innerHTML = badgesHtml;
+    } else if (badgesEl) {
+      badgesEl.remove();
+    }
+    const isStoned = hasAilment(pet, 'stoned');
+    let stonedEl = unitEl.querySelector('.stoned-overlay');
+    if (isStoned && !stonedEl) {
+      stonedEl = el('div', 'stoned-overlay', AILMENTS.stoned.icon);
+      unitEl.appendChild(stonedEl);
+    } else if (!isStoned && stonedEl) {
+      stonedEl.remove();
+    }
+    unitEl.classList.toggle('crit-ready', !isEnemy && critPct >= 100);
+  }
 }
 
 function refreshBattleUnits() {
@@ -4697,6 +5099,26 @@ function finishRaid(win, loot) {
   renderAll();
 }
 
+// Shared badge-row markup for a pet's active ailments — poison/frenzy
+// show a stack count (they never expire on a turn timer, see
+// STACKING_AILMENT_IDS in data.js), everything else still shows its
+// remaining turns.
+function ailBadgesHtml(pet) {
+  return (pet.ailments || []).map(a => {
+    const A = AILMENTS[a.id];
+    if (!A) return '';
+    const meta = a.stacks != null ? ` (x${a.stacks})` : (a.turns != null ? ` (${a.turns})` : '');
+    return `<span class="ail-badge" title="${A.thai}${meta}">${A.icon}</span>`;
+  }).join('');
+}
+
+// Click handler for a ready (critGauge full) ally unit — see
+// requestBonusCrit() for the acquire-or-queue logic (a tap that lands
+// mid-animation is queued, not dropped).
+function wireCritGaugeTap(unitEl, pet) {
+  unitEl.onclick = () => requestBonusCrit(pet);
+}
+
 function renderBattleSide(pet, elId, isEnemy) {
   const wrap = $(elId);
   if (!wrap) return;
@@ -4707,10 +5129,8 @@ function renderBattleSide(pet, elId, isEnemy) {
   unit.dataset.side = isEnemy ? 'foe' : 'ally';
   unit.style.setProperty('--float-delay', (Math.random() * 1.6).toFixed(2) + 's');
   if (pet.hp <= 0) unit.classList.add('dead');
-  const badges = (pet.ailments || []).map(a => {
-    const A = AILMENTS[a.id];
-    return A ? `<span class="ail-badge" title="${A.thai} (${a.turns})">${A.icon}</span>` : '';
-  }).join('');
+  const badges = ailBadgesHtml(pet);
+  const isStoned = hasAilment(pet, 'stoned');
   // FACING: sprites are authored facing either way. The player's side
   // must look right, the enemy side must look left. `faces` says how the
   // art was drawn, so we only flip when it disagrees with the side.
@@ -4734,13 +5154,25 @@ function renderBattleSide(pet, elId, isEnemy) {
   unit.style.setProperty('--cr-scale', sc);
   const rageMarks = (pet.isBoss && pet.bossPhase === 2)
     ? `<div class="rage-marks"><span>💢</span><span>😡</span><span>💢</span></div>` : '';
+  // Stoned gets its own big overlay above the head (placeholder emoji —
+  // drop a real gif at assets/fx/stoned.gif and swap the CSS background
+  // on .stoned-overlay to upgrade it) instead of just a small corner
+  // badge, since it's meant to read as a much bigger deal than a normal
+  // ailment.
+  const stonedOverlay = isStoned ? `<div class="stoned-overlay">${AILMENTS.stoned.icon}</div>` : '';
   unit.innerHTML = `
     ${badges ? `<div class="ail-badges">${badges}</div>` : ''}
+    ${stonedOverlay}
     ${rageMarks}
     <div class="bu-sprite-wrap${pet.isBoss ? ' is-boss' : ''}">
       ${creatureMarkup(pet, 'bu-sprite float' + (needFlip ? ' flip' : ''))}
     </div>`;
   wrap.appendChild(unit);
+  // Only an ally can be tapped to fire a ready bonus crit — a foe has no
+  // player to tap for it and auto-fires the instant its gauge fills
+  // (see runTurn).
+  if (!isEnemy) wireCritGaugeTap(unit, pet);
+  unit.classList.toggle('crit-ready', !isEnemy && (pet.critGauge || 0) >= 1);
 
   // Name plate lives outside the sprite so it never moves with a lunge
   const plate = $(isEnemy ? 'plate-foe' : 'plate-ally');
@@ -4748,6 +5180,7 @@ function renderBattleSide(pet, elId, isEnemy) {
     const mpMax = statsOf(pet).int;
     const mpPct = Math.round((pet.mp || 0) / Math.max(1, mpMax) * 100);
     const spdPct = Math.round(Math.min(1, pet.spdCounter || 0) * 100);
+    const critPct = Math.round(Math.min(1, pet.critGauge || 0) * 100);
     // Kept deliberately compact (one bar, no separate phase-pip row) —
     // the boss's enlarged sprite sits right below this plate, and a
     // taller plate was overlapping it.
@@ -4776,7 +5209,10 @@ function renderBattleSide(pet, elId, isEnemy) {
       <div class="np-buffs">${statBuffChips(pet)}</div>
       ${vitalsHtml}
       ${bossBar}
-      ${spdPct > 0 ? `<div class="spd-pip">⚡ ${spdPct}%</div>` : ''}`;
+      <div class="gauge-pips">
+        <div class="spd-pip">⚡ ${spdPct}%</div>
+        <div class="crit-pip${critPct >= 100 ? ' ready' : ''}">💥 ${critPct}%</div>
+      </div>`;
   }
 }
 
