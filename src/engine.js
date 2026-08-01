@@ -9,7 +9,7 @@ import {
   ATTR, ATTR_KEYS, WHITE_TRAIT_ROLL, SUPPORT, SYNERGY,
   RARITY, RARITY_KEYS, SPECIES, ANTIVIRUZ, TUNING, loyaltyTier, SIGNATURE_SKILLS, LOYALTY_TIERS,
   HACK_WORDS, HACK_JUNK, hackDifficulty, wordLikeness,
-  SKILL_TREES, SPECIALS, AILMENTS, STAT_KEYS, treeFor, nodeById,
+  SKILL_TREES, SPECIALS, AILMENTS, STACKING_AILMENT_IDS, STAT_KEYS, treeFor, nodeById,
   MUTATION_KEYS, MUTATION_ROLL, treeForMutation,
   bossPoolForMap, BOSS_TUNING,
   speedGain, SKILL_TIER_BONUS } from './data.js';
@@ -55,6 +55,7 @@ export function createPet(speciesId, rarity, forcedAttr = null) {
     autoCast: {},          // { specialId: true } — auto-use in battle
     mp: 0,                 // current MP (max = int stat)
     spdCounter: 0,         // speed accrual toward a double action
+    critGauge: 0,          // 0-1 accrual toward a bonus guaranteed-crit strike
     ailments: [],
     statPts: 0,
     base: { ...sp.base },
@@ -435,16 +436,21 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   // ── CRIT: attacker's CRIT points vs defender's composure ──
   // Composure resists crits, built from DEF + a share of EVA, so a
   // sturdy defender is critically hit less often by a weak attacker.
+  // `proc.forceCrit` (Overclock payload / the manual crit-gauge bonus
+  // strike, see fireBonusCrit() in game.js) skips the roll entirely —
+  // it's still subject to the evasion check above, just guaranteed to
+  // crit once it lands.
   const composure = d.def * 0.62 + d.eva * 0.85;
   const critChance = opposedChance(a.crit, composure, { cap: 0.42, k: 0.55, floor: 0.06 });
-  const crit = Math.random() < critChance;
+  const crit = !!(proc && proc.forceCrit) || Math.random() < critChance;
   if (crit) base *= 2;
 
   // Multi-hit skills strike `hits` times; each hit rolls its own value.
   // hitDmgs keeps the individual per-hit rolls (not just the summed
   // total) so the battle UI can animate and apply each hit separately
   // instead of dumping the whole combined number on the first swing.
-  const hits = Math.max(1, skill.hits || 1);
+  // `proc.forceHits` (Adaptive Strike) overrides the skill's own count.
+  const hits = Math.max(1, (proc && proc.forceHits) || skill.hits || 1);
   const hitDmgs = [];
   for (let i = 0; i < hits; i++) {
     hitDmgs.push(Math.max(1, Math.floor(base * (0.94 + Math.random() * 0.12))));
@@ -466,11 +472,20 @@ export function evaChanceVs(defender, defTeam, attacker, atkTeam) {
 }
 
 // ── AILMENTS ──
+// Poison/frenzy (STACKING_AILMENT_IDS) ADD their stacks together across
+// repeat casts instead of just refreshing duration, and carry no `turns`
+// at all — they persist until the fight ends or a cleanse. Everything
+// else keeps the original "refresh to the longer duration" behavior.
 export function addAilment(unit, spec) {
   if (!spec || !spec.id) return null;
   unit.ailments = unit.ailments || [];
-  // refresh if already present
   const found = unit.ailments.find(x => x.id === spec.id);
+  if (STACKING_AILMENT_IDS.includes(spec.id)) {
+    if (found) { found.stacks = (found.stacks || 1) + (spec.stacks || 1); return found; }
+    const inst = { id: spec.id, stacks: spec.stacks || 1 };
+    unit.ailments.push(inst);
+    return inst;
+  }
   if (found) { found.turns = Math.max(found.turns, spec.turns); return found; }
   const inst = { ...spec };
   unit.ailments.push(inst);
@@ -482,16 +497,20 @@ export function hasAilment(unit, id) {
 export function clearAilments(unit) { unit.ailments = []; }
 
 // Tick every ailment down one turn; returns events for the UI/log.
+// Poison deals its flat per-stack damage every turn and never expires
+// this way (STACKING_AILMENT_IDS, plus lastStand which persists until
+// consumed) — everything else counts `turns` down as before.
 export function tickAilments(unit) {
   const events = [];
   if (!unit.ailments || !unit.ailments.length) return events;
-  const stats = statsOf(unit);
   unit.ailments = unit.ailments.filter(a => {
     if (a.id === 'poison') {
-      const dmg = Math.max(1, Math.floor(stats.vit * (a.val || 0.05)));
+      const dmg = Math.max(1, Math.round(AILMENTS.poison.perStack.dmg * (a.stacks || 1)));
       unit.hp = Math.max(0, unit.hp - dmg);
       events.push({ type:'poison', dmg });
+      return true;
     }
+    if (a.id === 'frenzy' || a.id === 'lastStand') return true;
     a.turns -= 1;
     if (a.turns <= 0) { events.push({ type:'expire', id:a.id }); return false; }
     return true;
@@ -509,6 +528,18 @@ export function tickAilments(unit) {
 export function ailmentMods(unit) {
   const m = { atk:1, def:1, spd:1, eva:1, crit:1 };
   (unit.ailments || []).forEach(a => {
+    // Stacking ailments (frenzy) look up their per-stack magnitude from
+    // AILMENTS instead of carrying atk/def/etc directly on the instance.
+    const per = STACKING_AILMENT_IDS.includes(a.id) && AILMENTS[a.id] && AILMENTS[a.id].perStack;
+    if (per) {
+      const n = a.stacks || 1;
+      if (per.atk  != null) m.atk  *= 1 + per.atk  * n;
+      if (per.def  != null) m.def  *= 1 + per.def  * n;
+      if (per.spd  != null) m.spd  *= 1 + per.spd  * n;
+      if (per.eva  != null) m.eva  *= 1 + per.eva  * n;
+      if (per.crit != null) m.crit *= 1 + per.crit * n;
+      return;
+    }
     if (a.atk  != null) m.atk  *= 1 + a.atk;
     if (a.def  != null) m.def  *= 1 + a.def;
     if (a.spd  != null) m.spd  *= 1 + a.spd;

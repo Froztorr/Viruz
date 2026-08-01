@@ -685,22 +685,32 @@ export const RAID_LOSS_BITZ = 300;
 // ── AILMENTS ──
 // Applied by special skills. Each is stored on a unit as
 // { id, turns, ...params } in unit.ailments[].
+//
+// POISON and FRENZY are STACKING ailments (see STACKING_AILMENT_IDS in
+// engine.js): instead of `turns`, their instances carry a `stacks` count
+// that ADDS UP across repeat applications (3 stacks + a fresh 3-stack
+// cast = 6, not a refreshed 3) and never expires on a turn countdown —
+// they last until the fight ends (or a cleanse). Their magnitude scales
+// with the `perStack` table below × current stacks, applied generically
+// by ailmentMods()/tickAilments() in engine.js.
 export const AILMENTS = {
   poison: {
     id:'poison', name:'Poison', thai:'พิษ', icon:'☠️', color:'#7ddc4a',
-    desc:'เสีย HP ทุกเทิร์น',
+    desc:'เสีย HP คงที่ทุกเทิร์นตามจำนวนสแตค ไม่หมดอายุจนจบไฟต์',
+    perStack: { dmg: 5 },   // flat HP loss per stack per turn
   },
   freeze: {
     id:'freeze', name:'Freeze', thai:'แช่แข็ง', icon:'❄️', color:'#7fd6ff',
-    desc:'โจมตีหรือใช้สกิลไม่ได้',
+    desc:'โจมตีหรือใช้สกิลไม่ได้ — โดนตีซ้ำจะ SHATTER รับดาเมจ x1.2 และหลุดสถานะทันที',
   },
   frenzy: {
     id:'frenzy', name:'Frenzy', thai:'คลั่ง', icon:'🔥', color:'#ff6a2b',
-    desc:'ATK/SPD เพิ่ม แต่ DEF ลด',
+    desc:'ATK/SPD เพิ่ม DEF ลด ตามจำนวนสแตค ไม่หมดอายุจนจบไฟต์',
+    perStack: { atk: 0.12, def: -0.08, spd: 0.08 },
   },
   charm: {
     id:'charm', name:'Charmed', thai:'เสน่ห์', icon:'💗', color:'#ff6ab0',
-    desc:'หันไปโจมตีพวกเดียวกัน',
+    desc:'ทำทุกอย่างกลับตาลปัตร — โจมตีตัวเอง และสกิลบัฟ/ฮีลจะไปเข้าฝั่งศัตรูแทน',
   },
   // Stage-2 "Corrupted" mutation debuff. Generic multi-stat drain —
   // ailmentMods() applies atk/def/spd/eva/crit off ANY ailment object
@@ -709,7 +719,32 @@ export const AILMENTS = {
     id:'corrupt', name:'Corrupted', thai:'เสื่อมสภาพ', icon:'🦠', color:'#a05fe0',
     desc:'ATK/DEF/SPD ของศัตรูลดลง',
   },
+  // Hard stun — unlike freeze, taking damage never breaks it early and
+  // it grants no bonus damage; it just runs its full `turns` count down.
+  // Rendered as a large overlay above the sprite (see .stoned-overlay in
+  // index.html) rather than just a small corner badge, since it's meant
+  // to read as a bigger deal than a normal ailment icon. Placeholder
+  // emoji until a real gif is dropped in at assets/fx/stoned.gif (see
+  // the CSS rule right next to .stoned-overlay for the one-line swap).
+  stoned: {
+    id:'stoned', name:'Stoned', thai:'กลายเป็นหิน', icon:'🗿', color:'#9c8a6e',
+    desc:'ขยับไม่ได้แม้จะโดนโจมตี ไม่หลุดก่อนเวลา',
+  },
+  // Self-buff granted by w_failsafe. Persists (no turns countdown) until
+  // consumed — see the "Last Stand" check in applyDamage() (game.js):
+  // the instant this unit's HP first dips below 40% of max, the token is
+  // consumed and HP is restored to full, once.
+  lastStand: {
+    id:'lastStand', name:'Last Stand', thai:'ยืนหยัดครั้งสุดท้าย', icon:'🛟', color:'#4ade80',
+    desc:'เมื่อ HP ต่ำกว่า 40% ครั้งแรก จะฟื้นเต็ม HP ทันที (ใช้ได้ครั้งเดียว)',
+  },
 };
+// Ailments that stack (add up) instead of just refreshing duration, and
+// never expire on their own — see addAilment()/tickAilments() in
+// engine.js. lastStand also persists without a turns countdown but
+// isn't a "stack" (it's a single consume-once flag), so it's tracked
+// separately in tickAilments() rather than listed here.
+export const STACKING_AILMENT_IDS = ['poison', 'frenzy'];
 
 // ── STAT KEYS ──
 // atk  — attack power
@@ -967,8 +1002,8 @@ export const SPECIALS = {
   // ── RED: raw damage ──
   r_slash:    { id:'r_slash',    name:'Ember Slash',    thai:'ฟันเพลิง',     mp:10, cd:3.5,  pw:1.4, hits:1, vfx:'fire',   desc:'ฟันไฟ x1.4' },
   r_double:   { id:'r_double',   name:'Twin Fang',      thai:'เขี้ยวคู่',     mp:13, cd:3.7,  pw:0.9, hits:2, vfx:'slash',  desc:'โจมตี 2 ครั้ง' },
-  r_burn:     { id:'r_burn',     name:'Cinder Touch',   thai:'สัมผัสเถ้า',   mp:14, cd:3.4, pw:1.1, hits:1, vfx:'fire',   ailment:{ id:'poison', turns:3, val:0.05 }, desc:'ติดพิษไฟ 3 เทิร์น' },
-  r_frenzy:   { id:'r_frenzy',   name:'Blood Rage',     thai:'คลั่งเลือด',   mp:17, cd:3.8, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', turns:4, atk:0.35, spd:0.25, def:-0.20 }, desc:'ATK+35% SPD+25% DEF-20%' },
+  r_burn:     { id:'r_burn',     name:'Cinder Touch',   thai:'สัมผัสเถ้า',   mp:14, cd:3.4, pw:1.1, hits:1, vfx:'fire',   ailment:{ id:'poison', stacks:3 }, desc:'ติดพิษ 3 สแตค (สะสมได้ ไม่หมดอายุ)' },
+  r_frenzy:   { id:'r_frenzy',   name:'Blood Rage',     thai:'คลั่งเลือด',   mp:17, cd:3.8, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', stacks:3 }, desc:'คลั่ง 3 สแตค (ATK/SPD ขึ้น DEF ลง สะสมได้)' },
   r_pierce:   { id:'r_pierce',   name:'Kernel Pierce',  thai:'เจาะเคอร์เนล', mp:20, cd:3.7, pw:1.8, hits:1, vfx:'pierce', ignoreDef:0.5, desc:'เจาะเกราะ 50% x1.8' },
   r_triple:   { id:'r_triple',   name:'Triple Fang',    thai:'สามเขี้ยว',    mp:23, cd:4.0, pw:0.85,hits:3, vfx:'slash',  desc:'โจมตี 3 ครั้ง' },
   r_meteor:   { id:'r_meteor',   name:'Meteor Byte',    thai:'อุกกาบาต',     mp:29, cd:3.9, pw:2.4, hits:1, vfx:'meteor', desc:'ระเบิดใหญ่ x2.4' },
@@ -978,8 +1013,8 @@ export const SPECIALS = {
   // ── GREEN: speed, evasion, multi-hit ──
   g_dash:     { id:'g_dash',     name:'Static Dash',    thai:'พุ่งไฟฟ้า',    mp:10, cd:3.5,  pw:1.3, hits:1, vfx:'wind',   desc:'พุ่งเร็ว x1.3' },
   g_gust:     { id:'g_gust',     name:'Gust Cutter',    thai:'ใบมีดลม',      mp:13, cd:3.6,  pw:0.8, hits:2, vfx:'wind',   desc:'ลมคม 2 ครั้ง' },
-  g_blur:     { id:'g_blur',     name:'Blur Step',      thai:'ก้าวเลือน',    mp:14, cd:3.6, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', turns:3, spd:0.5, atk:0.1, def:0 }, desc:'SPD+50% 3 เทิร์น' },
-  g_venom:    { id:'g_venom',    name:'Venom Spray',    thai:'พ่นพิษ',       mp:16, cd:3.4, pw:1.0, hits:1, vfx:'poison', ailment:{ id:'poison', turns:4, val:0.06 }, desc:'พิษแรง 4 เทิร์น' },
+  g_blur:     { id:'g_blur',     name:'Blur Step',      thai:'ก้าวเลือน',    mp:14, cd:3.6, pw:0,   hits:0, vfx:'aura',   buffSelf:{ id:'frenzy', stacks:2 }, desc:'คลั่ง 2 สแตค (ATK/SPD ขึ้น DEF ลง สะสมได้)' },
+  g_venom:    { id:'g_venom',    name:'Venom Spray',    thai:'พ่นพิษ',       mp:16, cd:3.4, pw:1.0, hits:1, vfx:'poison', ailment:{ id:'poison', stacks:4 }, desc:'ติดพิษ 4 สแตค (สะสมได้ ไม่หมดอายุ)' },
   g_flurry:   { id:'g_flurry',   name:'Wind Flurry',    thai:'พายุหมุน',     mp:20, cd:3.9, pw:0.75,hits:3, vfx:'wind',   desc:'โจมตี 3 ครั้ง' },
   g_cyclone:  { id:'g_cyclone',  name:'Cyclone Rip',    thai:'ไซโคลน',       mp:26, cd:4.2, pw:0.8, hits:4, vfx:'wind',   desc:'โจมตี 4 ครั้ง' },
   g_charm:    { id:'g_charm',    name:'Siren Pulse',    thai:'คลื่นเสน่ห์',  mp:29, cd:4.3, pw:0,   hits:0, vfx:'charm',  ailment:{ id:'charm', turns:2 }, desc:'สะกดศัตรู 2 เทิร์น' },
@@ -993,6 +1028,11 @@ export const SPECIALS = {
   y_fortress: { id:'y_fortress', name:'Fortress Mode',  thai:'โหมดป้อม',     mp:26, cd:4.2, pw:0,   hits:0, vfx:'shield', shieldSelf:0.55, desc:'ลดดาเมจ 55% 3 เทิร์น' },
   y_glacier:  { id:'y_glacier',  name:'Glacier Prison', thai:'คุกน้ำแข็ง',   mp:32, cd:3.5, pw:1.2, hits:1, vfx:'ice',    ailment:{ id:'freeze', turns:2 }, desc:'แช่แข็ง 2 เทิร์น' },
   y_bastion:  { id:'y_bastion',  name:'Bastion Crush',  thai:'ป้อมบดขยี้',   mp:41, cd:4.0, pw:2.6, hits:1, vfx:'impact', ignoreDef:0.3, desc:'บดขยี้ x2.6' },
+  // A harder disable than Frost Lock/Glacier Prison: doesn't shatter or
+  // grant bonus damage when hit, and runs its full duration no matter
+  // what happens to the target meanwhile — see the 'stoned' ailment
+  // entry above and its skip-turn handling in runTurn() (game.js).
+  y_petrify: { id:'y_petrify', name:'Petrify Command', thai:'คำสั่งกลายหิน', mp:36, cd:4.6, pw:0, hits:0, vfx:'impact', ailment:{ id:'stoned', turns:2 }, desc:'กลายเป็นหิน 2 เทิร์น (ไม่หลุดแม้โดนโจมตี)' },
 
   // ── WHITE: support / heal ──
   w_mend:     { id:'w_mend',     name:'Patch Mend',     thai:'ปะแผล',        mp:11, cd:3.4,  pw:0, hits:0, vfx:'heal',  heal:0.25, desc:'ฟื้น HP 25% ตัวเอง' },
@@ -1003,6 +1043,12 @@ export const SPECIALS = {
   w_smite:    { id:'w_smite',    name:'Judgment Ray',   thai:'ลำแสงตัดสิน',  mp:23, cd:3.7, pw:1.9, hits:1, vfx:'holy', desc:'ลำแสงศักดิ์สิทธิ์ x1.9' },
   w_revive:   { id:'w_revive',   name:'System Restore', thai:'กู้ระบบ',      mp:44, cd:4.9, pw:0, hits:0, vfx:'bless', reviveTeam:0.5, desc:'ชุบชีวิตเพื่อนที่ล้ม 50% HP' },
   w_sanctuary:{ id:'w_sanctuary',name:'Sanctuary',      thai:'วิหารศักดิ์สิทธิ์',mp:38, cd:4.7,pw:0,hits:0,vfx:'bless', healTeam:0.5, buffTeam:{ turns:3, def:0.3 }, desc:'ฟื้น 50% + DEF+30%' },
+  // Doesn't act like Pokémon's "target lowest-HP ally" — this is 1v1,
+  // one fighter on stage at a time, so instead it's a condition attached
+  // to the CASTER: arm it once, and the instant your own HP first dips
+  // below 40%, it silently consumes itself and heals you to full — a
+  // one-shot safety net rather than a per-turn AI decision.
+  w_failsafe: { id:'w_failsafe', name:'Failsafe Protocol', thai:'โพรโทคอลฉุกเฉิน', mp:24, cd:5.5, pw:0, hits:0, vfx:'shield', buffSelf:{ id:'lastStand' }, desc:'ตั้งระบบฉุกเฉิน — HP ต่ำกว่า 40% ครั้งแรกจะฟื้นเต็มทันที (ครั้งเดียว)' },
 
   // ── STAGE-2 MUTATIONS ──
   // Unlocked only once a pet reaches stage 2 and rolls a mutation
@@ -1107,6 +1153,7 @@ export const SKILL_TREES = {
       statNode ('y14','vit',  6, 5, 34, 16, ['y11','y12'],32),
       skillNode('y15','y_bastion',     66, 16, ['y12','y13'],40),
       statNode ('y16','def',  6, 5, 50,  4, ['y14','y15'],45),
+      skillNode('y17','y_petrify',     26,  4, ['y16'],     50),
     ],
   },
   white: {
@@ -1128,6 +1175,7 @@ export const SKILL_TREES = {
       skillNode('w14','w_revive',      34, 16, ['w11','w12'],34),
       skillNode('w15','w_sanctuary',   66, 16, ['w12','w13'],40),
       statNode ('w16','int',  6, 5, 50,  4, ['w14','w15'],45),
+      skillNode('w17','w_failsafe',    74,  4, ['w16'],     50),
     ],
   },
 };
@@ -1368,4 +1416,20 @@ export const TUNING = {
                      // so this stays short or the fight drags
   fleePenalty: 0.0,
   loseHpRestore: 0.10,
+
+  // ── CRIT GAUGE (manual-trigger ultimate) ──
+  // Fills every time a unit takes its own turn; a higher CRIT stat fills
+  // it faster. At 100% an ally becomes tappable to fire a guaranteed-crit
+  // bonus strike on demand (see fireBonusCrit() in game.js); a foe just
+  // auto-fires the instant its gauge is full, since there's no player to
+  // tap for it.
+  critGaugeBaseGain: 0.16,     // flat portion gained per own turn
+  critGaugeCritScale: 260,     // + (unit's CRIT stat / this) per own turn
+  // Frozen units take bonus damage when hit (the ice "shatters"), which
+  // also breaks the freeze immediately — see applyFreezeShatter() in
+  // game.js.
+  freezeShatterMult: 1.2,
+  // HP fraction that arms w_failsafe's one-shot full heal (see the
+  // "Last Stand" check in applyDamage(), game.js).
+  lastStandThreshold: 0.4,
 };

@@ -156,6 +156,7 @@ async function boot() {
       p.autoCast  = p.autoCast  || {};
       p.ailments  = [];
       p.spdCounter = 0;
+      p.critGauge = 0;
       if (typeof p.growthPts !== 'number') {
         // Retro-grant one point per level already earned so existing
         // pets aren't stuck with an empty tree.
@@ -3127,13 +3128,6 @@ function startBossFight(mapId) {
     wave: 0, turn: 0, activeIdx: 0, phase: 'ally', round: 0, over: false,
     totalExp: 0, totalBitz: 0,
   };
-  battle.team.forEach(p => {
-    p.mp = statsOf(p).int;
-    p.spdCounter = 0;
-    p.ailments = [];
-    p._shield = 0;
-    p._cooldowns = {};
-  });
   showScreen('battle');
   setText('battle-title', `${boss.name} · BOSS`);
   setText('battle-wave', 'บอสประจำภูมิภาค');
@@ -3171,14 +3165,6 @@ function startZone(target) {
     totalExp: 0,
     totalBitz: 0,
   };
-  // Fresh MP, cleared ailments and speed counters at the start of a run
-  battle.team.forEach(p => {
-    p.mp = statsOf(p).int;
-    p.spdCounter = 0;
-    p.ailments = [];
-    p._shield = 0;
-    p._cooldowns = {};
-  });
   showScreen('battle');
   setText('battle-title', target.name);
   setText('battle-wave', `คลื่น 1 / ${run.waveCount}`);
@@ -3427,12 +3413,28 @@ function payloadEffectOf(pet) {
   return { item, eff, mag: (eff.mag || [])[gi] || 0 };
 }
 
-// Just resets the first-strike flag for every fighter at battle
-// start — Overclock/Adaptive Strike are consumed on that fighter's
-// first attack, see firstStrikeProc() below. (Data Leech/Kill Reboot/
-// Toxin Injector are per-hit, handled in applyPayloadOnHit() instead.)
+// Resets every per-fight fighter field at the start of a battle: the
+// first-strike flag (Overclock/Adaptive Strike are consumed on that
+// fighter's first attack, see firstStrikeProc() below; Data Leech/Kill
+// Reboot/Toxin Injector are per-hit, handled in applyPayloadOnHit()
+// instead), MP, the speed/crit gauges, ailments (poison/frenzy now
+// persist until the fight ends, so a stale stack from a PREVIOUS fight
+// must not survive into this one), and the block/cooldown trackers.
+// Previously only startBossFight/startZone hand-rolled this reset
+// inline and startRaidFight/startArena skipped it entirely — a
+// leftover poison/frenzy stack (or a full crit gauge) from a fight that
+// just ended could otherwise carry straight into the next one.
 function applyBattleStartEquip(team) {
-  (team || []).forEach(pet => { if (pet) pet._firstStrikeUsed = false; });
+  (team || []).forEach(pet => {
+    if (!pet) return;
+    pet._firstStrikeUsed = false;
+    pet.mp = statsOf(pet).int;
+    pet.spdCounter = 0;
+    pet.critGauge = 0;
+    pet.ailments = [];
+    pet._shield = 0;
+    pet._cooldowns = {};
+  });
 }
 
 // Overclock (guaranteed crit) / Adaptive Strike (guaranteed double
@@ -3660,6 +3662,26 @@ function scheduleTurn(delayMs) {
   battleTimer = setTimeout(runTurn, ms);
 }
 
+// Mutex around anything that mutates battle state / plays an attack
+// animation — runTurn holds it for its whole body, so a manually-tapped
+// bonus crit (fireBonusCrit, via a ready ally — see wireCritGaugeTap)
+// never races an in-flight auto-turn. A tap that arrives while busy
+// doesn't just get silently dropped (a real player's tap essentially
+// never lines up with the auto-loop's own internal cadence, and most
+// of any given turn IS spent "busy" mid-animation) — it's queued via
+// pendingCritTap and serviced the instant the lock clears, in
+// releaseBattleBusy() below.
+let battleBusy = false;
+let pendingCritTap = false;
+function releaseBattleBusy() {
+  battleBusy = false;
+  if (pendingCritTap) {
+    pendingCritTap = false;
+    const ally = activeAlly();
+    if (ally) requestBonusCrit(ally);
+  }
+}
+
 // ── SPECIAL SKILL COOLDOWNS ──
 // Real wall-clock seconds (per your spec: 3-5s depending on power),
 // tracked per unit per skill id in unit._cooldowns. Reset whenever a
@@ -3674,40 +3696,11 @@ function markSpecialUsed(unit, sp) {
   unit._cooldowns[sp.id] = Date.now() + (sp.cd || 3.5) * 1000;
 }
 
-async function runTurn() {
-  if (!battle || battle.over) return;
-  if (battle.phase === 'ally') {
-    await runTeamBuffCheck();
-    if (!battle || battle.over) return;
-  }
-  const ally = activeAlly();
-  const foe = activeFoe();
-  if (!ally) { promptSwap(); return; }
-  if (!foe) { await checkBattleEnd(); return; }
-
-  const goesFirst = battle.phase === 'ally' ? ally : foe;
-  const other = battle.phase === 'ally' ? foe : ally;
-  const side = battle.phase === 'ally' ? 'ally' : 'foe';
-  battle.phase = battle.phase === 'ally' ? 'foe' : 'ally';
-
-  if (hasAilment(goesFirst, 'freeze')) {
-    blog(`❄️ ${goesFirst.name} ถูกแช่แข็ง ขยับไม่ได้`, side);
-    await endOfTurnTicks(goesFirst);
-    if (await checkBattleEnd()) return;
-    scheduleTurn();
-    return;
-  }
-
-  let target = other;
-  let attacker = goesFirst;
-  if (hasAilment(attacker, 'charm')) {
-    target = attacker;
-    blog(`💗 ${attacker.name} ถูกมนต์เสน่ห์ หันมาโจมตีตัวเอง`, side);
-  }
-
-  const atkTeam = side === 'ally' ? battle.team : battle.enemies;
-  const defTeam = side === 'ally' ? battle.enemies : battle.team;
-
+// Picks and executes ONE action for `attacker` this exchange — specials-
+// vs-basic selection extracted out of runTurn so a speed-gauge bonus
+// action (see advanceSpeedCounter below) can run through the exact same
+// logic a second time in a row without duplicating it.
+async function resolveAction(attacker, target, side, atkTeam, defTeam) {
   // Only specials that are auto-cast ON, affordable, AND off cooldown
   // are eligible. Without the cooldown check a pet would burn every
   // point of MP on specials back-to-back instead of ever throwing a
@@ -3717,10 +3710,9 @@ async function runTurn() {
     .filter(sp => attacker.autoCast?.[sp.id] && canCast(attacker, sp) && specialReady(attacker, sp));
   const sig = signatureSkillOf(attacker);
   const sigReady = sig && specialReady(attacker, sig);
-  let usedSpecial = null;
 
   if (specials.length && Math.random() < 0.55) {
-    usedSpecial = specials[Math.floor(Math.random() * specials.length)];
+    const usedSpecial = specials[Math.floor(Math.random() * specials.length)];
     markSpecialUsed(attacker, usedSpecial);
     await castSpecial(attacker, target, usedSpecial, side, atkTeam, defTeam);
   } else if (sigReady && Math.random() < 0.3) {
@@ -3729,12 +3721,144 @@ async function runTurn() {
   } else {
     await basicAttack(attacker, target, side, atkTeam, defTeam);
   }
+}
 
-  await endOfTurnTicks(attacker);
-  await endOfTurnTicks(target);
+async function runTurn() {
+  if (!battle || battle.over) return;
+  // A manual bonus-crit tap (or its queued service) is currently
+  // running — retry shortly rather than stepping on the same state.
+  if (battleBusy) { scheduleTurn(50); return; }
+  battleBusy = true;
+  try {
+    if (battle.phase === 'ally') {
+      await runTeamBuffCheck();
+      if (!battle || battle.over) return;
+    }
+    const ally = activeAlly();
+    const foe = activeFoe();
+    if (!ally) { promptSwap(); return; }
+    if (!foe) { await checkBattleEnd(); return; }
 
-  if (await checkBattleEnd()) return;
-  scheduleTurn();
+    const goesFirst = battle.phase === 'ally' ? ally : foe;
+    const other = battle.phase === 'ally' ? foe : ally;
+    const side = battle.phase === 'ally' ? 'ally' : 'foe';
+    battle.phase = battle.phase === 'ally' ? 'foe' : 'ally';
+
+    // Freeze and Stoned both skip the turn entirely, but only freeze
+    // shatters (bonus damage + early removal) when hit — see
+    // applyFreezeShatter(). Stoned runs its full duration no matter
+    // what happens to it meanwhile.
+    if (hasAilment(goesFirst, 'freeze') || hasAilment(goesFirst, 'stoned')) {
+      const stunId = hasAilment(goesFirst, 'stoned') ? 'stoned' : 'freeze';
+      const stunLabel = stunId === 'stoned' ? 'กลายเป็นหิน ขยับไม่ได้' : 'ถูกแช่แข็ง ขยับไม่ได้';
+      blog(`${AILMENTS[stunId].icon} ${goesFirst.name} ${stunLabel}`, side);
+      await endOfTurnTicks(goesFirst);
+      if (await checkBattleEnd()) return;
+      scheduleTurn();
+      return;
+    }
+
+    let target = other;
+    let attacker = goesFirst;
+    if (hasAilment(attacker, 'charm')) {
+      target = attacker;
+      blog(`💗 ${attacker.name} ถูกมนต์เสน่ห์ หันมาโจมตีตัวเอง`, side);
+    }
+
+    const atkTeam = side === 'ally' ? battle.team : battle.enemies;
+    const defTeam = side === 'ally' ? battle.enemies : battle.team;
+
+    await resolveAction(attacker, target, side, atkTeam, defTeam);
+
+    // ── SPEED GAUGE: charges toward a bonus second action this exchange ──
+    if (attacker.hp > 0 && target.hp > 0 && !battle.over) {
+      const mySpd = combatStats(attacker, atkTeam).spd;
+      const foeSpd = combatStats(target, defTeam).spd;
+      if (advanceSpeedCounter(attacker, mySpd, foeSpd) === 2) {
+        await showBanner('SPEED UP!', 'speed');
+        blog(`⚡ ${attacker.name} เร็วกว่า — โจมตีซ้ำ!`, side);
+        await resolveAction(attacker, target, side, atkTeam, defTeam);
+      }
+    }
+
+    // ── CRIT GAUGE: fills toward a bonus guaranteed-crit strike ──
+    // An ally just gets marked ready (see refreshBattleUnits/renderBattleSide
+    // for the tappable glow) and waits for a tap — fireBonusCrit() only
+    // auto-fires here for a foe, since there's no player to tap for it.
+    if (attacker.hp > 0 && !battle.over) {
+      attacker.critGauge = Math.min(1, (attacker.critGauge || 0)
+        + TUNING.critGaugeBaseGain + statsOf(attacker).crit / TUNING.critGaugeCritScale);
+      if (attacker.critGauge >= 1 && side === 'foe' && target.hp > 0) {
+        await fireBonusCrit(attacker, target, side, atkTeam, defTeam);
+      }
+    }
+
+    await endOfTurnTicks(attacker);
+    await endOfTurnTicks(target);
+    refreshBattleUnits();
+
+    if (await checkBattleEnd()) return;
+    scheduleTurn();
+  } finally {
+    releaseBattleBusy();
+  }
+}
+
+// Guaranteed-crit bonus strike, fired once a unit's crit gauge fills —
+// automatically for a foe (see runTurn), or via a tap on a ready ally
+// (see wireCritGaugeTap()). An EXTRA action layered on top of the
+// normal alternating turn order, not a replacement for it: battle.phase
+// and the scheduleTurn loop are untouched, so this never steals or
+// skips anyone's actual turn.
+async function fireBonusCrit(attacker, target, side, atkTeam, defTeam) {
+  if (!battle || battle.over || !attacker || attacker.hp <= 0 || !target || target.hp <= 0) return;
+  attacker.critGauge = 0;
+  await showBanner('CRIT READY!!', 'crit');
+  const skills = availableSkills(attacker);
+  const skill = skills[Math.floor(Math.random() * skills.length)] || { n: 'Strike', pw: 40 };
+  const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false, { forceCrit: true });
+  applyFreezeShatter(target, res);
+  if (!res.evaded) {
+    await playAttackSequence(attacker, target, res, side, 'impact');
+    let line = `${attacker.name} → ${skill.n} (Bonus Crit)`;
+    if (res.hits > 1) line += ` ×${res.hits}`;
+    line += ` · -${res.dmg}`;
+    blog(line, side);
+  } else {
+    await playAttackSequence(attacker, target, res, side);
+    blog(`${target.name} หลบการโจมตีโบนัสของ ${attacker.name} ได้!`, side);
+  }
+  refreshBattleUnits();
+  await checkBattleEnd();
+}
+
+// Entry point for a MANUAL bonus-crit request (a tap on a ready ally —
+// see wireCritGaugeTap()) — acquires battleBusy itself (unlike the
+// foe auto-fire call inside runTurn, which already holds the lock for
+// its whole turn) or queues via pendingCritTap if something else is
+// already running, instead of just dropping the tap.
+function requestBonusCrit(pet) {
+  if (!battle || battle.over || !pet || pet.isEnemy) return;
+  if ((pet.critGauge || 0) < 1) return;
+  if (battleBusy) { pendingCritTap = true; return; }
+  const foe = activeFoe();
+  if (!foe) return;
+  battleBusy = true;
+  fireBonusCrit(pet, foe, 'ally', battle.team, battle.enemies).finally(releaseBattleBusy);
+}
+
+// Bumps res.dmg/hitDmgs by TUNING.freezeShatterMult and clears freeze —
+// hitting a frozen target shatters the ice for bonus damage instead of
+// it just quietly wearing off. Called right after computeDamage, before
+// the hit animation, so the bumped number is what actually lands and
+// plays. A miss (res.evaded) has nothing to shatter.
+function applyFreezeShatter(target, res) {
+  if (!res || res.evaded || !hasAilment(target, 'freeze')) return;
+  const mult = TUNING.freezeShatterMult;
+  res.dmg = Math.round(res.dmg * mult);
+  res.hitDmgs = res.hitDmgs.map(d => Math.round(d * mult));
+  res.shattered = true;
+  target.ailments = target.ailments.filter(a => a.id !== 'freeze');
 }
 
 // ── TEAM BUFF ID ──
@@ -3858,6 +3982,24 @@ function statBuffChips(pet) {
 // side redraws the WRONG slot (this was a real bug: a raging boss
 // briefly rendered into the player's own ally slot).
 async function applyDamage(target, dmg, blogSide) {
+  // Last Stand (w_failsafe): checked BEFORE the hit lands, not after —
+  // a lethal (or merely below-threshold) blow must never get to zero
+  // HP first, or there'd be nothing left to save. The instant this
+  // strike would first drop the unit under the threshold, the token is
+  // consumed and the hit is negated entirely (healed to full) instead
+  // of applied — a one-shot safety net, not a per-turn condition (see
+  // the skill's own comment in data.js for why this replaces "AI
+  // targets lowest HP" here).
+  if (hasAilment(target, 'lastStand')) {
+    const mhp = statsOf(target).vit;
+    if ((target.hp - dmg) / mhp < TUNING.lastStandThreshold) {
+      target.ailments = target.ailments.filter(a => a.id !== 'lastStand');
+      target.hp = mhp;
+      healPop(target, mhp);
+      blog(`🛟 ${target.name} — ระบบฉุกเฉินทำงาน! ฟื้นเต็ม HP`, target.isEnemy ? 'foe' : 'ally');
+      return;
+    }
+  }
   target.hp = Math.max(0, target.hp - dmg);
   if (target.hp <= 0 && target.isBoss && target.bossPhase === 1) {
     enterBossRage(target);
@@ -3872,6 +4014,7 @@ async function basicAttack(attacker, target, side, atkTeam, defTeam) {
   const skills = availableSkills(attacker);
   const skill = skills[Math.floor(Math.random() * skills.length)] || { n: 'Strike', pw: 40 };
   const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false, firstStrikeProc(attacker));
+  applyFreezeShatter(target, res);
 
   if (res.evaded) {
     await playAttackSequence(attacker, target, res, side);
@@ -3892,6 +4035,7 @@ async function basicAttack(attacker, target, side, atkTeam, defTeam) {
   let line = `${attacker.name} → ${skill.n}`;
   if (res.hits > 1) line += ` ×${res.hits}`;
   if (res.crit) line += ' CRIT';
+  if (res.shattered) line += ' SHATTER!';
   line += ` · -${res.dmg}`;
   blog(line, side);
 }
@@ -3925,47 +4069,58 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
   if (side === 'ally') vibrate(VIBE_SKILL);
   await showBanner(`✦ ${sp.name} ✦`, 'sig');
 
+  // Charmed: every BENEFICIAL effect (heal/shield/buff) goes to the
+  // opposing side instead of the caster's own — damage/ailment payloads
+  // are unaffected here since runTurn already redirected `target` to the
+  // caster itself for those. `realFoe`/`realFoeTeam` are the caster's
+  // actual opponent (not `target`, which IS the caster while charmed).
+  const charmed = hasAilment(caster, 'charm');
+  const realFoe = charmed ? (side === 'ally' ? activeFoe() : activeAlly()) : null;
+  const realFoeTeam = charmed ? (side === 'ally' ? battle.enemies : battle.team) : null;
+  const healBeneficiary = charmed ? realFoe : caster;
+  const teamBeneficiary = charmed ? realFoeTeam : atkTeam;
+
   // ── SELF-SIDE FIRST (self-targeted vfx only) ──
   const vfxIsEnemyFacing = isEnemyFacingVfx(sp.vfx);
   const selfVfxMs = vfxIsEnemyFacing ? 0 : playSpellVFX(sp.vfx, caster, target, side);
-  if (sp.heal) {
-    const mx = statsOf(caster).vit;
+  if (sp.heal && healBeneficiary) {
+    const mx = statsOf(healBeneficiary).vit;
     const amt = Math.floor(mx * sp.heal);
-    caster.hp = Math.min(mx, caster.hp + amt);
-    healPop(caster, amt);
-    blog(`💚 ${caster.name} ใช้ ${sp.name} · +${amt} HP`, 'buff');
+    healBeneficiary.hp = Math.min(mx, healBeneficiary.hp + amt);
+    healPop(healBeneficiary, amt);
+    blog(`💚 ${caster.name} ใช้ ${sp.name} · ${charmed ? `${healBeneficiary.name} ได้รับ` : ''}+${amt} HP${charmed ? ' (สับสน!)' : ''}`, 'buff');
   }
-  if (sp.healTeam) {
-    atkTeam.forEach(p => {
+  if (sp.healTeam && teamBeneficiary) {
+    teamBeneficiary.forEach(p => {
       if (p.hp <= 0) return;
       const mx = statsOf(p).vit;
       const amt = Math.floor(mx * sp.healTeam);
       p.hp = Math.min(mx, p.hp + amt);
     });
-    blog(`💚 ${caster.name} ใช้ ${sp.name} · ฟื้นทั้งทีม`, 'buff');
+    blog(`💚 ${caster.name} ใช้ ${sp.name} · ฟื้น${charmed ? 'ทีมศัตรู (สับสน!)' : 'ทั้งทีม'}`, 'buff');
   }
-  if (sp.reviveTeam) {
+  if (sp.reviveTeam && teamBeneficiary) {
     let n = 0;
-    atkTeam.forEach(p => {
+    teamBeneficiary.forEach(p => {
       if (p.hp > 0) return;
       p.hp = Math.floor(statsOf(p).vit * sp.reviveTeam); n++;
       p._deathVibrated = false; // so a later re-death this fight still buzzes
     });
-    blog(`✨ ${caster.name} กู้ระบบ · ชุบชีวิต ${n} ตัว`, 'buff');
+    blog(`✨ ${caster.name} กู้ระบบ · ชุบชีวิต${charmed ? 'ฝั่งศัตรู (สับสน!)' : ''} ${n} ตัว`, 'buff');
   }
   if (sp.cleanse) { clearAilments(caster); blog(`🧼 ${caster.name} ล้างสถานะ`, 'buff'); }
-  if (sp.shieldSelf) {
-    caster._shield = sp.shieldSelf;
-    caster._shieldTurns = 3;
-    blog(`🛡 ${caster.name} ตั้งเกราะ ${Math.round(sp.shieldSelf * 100)}%`, 'buff');
+  if (sp.shieldSelf && healBeneficiary) {
+    healBeneficiary._shield = sp.shieldSelf;
+    healBeneficiary._shieldTurns = 3;
+    blog(`🛡 ${caster.name} ตั้งเกราะ${charmed ? `ให้ ${healBeneficiary.name} (สับสน!)` : ''} ${Math.round(sp.shieldSelf * 100)}%`, 'buff');
   }
-  if (sp.buffSelf) {
-    addAilment(caster, { ...sp.buffSelf });
-    blog(`🔥 ${caster.name} เข้าสู่สภาวะ ${sp.buffSelf.id}`, 'buff');
+  if (sp.buffSelf && healBeneficiary) {
+    addAilment(healBeneficiary, { ...sp.buffSelf });
+    blog(`🔥 ${charmed ? healBeneficiary.name : caster.name} เข้าสู่สภาวะ ${sp.buffSelf.id}${charmed ? ' (สับสน!)' : ''}`, 'buff');
   }
-  if (sp.buffTeam) {
-    atkTeam.forEach(p => { if (p.hp > 0) addAilment(p, { id: teamBuffAilmentId(sp), ...sp.buffTeam }); });
-    blog(`✨ ${caster.name} เสริมพลังทั้งทีม`, 'buff');
+  if (sp.buffTeam && teamBeneficiary) {
+    teamBeneficiary.forEach(p => { if (p.hp > 0) addAilment(p, { id: teamBuffAilmentId(sp), ...sp.buffTeam }); });
+    blog(`✨ ${caster.name} เสริมพลัง${charmed ? 'ทีมศัตรู (สับสน!)' : 'ทั้งทีม'}`, 'buff');
   }
   refreshBattleUnits();
 
@@ -3982,6 +4137,7 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
 
   if (sp.pw > 0 && sp.hits > 0) {
     const res = computeDamage(caster, atkTeam, target, defTeam, sp, true, firstStrikeProc(caster));
+    applyFreezeShatter(target, res);
     if (res.evaded) {
       await showBanner('MISS!', 'miss');
       await playAttackSequence(caster, target, res, side, vfxIsEnemyFacing ? sp.vfx : null);
@@ -3999,6 +4155,7 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
       let line = `✦ ${caster.name} → ${sp.name}`;
       if (res.hits > 1) line += ` ×${res.hits}`;
       if (res.crit) line += ' CRIT';
+      if (res.shattered) line += ' SHATTER!';
       line += ` · -${res.dmg}`;
       blog(line, side);
     }
@@ -4538,6 +4695,39 @@ function refreshUnitVitals(pet, isEnemy) {
   }
   const buffsEl = plate.querySelector('.np-buffs');
   if (buffsEl) buffsEl.innerHTML = statBuffChips(pet);
+  const spdPip = plate.querySelector('.spd-pip');
+  if (spdPip) spdPip.textContent = `⚡ ${Math.round(Math.min(1, pet.spdCounter || 0) * 100)}%`;
+  const critPct = Math.round(Math.min(1, pet.critGauge || 0) * 100);
+  const critPip = plate.querySelector('.crit-pip');
+  if (critPip) {
+    critPip.textContent = `💥 ${critPct}%`;
+    critPip.classList.toggle('ready', critPct >= 100);
+  }
+
+  // Ailment badges/stoned overlay/tappable-ready glow can all change
+  // turn-to-turn (freeze/charm/corrupt expiring, poison/frenzy gaining
+  // stacks, the crit gauge filling) — kept live here too instead of
+  // only at the next full renderBattleSide.
+  const unitEl = document.querySelector(`.bunit[data-uid="${pet.uid}"]`);
+  if (unitEl) {
+    const badgesHtml = ailBadgesHtml(pet);
+    let badgesEl = unitEl.querySelector('.ail-badges');
+    if (badgesHtml) {
+      if (!badgesEl) { badgesEl = el('div', 'ail-badges'); unitEl.prepend(badgesEl); }
+      badgesEl.innerHTML = badgesHtml;
+    } else if (badgesEl) {
+      badgesEl.remove();
+    }
+    const isStoned = hasAilment(pet, 'stoned');
+    let stonedEl = unitEl.querySelector('.stoned-overlay');
+    if (isStoned && !stonedEl) {
+      stonedEl = el('div', 'stoned-overlay', AILMENTS.stoned.icon);
+      unitEl.appendChild(stonedEl);
+    } else if (!isStoned && stonedEl) {
+      stonedEl.remove();
+    }
+    unitEl.classList.toggle('crit-ready', !isEnemy && critPct >= 100);
+  }
 }
 
 function refreshBattleUnits() {
@@ -4739,6 +4929,26 @@ function finishRaid(win, loot) {
   renderAll();
 }
 
+// Shared badge-row markup for a pet's active ailments — poison/frenzy
+// show a stack count (they never expire on a turn timer, see
+// STACKING_AILMENT_IDS in data.js), everything else still shows its
+// remaining turns.
+function ailBadgesHtml(pet) {
+  return (pet.ailments || []).map(a => {
+    const A = AILMENTS[a.id];
+    if (!A) return '';
+    const meta = a.stacks != null ? ` (x${a.stacks})` : (a.turns != null ? ` (${a.turns})` : '');
+    return `<span class="ail-badge" title="${A.thai}${meta}">${A.icon}</span>`;
+  }).join('');
+}
+
+// Click handler for a ready (critGauge full) ally unit — see
+// requestBonusCrit() for the acquire-or-queue logic (a tap that lands
+// mid-animation is queued, not dropped).
+function wireCritGaugeTap(unitEl, pet) {
+  unitEl.onclick = () => requestBonusCrit(pet);
+}
+
 function renderBattleSide(pet, elId, isEnemy) {
   const wrap = $(elId);
   if (!wrap) return;
@@ -4749,10 +4959,8 @@ function renderBattleSide(pet, elId, isEnemy) {
   unit.dataset.side = isEnemy ? 'foe' : 'ally';
   unit.style.setProperty('--float-delay', (Math.random() * 1.6).toFixed(2) + 's');
   if (pet.hp <= 0) unit.classList.add('dead');
-  const badges = (pet.ailments || []).map(a => {
-    const A = AILMENTS[a.id];
-    return A ? `<span class="ail-badge" title="${A.thai} (${a.turns})">${A.icon}</span>` : '';
-  }).join('');
+  const badges = ailBadgesHtml(pet);
+  const isStoned = hasAilment(pet, 'stoned');
   // FACING: sprites are authored facing either way. The player's side
   // must look right, the enemy side must look left. `faces` says how the
   // art was drawn, so we only flip when it disagrees with the side.
@@ -4776,13 +4984,25 @@ function renderBattleSide(pet, elId, isEnemy) {
   unit.style.setProperty('--cr-scale', sc);
   const rageMarks = (pet.isBoss && pet.bossPhase === 2)
     ? `<div class="rage-marks"><span>💢</span><span>😡</span><span>💢</span></div>` : '';
+  // Stoned gets its own big overlay above the head (placeholder emoji —
+  // drop a real gif at assets/fx/stoned.gif and swap the CSS background
+  // on .stoned-overlay to upgrade it) instead of just a small corner
+  // badge, since it's meant to read as a much bigger deal than a normal
+  // ailment.
+  const stonedOverlay = isStoned ? `<div class="stoned-overlay">${AILMENTS.stoned.icon}</div>` : '';
   unit.innerHTML = `
     ${badges ? `<div class="ail-badges">${badges}</div>` : ''}
+    ${stonedOverlay}
     ${rageMarks}
     <div class="bu-sprite-wrap${pet.isBoss ? ' is-boss' : ''}">
       ${creatureMarkup(pet, 'bu-sprite float' + (needFlip ? ' flip' : ''))}
     </div>`;
   wrap.appendChild(unit);
+  // Only an ally can be tapped to fire a ready bonus crit — a foe has no
+  // player to tap for it and auto-fires the instant its gauge fills
+  // (see runTurn).
+  if (!isEnemy) wireCritGaugeTap(unit, pet);
+  unit.classList.toggle('crit-ready', !isEnemy && (pet.critGauge || 0) >= 1);
 
   // Name plate lives outside the sprite so it never moves with a lunge
   const plate = $(isEnemy ? 'plate-foe' : 'plate-ally');
@@ -4790,6 +5010,7 @@ function renderBattleSide(pet, elId, isEnemy) {
     const mpMax = statsOf(pet).int;
     const mpPct = Math.round((pet.mp || 0) / Math.max(1, mpMax) * 100);
     const spdPct = Math.round(Math.min(1, pet.spdCounter || 0) * 100);
+    const critPct = Math.round(Math.min(1, pet.critGauge || 0) * 100);
     // Kept deliberately compact (one bar, no separate phase-pip row) —
     // the boss's enlarged sprite sits right below this plate, and a
     // taller plate was overlapping it.
@@ -4818,7 +5039,10 @@ function renderBattleSide(pet, elId, isEnemy) {
       <div class="np-buffs">${statBuffChips(pet)}</div>
       ${vitalsHtml}
       ${bossBar}
-      ${spdPct > 0 ? `<div class="spd-pip">⚡ ${spdPct}%</div>` : ''}`;
+      <div class="gauge-pips">
+        <div class="spd-pip">⚡ ${spdPct}%</div>
+        <div class="crit-pip${critPct >= 100 ? ' ready' : ''}">💥 ${critPct}%</div>
+      </div>`;
   }
 }
 
