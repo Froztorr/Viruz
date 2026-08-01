@@ -213,6 +213,7 @@ async function boot() {
     buildStarterPicker();
   }
   wireGlobalUI();
+  wireMainWindow();
   wireDrawer();
   wireCareGame();
   wirePetDetail();
@@ -267,26 +268,36 @@ async function claimStarter() {
   log(`เริ่มต้นด้วย ${pet.name} [${a.name}] · ${TUNING.startBitz} Bitz`, 'win');
 }
 
-// ═══════════════ SCREENS AS FLOATING WINDOWS ═══════════════
-// Every screen (plus the drawer) is an independent Mac-style window —
-// several can be open (or minimized) at once, each with its own
-// traffic lights, each draggable/closable/minimizable/maximizable.
+// ═══════════════ MAIN SCENE + DRAWER AS WINDOWS ═══════════════
+// Only two Mac-style windows ever exist now: #win-main (the map and
+// everything reachable from its menu — clinic, shops, world, raid,
+// etc.) and the drawer. Both are draggable/closable/minimizable/
+// maximizable. Navigating between map-menu pages does NOT open another
+// window — it swaps which .pane is visible inside #win-main's shared
+// body, like clicking a link and staying in the same browser tab, with
+// goMainBack()/win-main-back reverting to whatever page came before.
 // showScreen(id) (called from ~50 places across the file, mostly via
-// data-goto buttons) is now a thin wrapper around openWindow(id): it
-// no longer hides everything else, it opens-or-focuses one window on
-// top of whatever else is already open.
+// data-goto buttons) stays the single entry point every call site uses;
+// openWindow() decides internally whether that id is a main-scene page
+// (swap in place) or the drawer (its own window).
 const WIN_TITLES = {
   map:'Map', home:'Home Base', clinic:'Clinic', shop:'Shop',
-  foodshop:'Food Shop', world:'World Map', battle:'Battle', arena:'Arena',
+  foodshop:'Food Shop', world:'World Map', battle:'Battle',
   raid:'Raid', safe:'Safe Spot', care:'Care', hack:'Hack Terminal',
   steal:'Steal', inventory:'Inventory', drawer:'Menu',
 };
+const MAIN_SCENE_IDS = [
+  'map', 'home', 'clinic', 'shop', 'foodshop', 'world', 'safe', 'care',
+  'raid', 'hack', 'steal', 'inventory', 'battle',
+];
 
-let currentScreenId = null;
-let windowStack = [];              // z-order, back to front
+let currentScreenId = null;        // 'intro' | 'win-main' | 'drawer'
+let currentMainId = null;          // which pane is showing inside #win-main
+let mainHistory = [];              // back-button stack of previously shown panes
+let windowStack = [];              // z-order, back to front — only ever 'win-main'/'drawer'
 let minimizedWindows = new Set();
 
-function winElId(id) { return id === 'drawer' ? 'drawer-panel' : 'screen-' + id; }
+function winElId(id) { return id === 'drawer' ? 'drawer-panel' : 'win-main'; }
 function windowEl(id) { return $(winElId(id)); }
 
 // Kept well below the persistent chrome's own z-index (drawer knob,
@@ -299,36 +310,34 @@ function restackWindowsZ() {
   });
 }
 
-// Lazily wraps a .screen's existing content in a .win-body and
-// prepends a generated .win-titlebar (dots + drag handle) the first
-// time it's ever opened — cheaper and less error-prone than hand-
-// authoring the same chrome into 14 separate HTML sections. The
-// drawer already carries its own hand-authored head in index.html
-// (wired separately in wireDrawer()), so it's skipped here.
-function ensureWindowChrome(id) {
-  const container = windowEl(id);
-  if (!container || id === 'drawer' || container.dataset.chromed) return container;
-  container.dataset.chromed = '1';
+// Swaps which main-scene page is visible inside #win-main's shared
+// body — the equivalent of a browser tab navigating to a new page.
+// Doesn't touch history; callers decide when to push onto mainHistory.
+function showMainPane(id) {
+  MAIN_SCENE_IDS.forEach(x => {
+    const p = $('screen-' + x);
+    if (p) p.classList.toggle('on', x === id);
+  });
+  currentMainId = id;
+  const winMain = $('win-main');
+  if (winMain) winMain.dataset.pane = id;
+  setText('win-main-title', WIN_TITLES[id] || id);
+  const backBtn = $('win-main-back');
+  if (backBtn) backBtn.disabled = !mainHistory.length;
+}
 
-  const bar = el('div', 'win-titlebar');
-  bar.innerHTML = `
-    <div class="win-traffic-lights">
-      <button class="win-dot win-dot-red" data-act="close" aria-label="Close"></button>
-      <button class="win-dot win-dot-yellow" data-act="min" aria-label="Minimize"></button>
-      <button class="win-dot win-dot-green" data-act="max" aria-label="Maximize"></button>
-    </div>
-    <div class="win-title">${WIN_TITLES[id] || id}</div>`;
-  const body = el('div', 'win-body');
-  while (container.firstChild) body.appendChild(container.firstChild);
-  container.appendChild(bar);
-  container.appendChild(body);
-
-  bar.querySelector('[data-act="close"]').onclick = (e) => { e.stopPropagation(); closeWindow(id); };
-  bar.querySelector('[data-act="min"]').onclick = (e) => { e.stopPropagation(); minimizeWindow(id); };
-  bar.querySelector('[data-act="max"]').onclick = (e) => { e.stopPropagation(); toggleMaximizeWindow(id); };
-  makeWindowDraggable(container, bar.querySelector('.win-title'));
-  container.addEventListener('pointerdown', () => focusWindow(id));
-  return container;
+// The title-bar "‹" back button — reverts to whichever main-scene page
+// was showing before the current one, browser-back style. Doesn't push
+// a forward-history entry; going somewhere new after a back() simply
+// starts a fresh trail from there (no forward button was asked for).
+function goMainBack() {
+  if (!mainHistory.length) return;
+  const prevId = mainHistory.pop();
+  showMainPane(prevId);
+  runScreenRenderer(prevId);
+  const PERSISTABLE = ['map','world','safe','home','clinic','shop','foodshop','care','raid'];
+  if (PERSISTABLE.includes(prevId)) { G.lastScreen = prevId; save(); }
+  $('app').dataset.screen = prevId;
 }
 
 // Runs whichever render/side-effect a given screen needs on open —
@@ -356,14 +365,14 @@ function runScreenRenderer(id) {
 
 // Brings an already-open window to the front without re-rendering it
 // — used when tapping anywhere inside a window that isn't currently
-// focused (see ensureWindowChrome's pointerdown listener).
+// focused (see wireMainWindow()/wireDrawer()'s pointerdown listeners).
 function focusWindow(id) {
   if (!windowStack.includes(id) || minimizedWindows.has(id)) return;
   windowStack = windowStack.filter(x => x !== id);
   windowStack.push(id);
   restackWindowsZ();
   currentScreenId = id;
-  $('app').dataset.screen = id;
+  $('app').dataset.screen = id === 'win-main' ? currentMainId : id;
 }
 
 function openWindow(id) {
@@ -380,18 +389,32 @@ function openWindow(id) {
   closePetDetail();
   if (id !== 'care') stopCareWander();
 
-  // Already open, already frontmost, not minimized: no-op, matching
-  // the old "re-showing the current screen does nothing" behavior.
-  if (id === currentScreenId && windowStack.includes(id) && !minimizedWindows.has(id)) return;
+  const isMainScene = MAIN_SCENE_IDS.includes(id);
+  const winId = isMainScene ? 'win-main' : id;
+  const windowCurrentlyOpen = windowStack.includes(winId) && !minimizedWindows.has(winId);
 
-  const container = ensureWindowChrome(id);
+  // Already open, already showing this exact page/window: no-op,
+  // matching the old "re-showing the current screen does nothing"
+  // behavior.
+  if (isMainScene ? (id === currentMainId && windowCurrentlyOpen)
+                  : (id === currentScreenId && windowCurrentlyOpen)) return;
+
+  // Switching which page #win-main shows — like following a link in a
+  // browser tab: push the page being left onto the back history, then
+  // swap the visible pane in place. No new window opens for this.
+  if (isMainScene && id !== currentMainId) {
+    if (currentMainId) mainHistory.push(currentMainId);
+    showMainPane(id);
+  }
+
+  const container = windowEl(winId);
   if (!container) return;
 
-  const isNewOpen = !windowStack.includes(id);
-  minimizedWindows.delete(id);
+  const isNewOpen = !windowStack.includes(winId);
+  minimizedWindows.delete(winId);
   container.classList.add('on');
-  windowStack = windowStack.filter(x => x !== id);
-  windowStack.push(id);
+  windowStack = windowStack.filter(x => x !== winId);
+  windowStack.push(winId);
   if (isNewOpen) {
     container.classList.remove('win-pop-in'); void container.offsetWidth;
     container.classList.add('win-pop-in');
@@ -399,7 +422,7 @@ function openWindow(id) {
   restackWindowsZ();
   renderWinDock();
 
-  currentScreenId = id;
+  currentScreenId = winId;
   // Persist "where the player is" for LOCATION screens only — never a
   // transient state like battle/hack/steal. On next load, boot()
   // restores here instead of always dropping the player back at the
@@ -422,7 +445,7 @@ function closeWindow(id) {
   const front = windowStack[windowStack.length - 1];
   restackWindowsZ();
   currentScreenId = front;
-  $('app').dataset.screen = front;
+  $('app').dataset.screen = front === 'win-main' ? currentMainId : front;
 }
 
 function minimizeWindow(id) {
@@ -432,7 +455,10 @@ function minimizeWindow(id) {
   container.classList.remove('on');
   renderWinDock();
   const nextVisible = [...windowStack].reverse().find(x => x !== id && !minimizedWindows.has(x));
-  if (nextVisible) { currentScreenId = nextVisible; $('app').dataset.screen = nextVisible; }
+  if (nextVisible) {
+    currentScreenId = nextVisible;
+    $('app').dataset.screen = nextVisible === 'win-main' ? currentMainId : nextVisible;
+  }
 }
 
 function toggleMaximizeWindow(id) {
@@ -456,11 +482,27 @@ function renderWinDock() {
   if (!dock) return;
   dock.innerHTML = '';
   minimizedWindows.forEach(id => {
+    const label = id === 'win-main' ? (WIN_TITLES[currentMainId] || currentMainId) : (WIN_TITLES[id] || id);
     const chip = el('button', 'win-dock-chip');
-    chip.innerHTML = `<span class="wdc-dot"></span>${WIN_TITLES[id] || id}`;
-    chip.onclick = () => openWindow(id);
+    chip.innerHTML = `<span class="wdc-dot"></span>${label}`;
+    chip.onclick = () => openWindow(id === 'win-main' ? currentMainId : id);
     dock.appendChild(chip);
   });
+}
+
+// #win-main's chrome is hand-authored in index.html (like the drawer's
+// own head), not JS-injected — wire its traffic lights, back button,
+// and drag handle once at boot.
+function wireMainWindow() {
+  const win = $('win-main');
+  if (!win) return;
+  win.querySelector('[data-act="close"]').onclick = (e) => { e.stopPropagation(); closeWindow('win-main'); };
+  win.querySelector('[data-act="min"]').onclick = (e) => { e.stopPropagation(); minimizeWindow('win-main'); };
+  win.querySelector('[data-act="max"]').onclick = (e) => { e.stopPropagation(); toggleMaximizeWindow('win-main'); };
+  const backBtn = $('win-main-back');
+  if (backBtn) backBtn.onclick = (e) => { e.stopPropagation(); goMainBack(); };
+  makeWindowDraggable(win, win.querySelector('.win-title'));
+  win.addEventListener('pointerdown', () => focusWindow('win-main'));
 }
 
 // ── DRAGGABLE WINDOW (generic) ──
@@ -590,12 +632,12 @@ function wireDayNightTheme() {
 }
 
 // ── DRAWER, AS A WINDOW ──
-// The drawer's head is hand-authored in index.html (not generated by
-// ensureWindowChrome — see the comment there) since it already needed
-// its own distinct content, but it's wired through the exact same
-// openWindow()/closeWindow()/minimizeWindow()/toggleMaximizeWindow()/
-// makeWindowDraggable() as every .screen, so it behaves identically:
-// draggable, closable, minimizable (into #win-dock), maximizable.
+// The drawer's head is hand-authored in index.html, same as #win-main's
+// (see wireMainWindow()), since it needed its own distinct content —
+// but it's wired through the exact same openWindow()/closeWindow()/
+// minimizeWindow()/toggleMaximizeWindow()/makeWindowDraggable() as
+// #win-main, so it behaves identically: draggable, closable, minimizable
+// (into #win-dock), maximizable.
 function toggleDrawer() {
   if (windowStack.includes('drawer') && !minimizedWindows.has('drawer')) closeWindow('drawer');
   else openWindow('drawer');
@@ -2435,7 +2477,7 @@ function wanderStep() {
   // overlay, or while some other screen is showing.
   const overlayOpen = CG != null || ($('care-game') && $('care-game').classList.contains('open'));
   const petEl = $('care-pet');
-  if (currentScreenId !== 'care' || overlayOpen || !petEl) { scheduleWanderStep(1200); return; }
+  if (currentMainId !== 'care' || overlayOpen || !petEl) { scheduleWanderStep(1200); return; }
   checkWasteSpawn();
   const x = 20 + Math.random() * 58;
   const y = 30 + Math.random() * 46;
