@@ -1115,62 +1115,76 @@ function equipStatLine(item) {
   }
   return Object.keys(item.stats || {}).map(k => `${STAT_META[k].icon}+${item.stats[k]}`).join(' ');
 }
+// Board layout — positions measured directly off the generated circuit
+// board art (assets/ui/equip_circuit_bg.jpg): 3 square sockets (payload
+// top-left, exploit top-right, rootkit centered below them) plus one
+// larger circular socket (the habit "data card") lower-center. These
+// percentages are pixel-measured from that exact image, not eyeballed —
+// if the background art is ever regenerated at different socket
+// positions, these need updating to match.
+const EQ_SOCKET_LAYOUT = {
+  payload:  { left: 27.5, top: 20.3, size: 17.5, round: false },
+  exploit:  { left: 72.4, top: 20.3, size: 17.5, round: false },
+  rootkit:  { left: 49.9, top: 49.9, size: 17.5, round: false },
+  habit:    { left: 50.0, top: 79.2, size: 25.0, round: true },
+};
 function renderPdEquip() {
   const pet = PD.pet;
   const page = $('pd-page-equip');
   if (!page) return;
   page.innerHTML = '';
-  const wrap = el('div', 'eq-slots');
+  const board = el('div', 'eq-board');
+  board.innerHTML = `<img class="eq-board-bg" src="assets/ui/equip_circuit_bg.jpg" alt="">`;
   ALL_EQUIP_SLOT_KEYS.forEach(slotId => {
     const slot = EQUIP_SLOTS[slotId];
+    const pos = EQ_SOCKET_LAYOUT[slotId];
     const item = pet.equip && pet.equip[slotId];
-    const row = el('div', 'eq-slot-row' + (slotId === 'habit' ? ' habit-slot-row' : ''));
+    const socket = el('div', 'eq-socket' + (pos.round ? ' eq-socket-round' : ' eq-socket-sq') + (item ? ' filled' : ''));
+    socket.style.left = pos.left + '%';
+    socket.style.top = pos.top + '%';
+    socket.style.width = pos.size + '%';
+    let inner;
     if (item) {
-      const g = equipGradeMeta(item);
-      row.style.setProperty('--grade', g.color);
-      // Habit gets its own full RPG-card art (habit_card_frame.png) with
-      // the card's Type badge sitting in the frame's built-in icon
-      // socket, instead of the small round gear-slot icon the other 3
-      // slots use — see equipIconHtml() for those.
-      const iconHtml = slotId === 'habit'
-        ? `<div class="habit-card-art">
-             <img src="assets/icons/habit_card_frame.png" class="habit-card-frame-img" alt="">
-             <div class="habit-card-socket">${habitIcon(HABIT_TYPES[item.type], 26)}</div>
-           </div>`
+      inner = slotId === 'habit'
+        ? habitIcon(HABIT_TYPES[item.type], 44)
         : equipIconHtml(item, slot.icon);
-      row.innerHTML = `
-        <div class="eq-slot-icon">${iconHtml}</div>
-          <div class="eq-slot-stats">${equipStatLine(item)}</div>
-        </div>
-        <button class="btn small">ถอด</button>`;
-      row.querySelector('button').onclick = () => { unequipItem(pet, slotId); renderPdEquip(); };
     } else {
-      const iconHtml = slotId === 'habit'
-        ? `<div class="habit-card-art"><img src="assets/icons/habit_card_empty.png" class="habit-card-frame-img" alt=""></div>`
-        : slot.icon;
-      row.innerHTML = `
-        <div class="eq-slot-icon empty">${iconHtml}</div>
-        <div class="eq-slot-info">
-          <div class="eq-slot-name muted">${slot.name} — ว่าง</div>
-          <div class="eq-slot-sub">${slot.desc}</div>
-        </div>
-        <button class="btn small primary">ใส่</button>`;
-      row.querySelector('button').onclick = () => openEquipPicker(pet, slotId);
+      inner = `<span class="eq-socket-plus">+</span>`;
     }
-    wrap.appendChild(row);
+    socket.innerHTML = `<span class="eq-socket-label">${slot.name}</span><span class="eq-socket-inner">${inner}</span>`;
+    socket.onclick = () => openEquipPicker(pet, slotId);
+    board.appendChild(socket);
   });
-  page.appendChild(wrap);
+  page.appendChild(board);
   const hint = el('div', 'muted', `กระเป๋าอุปกรณ์: ${(G.equipBag||[]).length} ชิ้น — จัดการ/ขาย/สลาย ได้ที่คลัง`);
   hint.style.cssText = 'text-align:center;font-size:15px;margin-top:10px';
   page.appendChild(hint);
 }
 function openEquipPicker(pet, slotId) {
   modal(`เลือก ${EQUIP_SLOTS[slotId].name}`, body => {
+    const current = pet.equip && pet.equip[slotId];
+    if (current) {
+      const g = equipGradeMeta(current);
+      const row = el('div', 'eq-slot-row');
+      row.style.setProperty('--grade', g.color);
+      const iconHtml = slotId === 'habit' ? habitIcon(HABIT_TYPES[current.type], 26) : equipIconHtml(current, EQUIP_SLOTS[slotId].icon);
+      row.innerHTML = `
+        <div class="eq-slot-icon">${iconHtml}</div>
+        <div class="eq-slot-info">
+          <div class="eq-slot-name" style="color:${g.color}">${current.name} <span class="muted" style="font-size:13px">(สวมอยู่)</span></div>
+          <div class="eq-slot-stats">${equipStatLine(current)}</div>
+        </div>
+        <button class="btn small">ถอด</button>`;
+      row.querySelector('button').onclick = () => { unequipItem(pet, slotId); closeModal(); renderPdEquip(); };
+      body.appendChild(row);
+    }
     const options = (G.equipBag || [])
       .filter(it => it.slotId === slotId && it.lvlReq <= pet.level)
       .sort((a,b) => EQUIP_GRADE_KEYS.indexOf(b.grade) - EQUIP_GRADE_KEYS.indexOf(a.grade));
     if (!options.length) {
-      body.innerHTML = `<div class="muted" style="padding:14px;text-align:center">ไม่มีอุปกรณ์ที่ใส่ได้ตอนนี้<br>(ต้องเลเวลถึง หรือดรอปจากศัตรูก่อน)</div>`;
+      const empty = el('div', 'muted', 'ไม่มีอุปกรณ์ที่ใส่ได้ตอนนี้ (ต้องเลเวลถึง หรือดรอปจากศัตรูก่อน)');
+      empty.style.cssText = 'padding:14px;text-align:center';
+      body.appendChild(empty);
     } else {
       const list = el('div', 'eq-picker-list');
       options.forEach(item => {
