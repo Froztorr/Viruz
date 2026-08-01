@@ -1505,6 +1505,13 @@ export const POTIONS = [
   { id:'pot_m', name:'Large Potion', icon:'⚗️', cost:320, heal:0.70, desc:'ฟื้น HP 70% ระหว่างสู้' },
   { id:'pot_f', name:'Full Elixir',  icon:'🍶', cost:700, heal:1.00, desc:'ฟื้น HP เต็ม ระหว่างสู้' },
 ];
+// Sold separately at the Tech Shop (not a safe-spot potion) — an
+// emergency out for a Down pet (see petState()/DOWN_MS in engine.js)
+// bought in advance and used later from the Inventory bag's Potions
+// tab (see useRevivePotion() in game.js). Doesn't touch Error state —
+// that always needs a Real World Clinic incubation chamber.
+export const REVIVE_POTION = { id:'revive_potion', name:'Revive Potion', icon:'✨', cost:5000,
+  revive:true, desc:'ชุบชีวิต VIRUZ ที่อยู่ในสถานะ Down ทันที — ใช้ได้จากกระเป๋าไอเทม (ไม่ได้ผลกับสถานะ Error)' };
 
 // ── BASE DEFENSE BOTS ──
 export const DEFENSE_BOTS = [
@@ -1552,7 +1559,6 @@ export const TUNING = {
                      // (banner + wind-up + lunge + hit-stop + return) adds ~1.5s,
                      // so this stays short or the fight drags
   fleePenalty: 0.0,
-  loseHpRestore: 0.10,
 
   // ── CRIT GAUGE (manual-trigger ultimate) ──
   // Fills every time a unit takes its own turn; a higher CRIT stat fills
