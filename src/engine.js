@@ -246,7 +246,9 @@ export function treeBonuses(pet) {
 }
 
 // Which specials a pet has unlocked (skill-node ids taken), across
-// every tree it has access to.
+// every tree it has access to — plus any `nativeSpecials` a monster was
+// simply BORN knowing (set at spawn, see spawnAntiviruz() below), since
+// enemies have no skill tree of their own to spend points in.
 export function unlockedSpecials(pet) {
   const spent = pet.tree || {};
   const out = [];
@@ -257,6 +259,10 @@ export function unlockedSpecials(pet) {
         if (sp) out.push(sp);
       }
     });
+  });
+  (pet.nativeSpecials || []).forEach(id => {
+    const sp = SPECIALS[id];
+    if (sp) out.push(sp);
   });
   return out;
 }
@@ -809,6 +815,12 @@ export function spawnAntiviruz(defId, level) {
     hp: 0,
     whiteTrait: attr === 'white' ? rollWeighted(WHITE_TRAIT_ROLL) : null,
     isEnemy: true,
+    // Monsters have no skill tree to spend points in, so a `specials`
+    // list on their ANTIVIRUZ def (e.g. Mimic's Mesmerise) is granted
+    // directly here — nativeSpecials feeds unlockedSpecials() above,
+    // and autoCast is pre-enabled since there's no player to toggle it.
+    nativeSpecials: def.specials ? def.specials.slice() : [],
+    autoCast: (def.specials || []).reduce((o, id) => (o[id] = true, o), {}),
   };
   pet.hp = statsOf(pet).mhp;
   return pet;
