@@ -1062,23 +1062,6 @@ function renderPdStats() {
     ).join('');
   }
 
-  const passiveList = page.querySelector('.ps-passives');
-  const passiveEntries = [];
-  ['payload', 'exploit', 'rootkit'].forEach(slotId => {
-    const item = pet.equip && pet.equip[slotId];
-    const eff = item && item.effectId && PAYLOAD_EFFECTS[item.effectId];
-    if (eff) passiveEntries.push({ icon: eff.icon, name: eff.name, desc: eff.desc });
-  });
-  if (habitType) passiveEntries.push({ icon: habitIcon(habitType, 21), name: habitType.name, desc: habitType.desc });
-  specials.forEach(sp => passiveEntries.push({ icon: '✦', name: sp.name, desc: sp.desc }));
-  if (!passiveEntries.length) {
-    passiveList.innerHTML = `<div class="muted" style="padding:8px">ยังไม่มีเอฟเฟกต์พาสซีฟ</div>`;
-  } else {
-    passiveList.innerHTML = passiveEntries.map(p =>
-      `<div class="ps-passive-row"><i>${p.icon}</i><div><b>${p.name}</b><span>${p.desc}</span></div></div>`
-    ).join('');
-  }
-
   const list = page.querySelector('.ps-skills');
   if (!specials.length) {
     list.innerHTML = `<div class="muted" style="padding:8px">ยังไม่ปลดล็อกสกิลพิเศษ — ดูที่หน้าผังสกิล</div>`;
