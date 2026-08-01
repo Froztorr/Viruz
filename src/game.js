@@ -361,6 +361,19 @@ function goMainBack() {
   $('app').dataset.screen = prevId;
 }
 
+// Every screen's own embedded "← กลับ" button used to hardcode a fixed
+// data-goto target (always "map", "home", etc.) — so map/world are
+// meant to feel like the same tab (leave either one, go do something
+// else, come back to exactly where you were), but a hardcoded target
+// would always kick you back to a fixed screen instead of wherever you
+// actually came from. Falls back to a fixed screen only for the rare
+// case of resuming a saved session directly into a sub-screen, where
+// there's no real history to go back to yet.
+function goBackSmart(fallbackId) {
+  if (mainHistory.length) goMainBack();
+  else showScreen(fallbackId);
+}
+
 // Runs whichever render/side-effect a given screen needs on open —
 // the exact per-screen dispatch the old showScreen() did inline.
 function runScreenRenderer(id) {
@@ -684,6 +697,9 @@ function wireDrawer() {
 function wireGlobalUI() {
   document.querySelectorAll('[data-goto]').forEach(b => {
     b.onclick = () => showScreen(b.dataset.goto);
+  });
+  document.querySelectorAll('[data-fallback]').forEach(b => {
+    b.onclick = () => goBackSmart(b.dataset.fallback);
   });
   $('start-btn').onclick = claimStarter;
 
@@ -4657,9 +4673,14 @@ function fleeBattle() {
   clearInterval(regenTimer);
   cameraReset(300); setTimeScale(1);
   blog('ถอนตัวออกจากระบบ', 'sys');
+  // Same mode -> destination mapping as the normal win/loss flow
+  // (showBattleResults' returnTo) — fleeing a hack/boss fight (always
+  // entered from World) used to hardcode a return to the city Map
+  // instead, kicking the player out of the adventure they were on.
+  const returnTo = (battle.mode === 'hack' || battle.mode === 'boss') ? 'world' : 'map';
   save();
   battle = null;
-  showScreen('map');
+  showScreen(returnTo);
   renderAll();
 }
 
