@@ -1089,19 +1089,32 @@ function renderPdEquip() {
   ALL_EQUIP_SLOT_KEYS.forEach(slotId => {
     const slot = EQUIP_SLOTS[slotId];
     const item = pet.equip && pet.equip[slotId];
-    const row = el('div', 'eq-slot-row');
+    const row = el('div', 'eq-slot-row' + (slotId === 'habit' ? ' habit-slot-row' : ''));
     if (item) {
       const g = equipGradeMeta(item);
       row.style.setProperty('--grade', g.color);
+      // Habit gets its own full RPG-card art (habit_card_frame.png) with
+      // the card's Type badge sitting in the frame's built-in icon
+      // socket, instead of the small round gear-slot icon the other 3
+      // slots use — see equipIconHtml() for those.
+      const iconHtml = slotId === 'habit'
+        ? `<div class="habit-card-art">
+             <img src="assets/icons/habit_card_frame.png" class="habit-card-frame-img" alt="">
+             <div class="habit-card-socket">${habitIcon(HABIT_TYPES[item.type], 26)}</div>
+           </div>`
+        : equipIconHtml(item, slot.icon);
       row.innerHTML = `
-        <div class="eq-slot-icon">${equipIconHtml(item, slot.icon)}</div>
+        <div class="eq-slot-icon">${iconHtml}</div>
           <div class="eq-slot-stats">${equipStatLine(item)}</div>
         </div>
         <button class="btn small">ถอด</button>`;
       row.querySelector('button').onclick = () => { unequipItem(pet, slotId); renderPdEquip(); };
     } else {
+      const iconHtml = slotId === 'habit'
+        ? `<div class="habit-card-art"><img src="assets/icons/habit_card_empty.png" class="habit-card-frame-img" alt=""></div>`
+        : slot.icon;
       row.innerHTML = `
-        <div class="eq-slot-icon empty">${slot.icon}</div>
+        <div class="eq-slot-icon empty">${iconHtml}</div>
         <div class="eq-slot-info">
           <div class="eq-slot-name muted">${slot.name} — ว่าง</div>
           <div class="eq-slot-sub">${slot.desc}</div>
