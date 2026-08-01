@@ -1126,7 +1126,7 @@ function renderPdEquip() {
   });
   page.appendChild(wrap);
   const hint = el('div', 'muted', `กระเป๋าอุปกรณ์: ${(G.equipBag||[]).length} ชิ้น — จัดการ/ขาย/สลาย ได้ที่คลัง`);
-  hint.style.cssText = 'text-align:center;font-size:13px;margin-top:10px';
+  hint.style.cssText = 'text-align:center;font-size:15px;margin-top:10px';
   page.appendChild(hint);
 }
 function openEquipPicker(pet, slotId) {
@@ -1569,7 +1569,7 @@ function openCookingMenu() {
     const inv = G.ingredients || { veg:0, bun:0, meat:0 };
     const hint = el('div', 'muted',
       `วัตถุดิบที่มี: 🥬${inv.veg||0} 🍞${inv.bun||0} 🥩${inv.meat||0}`);
-    hint.style.cssText = 'text-align:center;margin-bottom:10px;font-size:14px';
+    hint.style.cssText = 'text-align:center;margin-bottom:10px;font-size:16px';
     body.appendChild(hint);
 
     const list = el('div', 'eq-picker-list');
