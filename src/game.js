@@ -16,10 +16,12 @@ import {
   MUTATIONS, MUTATION_KEYS, treeForMutation,
   MATERIALS, CODE_PART_IDS, codePartDropChance, mutationWeightsFromParts,
   bossPoolForMap, BOSS_TUNING, randomBossZone,
-  EQUIP_SLOTS, EQUIP_SLOT_KEYS, EQUIP_GRADES, EQUIP_GRADE_KEYS,
+  EQUIP_SLOTS, EQUIP_SLOT_KEYS, ALL_EQUIP_SLOT_KEYS, EQUIP_GRADES, EQUIP_GRADE_KEYS,
   PAYLOAD_EFFECTS, PAYLOAD_EFFECT_KEYS, EQUIP_DROP_CHANCE, CRAFT_RECIPES,
   rollEquipment, craftEquipment, dustValueOf, sellValueOf, backfillEquipIcon,
-  ART2_SPECIES } from './data.js';
+  ART2_SPECIES,
+  HABIT_COLORS, HABIT_COLOR_KEYS, HABIT_TYPES, HABIT_TYPE_KEYS,
+  HABIT_CARD_ICON, HABIT_PASSIVE_ICON, HABIT_CARD_DROP_CHANCE } from './data.js';
 import {
   createPet, rollEgg, statsOf, combatStats, powerOf, teamPower, spawnAntiviruz,
   spawnBoss, enterBossRage,
@@ -28,7 +30,8 @@ import {
   teamAlive, availableSkills, clamp, loyaltyBuffs, signatureSkillOf, buildHackPuzzle, checkHackGuess,
   unlockedSpecials, canTakeNode, takeNode, treeBonuses,
   addAilment, hasAilment, clearAilments, tickAilments,
-  advanceSpeedCounter, maxMP, canCast, spendMP, restoreMP, uid, equipmentBonuses } from './engine.js';
+  advanceSpeedCounter, maxMP, canCast, spendMP, restoreMP, uid, equipmentBonuses,
+  habitOf } from './engine.js';
 import { NET } from './net.js';
 import { creatureMarkupFor, gifURL } from './sprites.js';
 
@@ -88,6 +91,22 @@ const $ = id => document.getElementById(id);
 function attrIcon(a, size = 16) {
   if (a.iconImg) return `<img src="${a.iconImg}" class="attr-icon-img" style="width:${size}px;height:${size}px" alt="${a.name}">`;
   return `<span class="attr-icon-emoji">${a.icon}</span>`;
+}
+
+// Same idea as attrIcon(), but for the new Habit colors/types/card/
+// passive icons (data.js): each entry's iconImg already points at the
+// exact path its real PNG should land at (no file there yet). Renders
+// an <img> with an onerror fallback to the emoji, so dropping the
+// actual art in later just starts working with zero code changes, and
+// until then it quietly shows the emoji instead of a broken image.
+function habitIcon(entry, size = 16) {
+  if (!entry) return '';
+  if (entry.iconImg) {
+    const emoji = (entry.icon || '').replace(/"/g, '');
+    return `<img src="${entry.iconImg}" class="habit-icon-img" style="width:${size}px;height:${size}px" alt="${entry.name || ''}" ` +
+      `onerror="this.outerHTML='&lt;span class=&quot;habit-icon-emoji&quot;&gt;${emoji}&lt;/span&gt;'">`;
+  }
+  return `<span class="habit-icon-emoji">${entry.icon || ''}</span>`;
 }
 const el = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -163,8 +182,9 @@ async function boot() {
         p.growthPts = Math.max(0, (p.level || 1) - 1);
       }
       if (typeof p.mp !== 'number') p.mp = 0;
-      p.equip = p.equip || { payload:null, exploit:null, rootkit:null };
-      EQUIP_SLOT_KEYS.forEach(sk => { if (p.equip[sk]) backfillEquipIcon(p.equip[sk]); });
+      p.equip = p.equip || { payload:null, exploit:null, rootkit:null, habit:null };
+      if (!('habit' in p.equip)) p.equip.habit = null;   // pre-Habit-System saves
+      ALL_EQUIP_SLOT_KEYS.forEach(sk => { if (p.equip[sk]) backfillEquipIcon(p.equip[sk]); });
       p.shape = sp.shape || null;
       p.gif   = sp.gif   || null;
       p.scale = sp.scale || 1;
@@ -1041,6 +1061,11 @@ function equipIconHtml(item, fallbackEmoji) {
   return `<img src="${item.icon}" class="eq-icon-img${radiant ? ' grade-radiant' : ''}" style="--eq-glow:${g.glow}" alt="">`;
 }
 function equipStatLine(item) {
+  if (item.slotId === 'habit') {
+    const c = HABIT_COLORS[item.color], t = HABIT_TYPES[item.type];
+    if (!c || !t) return '';
+    return `${habitIcon(c, 14)} ${c.name} · ${habitIcon(t, 14)} ${t.name}<br><span class="muted">${t.desc}</span>`;
+  }
   if (item.effectId) {
     const eff = PAYLOAD_EFFECTS[item.effectId];
     if (!eff) return '';
@@ -1061,7 +1086,7 @@ function renderPdEquip() {
   if (!page) return;
   page.innerHTML = '';
   const wrap = el('div', 'eq-slots');
-  EQUIP_SLOT_KEYS.forEach(slotId => {
+  ALL_EQUIP_SLOT_KEYS.forEach(slotId => {
     const slot = EQUIP_SLOTS[slotId];
     const item = pet.equip && pet.equip[slotId];
     const row = el('div', 'eq-slot-row');
@@ -3434,6 +3459,9 @@ function applyBattleStartEquip(team) {
     pet.ailments = [];
     pet._shield = 0;
     pet._cooldowns = {};
+    pet._habitAtkCount = 0;
+    pet._habitUndeadUsed = false;
+    pet._tookDamageThisTurn = false;
   });
 }
 
@@ -3454,6 +3482,27 @@ function firstStrikeProc(attacker) {
     attacker._firstStrikeUsed = true;
     blog(`🌪️ ${attacker.name} — ${info.eff.name}!`, 'buff');
     return { forceHits: 2 };
+  }
+  return null;
+}
+
+// Merges the equipment first-strike proc with the two Habit Type
+// passives that force a guaranteed crit rather than reducing to a flat
+// stat multiplier: Insect (every 5th attack this fight) and Goblin (any
+// attack against a target under 50% HP). Equipment wins if it also has
+// something queued — kept simple, no stacking of forced outcomes.
+function buildAttackProc(attacker, target) {
+  const equipProc = firstStrikeProc(attacker);
+  if (equipProc) return equipProc;
+  const hab = habitOf(attacker);
+  if (!hab) return null;
+  if (hab.type === 'insect') {
+    attacker._habitAtkCount = (attacker._habitAtkCount || 0) + 1;
+    if (attacker._habitAtkCount % 5 === 0) return { forceCrit: true };
+  }
+  if (hab.type === 'goblin' && target && target.hp > 0) {
+    const mhp = statsOf(target).vit;
+    if (target.hp / mhp < 0.5) return { forceCrit: true };
   }
   return null;
 }
@@ -3524,6 +3573,27 @@ function rollMaterialDrop(enemy) {
   }
 }
 
+// Habit/Data-Sync card — low-rate drop named after whichever wild
+// ANTIVIRUZ enemy (world zone, boss, or raid guard — anything with a
+// habitColor/habitType fixed on its ANTIVIRUZ entry) landed the kill.
+// An Arena opponent (built from a player SPECIES, not ANTIVIRUZ) has no
+// such entry and never drops one. Lands in the same G.equipBag as
+// regular gear — same slotId-keyed equip/unequip flow, see equipItem().
+function rollHabitCard(enemy) {
+  if (!enemy || Math.random() >= HABIT_CARD_DROP_CHANCE) return;
+  const def = ANTIVIRUZ[enemy.speciesId];
+  if (!def || !def.habitColor) return;
+  const item = {
+    uid: uid(), slotId: 'habit', sourceId: enemy.speciesId,
+    name: `${def.name} Card`, color: def.habitColor, type: def.habitType,
+    grade: 'trojan', lvlReq: 1,
+  };
+  G.equipBag = G.equipBag || [];
+  G.equipBag.push(item);
+  toast(`🎴 ${item.name}`);
+  blog(`🎴 ดรอปการ์ด: ${item.name}`, 'win');
+}
+
 // Meat is the one cooking ingredient that can't be bought — hunting
 // is the only source, same drop-per-kill shape as equipment above.
 function rollMeatDrop(enemy) {
@@ -3541,7 +3611,7 @@ function equipGradeMeta(item) { return EQUIP_GRADES[item.grade] || EQUIP_GRADES.
 // swapping.
 function equipItem(pet, item) {
   if (!pet || !item) return;
-  pet.equip = pet.equip || { payload:null, exploit:null, rootkit:null };
+  pet.equip = pet.equip || { payload:null, exploit:null, rootkit:null, habit:null };
   const prev = pet.equip[item.slotId];
   G.equipBag = (G.equipBag || []).filter(x => x.uid !== item.uid);
   if (prev) G.equipBag.push(prev);
@@ -3818,6 +3888,7 @@ async function fireBonusCrit(attacker, target, side, atkTeam, defTeam) {
   const skill = skills[Math.floor(Math.random() * skills.length)] || { n: 'Strike', pw: 40 };
   const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false, { forceCrit: true });
   applyFreezeShatter(target, res);
+  applyHabitPreHitMods(target, res);
   if (!res.evaded) {
     await playAttackSequence(attacker, target, res, side, 'impact');
     let line = `${attacker.name} → ${skill.n} (Bonus Crit)`;
@@ -3859,6 +3930,61 @@ function applyFreezeShatter(target, res) {
   res.hitDmgs = res.hitDmgs.map(d => Math.round(d * mult));
   res.shattered = true;
   target.ailments = target.ailments.filter(a => a.id !== 'freeze');
+}
+
+// Habit Type passives that modify a hit BEFORE it plays — called right
+// after computeDamage, same point as applyFreezeShatter, so the
+// adjusted number is what actually lands and animates.
+// Conjuration: 20% flat chance the whole hit is a "phantom duplicate"
+// and lands for 0 (checked BEFORE Machine's own modifier, since a fully
+// blocked hit has nothing left to amplify).
+// Machine: +15% damage taken while currently Corrupted.
+function applyHabitPreHitMods(target, res) {
+  if (!res || res.evaded) return;
+  const h = habitOf(target);
+  if (!h) return;
+  if (h.type === 'conjuration' && Math.random() < 0.20) {
+    res.dmg = 0;
+    res.hitDmgs = res.hitDmgs.map(() => 0);
+    res.phantomBlocked = true;
+    return;
+  }
+  if (h.type === 'machine' && hasAilment(target, 'corrupt')) {
+    res.dmg = Math.round(res.dmg * 1.15);
+    res.hitDmgs = res.hitDmgs.map(d => Math.round(d * 1.15));
+  }
+}
+
+// Habit Type passives triggered per-hit AFTER it actually lands (not
+// evaded, not a Conjuration phantom-block) — called from
+// playAttackSequence's per-hit loop, same timing as applyPayloadOnHit,
+// so a multi-hit skill gets one roll per hit like the equipment procs
+// already do. Vampire/Demon/Fungi read the ATTACKER's card; Fey reads
+// the DEFENDER's (reacting to being hit).
+function applyHabitPostHit(attacker, target, res, side) {
+  if (!res || res.evaded || res.phantomBlocked || !res.dmg) return;
+  const atkHab = habitOf(attacker);
+  if (atkHab) {
+    if (atkHab.type === 'vampire') {
+      const heal = Math.max(1, Math.round(res.dmg * 0.10));
+      const mx = statsOf(attacker).vit;
+      attacker.hp = Math.min(mx, attacker.hp + heal);
+      healPop(attacker, heal);
+    }
+    if (atkHab.type === 'demon' && target.hp > 0 && Math.random() < 0.15) {
+      addAilment(target, { id: 'corrupt', turns: 3, atk: -0.15, def: -0.15 });
+      blog(`😈 ${attacker.name} ทำให้ ${target.name} ติด Corrupted`, side);
+    }
+    if (atkHab.type === 'fungi' && target.hp > 0 && Math.random() < 0.12) {
+      addAilment(target, { id: 'poison', stacks: 1 });
+      blog(`🍄 ${attacker.name} ทำให้ ${target.name} ติดพิษ 1 สแตค`, side);
+    }
+  }
+  const defHab = habitOf(target);
+  if (defHab && defHab.type === 'fey' && target.hp > 0 && Math.random() < 0.15) {
+    addAilment(attacker, { id: 'charm', turns: 2 });
+    blog(`🧚 ${target.name} สะกด ${attacker.name} กลับ (Charm)`, side === 'ally' ? 'foe' : 'ally');
+  }
 }
 
 // ── TEAM BUFF ID ──
@@ -4000,6 +4126,19 @@ async function applyDamage(target, dmg, blogSide) {
       return;
     }
   }
+  // Undead Habit Type: once per fight, a hit that would otherwise be
+  // lethal instead leaves it clinging on at 1 HP — weaker than Last
+  // Stand (no heal, one HP not full), matching the classic "undead
+  // barely refuses to fall" trope.
+  const undeadHab = habitOf(target);
+  if (undeadHab && undeadHab.type === 'undead' && !target._habitUndeadUsed && target.hp - dmg <= 0) {
+    target._habitUndeadUsed = true;
+    target.hp = 1;
+    target._tookDamageThisTurn = true;
+    blog(`💀 ${target.name} — Undead ปฏิเสธที่จะล้ม! เหลือ HP 1`, target.isEnemy ? 'foe' : 'ally');
+    return;
+  }
+  if (dmg > 0) target._tookDamageThisTurn = true;
   target.hp = Math.max(0, target.hp - dmg);
   if (target.hp <= 0 && target.isBoss && target.bossPhase === 1) {
     enterBossRage(target);
@@ -4013,8 +4152,9 @@ async function applyDamage(target, dmg, blogSide) {
 async function basicAttack(attacker, target, side, atkTeam, defTeam) {
   const skills = availableSkills(attacker);
   const skill = skills[Math.floor(Math.random() * skills.length)] || { n: 'Strike', pw: 40 };
-  const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false, firstStrikeProc(attacker));
+  const res = computeDamage(attacker, atkTeam, target, defTeam, skill, false, buildAttackProc(attacker, target));
   applyFreezeShatter(target, res);
+  applyHabitPreHitMods(target, res);
 
   if (res.evaded) {
     await playAttackSequence(attacker, target, res, side);
@@ -4136,8 +4276,9 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
   }
 
   if (sp.pw > 0 && sp.hits > 0) {
-    const res = computeDamage(caster, atkTeam, target, defTeam, sp, true, firstStrikeProc(caster));
+    const res = computeDamage(caster, atkTeam, target, defTeam, sp, true, buildAttackProc(caster, target));
     applyFreezeShatter(target, res);
+    applyHabitPreHitMods(target, res);
     if (res.evaded) {
       await showBanner('MISS!', 'miss');
       await playAttackSequence(caster, target, res, side, vfxIsEnemyFacing ? sp.vfx : null);
@@ -4189,6 +4330,20 @@ async function endOfTurnTicks(unit) {
     unit._shieldTurns--;
     if (unit._shieldTurns <= 0) unit._shield = 0;
   }
+  // Plants Habit Type: regen if this unit wasn't actually hit this turn
+  // (poison/ailment ticks above don't count — only a landed attack sets
+  // _tookDamageThisTurn, see applyDamage). Reset for the next turn
+  // either way.
+  const plantsHab = habitOf(unit);
+  if (plantsHab && plantsHab.type === 'plants' && !unit._tookDamageThisTurn && unit.hp > 0) {
+    const mhp = statsOf(unit).vit;
+    const heal = Math.max(1, Math.round(mhp * 0.05));
+    if (unit.hp < mhp) {
+      unit.hp = Math.min(mhp, unit.hp + heal);
+      healPop(unit, heal);
+    }
+  }
+  unit._tookDamageThisTurn = false;
   refreshBattleUnits();
 }
 
@@ -4239,6 +4394,7 @@ async function checkBattleEnd() {
         rollEquipDrop(e);
         rollMeatDrop(e);
         rollMaterialDrop(e);
+        rollHabitCard(e);
         if (e.isBoss) onBossDefeated(e);
       }
     });
@@ -4578,6 +4734,7 @@ async function playAttackSequence(attacker, target, res, side, contactVfx) {
     const speedMult = 1 + i * 0.5; // 1, 1.5, 2, 2.5, 3 — each hit faster
     await playHit(attacker, target, hits[i], res, side, speedMult, contactVfx);
     applyPayloadOnHit(attacker, target, { dmg: hits[i], evaded: false, crit: res.crit }, side);
+    applyHabitPostHit(attacker, target, { dmg: hits[i], evaded: false, phantomBlocked: res.phantomBlocked }, side);
   }
 }
 

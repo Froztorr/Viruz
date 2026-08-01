@@ -33,6 +33,118 @@ export const ATTR = {
 };
 export const ATTR_KEYS = ['red', 'green', 'yellow', 'white'];
 
+// ══════════════════════════════════════════════════════════════
+// HABIT / DATA-SYNC CARDS — a second, independent system layered on
+// top of ATTR. Every wild enemy has a fixed Color + Type ("Habits");
+// killing one has a low chance to drop a card named after it (see
+// HABIT_CARD_DROP_CHANCE/rollHabitCard() below). Socketing that card
+// into a pet's new `habit` equip slot (see EQUIP_SLOTS) grants the
+// pet BOTH habits plus that card's own unique passive — none of which
+// apply until it's actually equipped.
+//
+// Every iconImg below points at a PNG that doesn't exist yet —
+// habitIcon() (game.js) renders the emoji fallback until one actually
+// lands at that path, then switches over automatically. No code
+// changes needed to add the real art later, just drop the file in.
+// ══════════════════════════════════════════════════════════════
+
+// ── HABIT COLORS (6) ──
+// A 4-way cycle (Green > Red > Yellow > Blue > Green, each +20%) plus
+// Dark/White as a separate pair: Dark edges everything else by +10%,
+// but White beats Dark outright (+20%) and is neutral against the
+// four-cycle colors. See habitColorMult() below for the actual lookup.
+export const HABIT_COLORS = {
+  green:  { id:'green',  name:'Green',  thai:'เขียว', icon:'🌿', iconImg:'assets/icons/habit_green.png',
+    color:'#3ddc84', desc:'ชนะ Red +20%' },
+  red:    { id:'red',    name:'Red',    thai:'แดง',   icon:'🔥', iconImg:'assets/icons/habit_red.png',
+    color:'#ff6a2b', desc:'ชนะ Yellow +20%' },
+  yellow: { id:'yellow', name:'Yellow', thai:'เหลือง', icon:'🌍', iconImg:'assets/icons/habit_yellow.png',
+    color:'#c98f1e', desc:'ชนะ Blue +20%' },
+  blue:   { id:'blue',   name:'Blue',   thai:'น้ำเงิน', icon:'💧', iconImg:'assets/icons/habit_blue.png',
+    color:'#4fc3f7', desc:'ชนะ Green +20%' },
+  white:  { id:'white',  name:'White',  thai:'ขาว',   icon:'⚪', iconImg:'assets/icons/habit_white.png',
+    color:'#f6ecd8', desc:'ชนะ Dark +20% — เป็นกลางกับสีอื่น' },
+  dark:   { id:'dark',   name:'Dark',   thai:'ดำมืด', icon:'🌑', iconImg:'assets/icons/habit_dark.png',
+    color:'#7a4de0', desc:'ชนะทุกสี (ยกเว้น White) +10%' },
+};
+export const HABIT_COLOR_KEYS = ['green', 'red', 'yellow', 'blue', 'white', 'dark'];
+// attacker color -> defender color it beats, at what bonus.
+const HABIT_COLOR_CYCLE = { green:'red', red:'yellow', yellow:'blue', blue:'green' };
+// Damage multiplier when `atkColor` attacks `defColor` (1 = no advantage).
+// Either side may be null/undefined (no card equipped) — always neutral.
+export function habitColorMult(atkColor, defColor) {
+  if (!atkColor || !defColor || atkColor === defColor) return 1;
+  if (atkColor === 'white') return defColor === 'dark' ? 1.2 : 1;
+  if (atkColor === 'dark') return defColor === 'white' ? 1 : 1.1;
+  if (HABIT_COLOR_CYCLE[atkColor] === defColor) return 1.2;
+  return 1;
+}
+
+// ── HABIT TYPES (17) ──
+// Each grants one passive, active only while its card is socketed.
+// Implemented across three hook points depending on shape:
+//  - statMods: folded into combatStats() (engine.js), like ailmentMods.
+//  - proc:     pre-hit forced outcome, merged into computeDamage's
+//              `proc` argument — see buildAttackProc() (game.js).
+//  - onHit/onHurt: post-resolution triggers — see applyHabitPostHit()
+//              (game.js), run after a hit lands.
+// Both `beast` and `magicalBeast` check the OPPONENT's type, which is
+// the one case here that's a relationship rather than a self trait.
+export const HABIT_TYPES = {
+  beast:        { id:'beast', name:'Beast', thai:'สัตว์', icon:'🐾', iconImg:'assets/icons/habit_beast.png',
+    desc:'ATK/SPD +10% เมื่อสู้กับ Beast/Magical Beast อีกตัว' },
+  magicalBeast: { id:'magicalBeast', name:'Magical Beast', thai:'สัตว์วิเศษ', icon:'🐾✨', iconImg:'assets/icons/habit_magicalbeast.png',
+    desc:'ATK/SPD +18% + เจาะเกราะ 15% เมื่อสู้กับ Beast/Magical Beast อีกตัว' },
+  insect:       { id:'insect', name:'Insect', thai:'แมลง', icon:'🪲', iconImg:'assets/icons/habit_insect.png',
+    desc:'โจมตีครั้งที่ 5 ทุกครั้งเป็นคริติคอลรับประกัน' },
+  fish:         { id:'fish', name:'Fish', thai:'ปลา', icon:'🐟', iconImg:'assets/icons/habit_fish.png',
+    desc:'EVA +12% ขณะ HP เกิน 50%' },
+  myth:         { id:'myth', name:'Myth', thai:'เทพนิยาย', icon:'⭐', iconImg:'assets/icons/habit_myth.png',
+    desc:'สแตตที่สูงสุด (ATK/DEF/SPD) +15%' },
+  goblin:       { id:'goblin', name:'Goblin', thai:'ก็อบลิน', icon:'👺', iconImg:'assets/icons/habit_goblin.png',
+    desc:'คริติคอลรับประกันเมื่อศัตรู HP ต่ำกว่า 50%' },
+  demon:        { id:'demon', name:'Demon', thai:'ปีศาจ', icon:'😈', iconImg:'assets/icons/habit_demon.png',
+    desc:'ทุกการโจมตี 15% ติดสถานะ Corrupted ให้ศัตรู' },
+  vampire:      { id:'vampire', name:'Vampire', thai:'แวมไพร์', icon:'🧛', iconImg:'assets/icons/habit_vampire.png',
+    desc:'ฟื้น HP 10% ของดาเมจที่สร้างได้' },
+  elemental:    { id:'elemental', name:'Elemental', thai:'ธาตุ', icon:'💎', iconImg:'assets/icons/habit_elemental.png',
+    desc:'DEF +15% ขณะ HP เกิน 75%' },
+  humanoid:     { id:'humanoid', name:'Humanoid', thai:'มนุษย์', icon:'🧍', iconImg:'assets/icons/habit_humanoid.png',
+    desc:'ทุกสแตต +6% เสมอ' },
+  undead:       { id:'undead', name:'Undead', thai:'อันเดด', icon:'💀', iconImg:'assets/icons/habit_undead.png',
+    desc:'รอดจากดาเมจถึงตายครั้งแรก เหลือ HP 1 (ครั้งเดียวต่อไฟต์)' },
+  plants:       { id:'plants', name:'Plants', thai:'พืช', icon:'🌱', iconImg:'assets/icons/habit_plants.png',
+    desc:'ฟื้น HP 5% เมื่อจบเทิร์นที่ไม่โดนโจมตี' },
+  fungi:        { id:'fungi', name:'Fungi', thai:'เชื้อรา', icon:'🍄', iconImg:'assets/icons/habit_fungi.png',
+    desc:'ทุกการโจมตี 12% ติดพิษ 1 สแตคให้ศัตรู' },
+  machine:      { id:'machine', name:'Machine', thai:'จักรกล', icon:'⚙️', iconImg:'assets/icons/habit_machine.png',
+    desc:'ต้านทาน Freeze/Stoned แต่รับดาเมจ +15% ขณะติด Corrupted' },
+  conjuration:  { id:'conjuration', name:'Conjuration', thai:'เวทเรียกของ', icon:'👻', iconImg:'assets/icons/habit_conjuration.png',
+    desc:'20% โอกาสไม่รับดาเมจเลยจากการโจมตี (ภาพลวงตา)' },
+  aberration:   { id:'aberration', name:'Aberration', thai:'สิ่งพิกล', icon:'👁️', iconImg:'assets/icons/habit_aberration.png',
+    desc:'EVA/CRIT +12% แต่ DEF -10%' },
+  dragon:       { id:'dragon', name:'Dragon', thai:'มังกร', icon:'🐉', iconImg:'assets/icons/habit_dragon.png',
+    desc:'ATK +15% ขณะ HP เกิน 50%, ATK -15% เมื่อต่ำกว่า' },
+  fey:          { id:'fey', name:'Fey', thai:'เฟย์', icon:'🧚', iconImg:'assets/icons/habit_fey.png',
+    desc:'เมื่อโดนโจมตี 15% โอกาสสะกดผู้โจมตีกลับ (Charm)' },
+};
+export const HABIT_TYPE_KEYS = [
+  'beast', 'magicalBeast', 'insect', 'fish', 'myth', 'goblin', 'demon',
+  'vampire', 'elemental', 'humanoid', 'undead', 'plants', 'fungi',
+  'machine', 'conjuration', 'aberration', 'dragon', 'fey',
+];
+
+// Generic UI badges for the new equip slot + "has an active card
+// passive" indicator — see EQUIP_SLOTS.habit and wherever a pet's
+// roster card renders its equipped gear.
+export const HABIT_CARD_ICON = { icon:'🎴', iconImg:'assets/icons/habit_card.png' };
+export const HABIT_PASSIVE_ICON = { icon:'⚡', iconImg:'assets/icons/habit_passive.png' };
+
+// Low-rate drop, per kill, from a wild World/Raid encounter — see
+// rollHabitCard() (engine.js) and its call site in checkBattleEnd()
+// (game.js), same pattern as EQUIP_DROP_CHANCE/codePartDropChance.
+export const HABIT_CARD_DROP_CHANCE = 0.05;
+
 // White support traits. Every white viruz has `buff` (scales with level).
 // One of these is rolled on top at hatch time.
 export const WHITE_TRAITS = {
@@ -396,34 +508,34 @@ export const ANTIVIRUZ = {
   // Placement follows habitat: bugs in the woods, a kappa at the
   // waterfall, reptiles in the sand, otter/frog at the water, and
   // island wildlife out at sea.
-  greenworm:    { id:'greenworm',    name:'GreenWorm',   gif:'greenworm',     ext:'png', faces:'left', scale:0.54, base:{atk:15,def:7, spd:10, mhp:38}, attr:'green'  },
-  beetle:       { id:'beetle',       name:'JadeBeetle',  gif:'beetle',        ext:'png', faces:'right', scale:0.5, base:{atk:18,def:12,spd:9,  mhp:48}, attr:'yellow' },
-  stone_imp:    { id:'stone_imp',    name:'StoneImp',    shape:'steelcrab',   palette:'steel_crab',   base:{atk:19,def:14,spd:8,  mhp:58}, attr:'yellow' },
-  kappa:        { id:'kappa',        name:'Kappa',       gif:'kappa',         ext:'png', faces:'right', scale:0.69, base:{atk:23,def:13,spd:14, mhp:60}, attr:null     },
-  fang_stalker: { id:'fang_stalker', name:'FangStalker', shape:'shadowbat',   palette:'shadow_bat',   base:{atk:26,def:10,spd:17, mhp:54}, attr:'red'    },
+  greenworm:    { id:'greenworm',    name:'GreenWorm',   gif:'greenworm',     ext:'png', faces:'left', scale:0.54, base:{atk:15,def:7, spd:10, mhp:38}, attr:'green'  , habitColor:'green', habitType:'insect' },
+  beetle:       { id:'beetle',       name:'JadeBeetle',  gif:'beetle',        ext:'png', faces:'right', scale:0.5, base:{atk:18,def:12,spd:9,  mhp:48}, attr:'yellow' , habitColor:'green', habitType:'insect' },
+  stone_imp:    { id:'stone_imp',    name:'StoneImp',    shape:'steelcrab',   palette:'steel_crab',   base:{atk:19,def:14,spd:8,  mhp:58}, attr:'yellow' , habitColor:'yellow', habitType:'elemental' },
+  kappa:        { id:'kappa',        name:'Kappa',       gif:'kappa',         ext:'png', faces:'right', scale:0.69, base:{atk:23,def:13,spd:14, mhp:60}, attr:null     , habitColor:'blue', habitType:'myth' },
+  fang_stalker: { id:'fang_stalker', name:'FangStalker', shape:'shadowbat',   palette:'shadow_bat',   base:{atk:26,def:10,spd:17, mhp:54}, attr:'red'    , habitColor:'dark', habitType:'beast' },
   // Source art for these two is drawn the OPPOSITE of what `faces` said —
   // SandWorm/SandTurtle were rendering mirrored (backwards) as enemies.
-  sand_worm:    { id:'sand_worm',    name:'SandWorm',    gif:'sand_worm',     ext:'png', faces:'left', scale:1.31, base:{atk:30,def:12,spd:13, mhp:68}, attr:'yellow' },
-  sand_turtle:  { id:'sand_turtle',  name:'SandTurtle',  gif:'sand_turtle',   ext:'png', faces:'right', scale:1.23, base:{atk:26,def:22,spd:7,  mhp:88}, attr:'yellow' },
-  oasis_otter:  { id:'oasis_otter',  name:'OasisOtter',  gif:'oasis_otter',   ext:'png', faces:'right', scale:0.62, base:{atk:33,def:14,spd:19, mhp:70}, attr:'green'  },
-  rainbow_frog: { id:'rainbow_frog', name:'RainbowFrog', gif:'rainbow_frog',  ext:'png', faces:'right', scale:0.56, base:{atk:35,def:15,spd:16, mhp:74}, attr:null     },
+  sand_worm:    { id:'sand_worm',    name:'SandWorm',    gif:'sand_worm',     ext:'png', faces:'left', scale:1.31, base:{atk:30,def:12,spd:13, mhp:68}, attr:'yellow' , habitColor:'yellow', habitType:'insect' },
+  sand_turtle:  { id:'sand_turtle',  name:'SandTurtle',  gif:'sand_turtle',   ext:'png', faces:'right', scale:1.23, base:{atk:26,def:22,spd:7,  mhp:88}, attr:'yellow' , habitColor:'yellow', habitType:'beast' },
+  oasis_otter:  { id:'oasis_otter',  name:'OasisOtter',  gif:'oasis_otter',   ext:'png', faces:'right', scale:0.62, base:{atk:33,def:14,spd:19, mhp:70}, attr:'green'  , habitColor:'blue', habitType:'beast' },
+  rainbow_frog: { id:'rainbow_frog', name:'RainbowFrog', gif:'rainbow_frog',  ext:'png', faces:'right', scale:0.56, base:{atk:35,def:15,spd:16, mhp:74}, attr:null     , habitColor:'blue', habitType:'beast' },
   // Same mirrored-facing fix as SandWorm/SandTurtle above.
-  flying_fish:  { id:'flying_fish',  name:'FlyingFish',  gif:'flying_fish',   ext:'png', faces:'right', scale:0.59, base:{atk:36,def:14,spd:21, mhp:72}, attr:'green'  },
-  island_monkey:{ id:'island_monkey',name:'IslandMonkey',gif:'island_monkey', ext:'png', faces:'right', scale:0.66, base:{atk:40,def:18,spd:18, mhp:84}, attr:'red'    },
+  flying_fish:  { id:'flying_fish',  name:'FlyingFish',  gif:'flying_fish',   ext:'png', faces:'right', scale:0.59, base:{atk:36,def:14,spd:21, mhp:72}, attr:'green'  , habitColor:'blue', habitType:'fish' },
+  island_monkey:{ id:'island_monkey',name:'IslandMonkey',gif:'island_monkey', ext:'png', faces:'right', scale:0.66, base:{atk:40,def:18,spd:18, mhp:84}, attr:'red'    , habitColor:'red', habitType:'beast' },
 
   // ══ HELL ══
   // These use real art (assets/sprites/<gif>/still.png + attack.png).
   // `ext:'png'` tells the renderer which extension to load.
   // Same mirrored-facing fix as SandWorm/SandTurtle/FlyingFish above.
-  goblin_grunt: { id:'goblin_grunt', name:'Goblin',        gif:'goblin',       ext:'png', faces:'right', scale:0.6, base:{atk:38,def:14,spd:15, mhp:70},  attr:'green'  },
-  goblin_miner: { id:'goblin_miner', name:'MinerGoblin',   gif:'miner_goblin', ext:'png', faces:'right', scale:0.63, base:{atk:43,def:17,spd:13, mhp:80},  attr:'yellow' },
-  black_beast:  { id:'black_beast',  name:'BlackBeast',    gif:'black_beast',  ext:'png', faces:'right', scale:1.44, base:{atk:50,def:16,spd:20, mhp:86},  attr:'red'    },
-  rock_golem:   { id:'rock_golem',   name:'RockGolem',     gif:'rock_golem',   ext:'png', faces:'right', scale:1.78, base:{atk:46,def:28,spd:8,  mhp:118}, attr:'yellow' },
-  hobgoblin:    { id:'hobgoblin',    name:'RedHobgoblin',  gif:'hobgoblin',    ext:'png', faces:'right', scale:1.1, base:{atk:56,def:20,spd:16, mhp:98},  attr:'red'    },
-  fire_golem:   { id:'fire_golem',   name:'FireGolem',     gif:'fire_golem',   ext:'png', faces:'right', scale:1.85, base:{atk:60,def:26,spd:11, mhp:126}, attr:'red'    },
-  butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'right', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     },
-  vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', faces:'right', scale:1.06, base:{atk:72,def:24,spd:22, mhp:130}, attr:null     },
-  vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'right', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    },
+  goblin_grunt: { id:'goblin_grunt', name:'Goblin',        gif:'goblin',       ext:'png', faces:'right', scale:0.6, base:{atk:38,def:14,spd:15, mhp:70},  attr:'green'  , habitColor:'yellow', habitType:'goblin' },
+  goblin_miner: { id:'goblin_miner', name:'MinerGoblin',   gif:'miner_goblin', ext:'png', faces:'right', scale:0.63, base:{atk:43,def:17,spd:13, mhp:80},  attr:'yellow' , habitColor:'yellow', habitType:'goblin' },
+  black_beast:  { id:'black_beast',  name:'BlackBeast',    gif:'black_beast',  ext:'png', faces:'right', scale:1.44, base:{atk:50,def:16,spd:20, mhp:86},  attr:'red'    , habitColor:'dark', habitType:'beast' },
+  rock_golem:   { id:'rock_golem',   name:'RockGolem',     gif:'rock_golem',   ext:'png', faces:'right', scale:1.78, base:{atk:46,def:28,spd:8,  mhp:118}, attr:'yellow' , habitColor:'yellow', habitType:'elemental' },
+  hobgoblin:    { id:'hobgoblin',    name:'RedHobgoblin',  gif:'hobgoblin',    ext:'png', faces:'right', scale:1.1, base:{atk:56,def:20,spd:16, mhp:98},  attr:'red'    , habitColor:'red', habitType:'goblin' },
+  fire_golem:   { id:'fire_golem',   name:'FireGolem',     gif:'fire_golem',   ext:'png', faces:'right', scale:1.85, base:{atk:60,def:26,spd:11, mhp:126}, attr:'red'    , habitColor:'red', habitType:'elemental' },
+  butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'right', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     , habitColor:'dark', habitType:'humanoid' },
+  vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', faces:'right', scale:1.06, base:{atk:72,def:24,spd:22, mhp:130}, attr:null     , habitColor:'dark', habitType:'vampire' },
+  vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'right', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    , habitColor:'dark', habitType:'vampire' },
 
   // ── SECURITY GUARDS (raid defense) ──
   // Not wild encounters — never appear in a zone `pool`, so they never
@@ -432,10 +544,10 @@ export const ANTIVIRUZ = {
   // tier GUARD_TIERS below assigns to that rival (by level bracket).
   // `faces` corrects each source image to how it was actually drawn —
   // see GUARD_TIERS comment for which ones needed a flip.
-  guard_imp:   { id:'guard_imp',   name:'GuardImp',   gif:'guard_imp',   ext:'png', faces:'left',  scale:0.75, base:{atk:24,def:18,spd:11,mhp:72},  attr:null },
-  gunner_imp:  { id:'gunner_imp',  name:'GunnerImp',  gif:'gunner_imp',  ext:'png', faces:'right', scale:1.15, base:{atk:38,def:20,spd:15,mhp:95},  attr:null },
-  tank_imp:    { id:'tank_imp',    name:'TankImp',    gif:'tank_imp',    ext:'png', faces:'left',  scale:1.69, base:{atk:46,def:32,spd:9, mhp:135}, attr:null },
-  marshal_imp: { id:'marshal_imp', name:'MarshalImp', gif:'marshal_imp', ext:'png', faces:'right', scale:0.9,  base:{atk:68,def:30,spd:20,mhp:155}, attr:null },
+  guard_imp:   { id:'guard_imp',   name:'GuardImp',   gif:'guard_imp',   ext:'png', faces:'left',  scale:0.75, base:{atk:24,def:18,spd:11,mhp:72},  attr:null , habitColor:'dark', habitType:'demon' },
+  gunner_imp:  { id:'gunner_imp',  name:'GunnerImp',  gif:'gunner_imp',  ext:'png', faces:'right', scale:1.15, base:{atk:38,def:20,spd:15,mhp:95},  attr:null , habitColor:'dark', habitType:'demon' },
+  tank_imp:    { id:'tank_imp',    name:'TankImp',    gif:'tank_imp',    ext:'png', faces:'left',  scale:1.69, base:{atk:46,def:32,spd:9, mhp:135}, attr:null , habitColor:'yellow', habitType:'demon' },
+  marshal_imp: { id:'marshal_imp', name:'MarshalImp', gif:'marshal_imp', ext:'png', faces:'right', scale:0.9,  base:{atk:68,def:30,spd:20,mhp:155}, attr:null , habitColor:'red', habitType:'demon' },
 };
 
 // ── RAID DEFENSE TIERS ──
@@ -776,8 +888,16 @@ export const EQUIP_SLOTS = {
     desc:'ช่องโหว่เจาะระบบ — เน้นความเร็ว', bias:['spd','crit','eva'] },
   rootkit: { id:'rootkit', name:'Rootkit', icon:'🗝️', thai:'รูทคิต',
     desc:'ฝังตัวลึกในระบบ — เน้นป้องกัน/พลังชีวิต', bias:['def','vit'] },
+  // Deliberately NOT in EQUIP_SLOT_KEYS — that list drives rollEquipment()'s
+  // random slot pick for ordinary stat gear, and a habit card is a
+  // completely separate drop (rollHabitCard(), low rate, named after and
+  // shaped by the specific enemy it fell from — see HABIT_CARDS above).
+  // Rendered as a 4th slot alongside the other three via ALL_EQUIP_SLOT_KEYS.
+  habit: { id:'habit', name:'Habit', icon: HABIT_CARD_ICON.icon, thai:'นิสัย',
+    desc:'การ์ดข้อมูลจากศัตรู — ให้สี+ประเภท+พาสซีฟพิเศษ', bias:[] },
 };
 export const EQUIP_SLOT_KEYS = ['payload', 'exploit', 'rootkit'];
+export const ALL_EQUIP_SLOT_KEYS = ['payload', 'exploit', 'rootkit', 'habit'];
 
 // Grade ladder — same shape as RARITY (color/glow for UI chrome),
 // plus statMult (roll strength), dust (disenchant yield), and weight

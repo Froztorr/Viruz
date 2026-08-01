@@ -12,7 +12,8 @@ import {
   SKILL_TREES, SPECIALS, AILMENTS, STACKING_AILMENT_IDS, STAT_KEYS, treeFor, nodeById,
   MUTATION_KEYS, MUTATION_ROLL, treeForMutation,
   bossPoolForMap, BOSS_TUNING,
-  speedGain, SKILL_TIER_BONUS } from './data.js';
+  speedGain, SKILL_TIER_BONUS,
+  HABIT_TYPES, habitColorMult, HABIT_CARD_DROP_CHANCE } from './data.js';
 
 // ── Helpers ──
 export function uid() {
@@ -63,7 +64,7 @@ export function createPet(speciesId, rarity, forcedAttr = null) {
     maxLv: RARITY[rarity].maxLv,
     hp: 0,          // set below
     whiteTrait: null,
-    equip: { payload:null, exploit:null, rootkit:null },
+    equip: { payload:null, exploit:null, rootkit:null, habit:null },
   };
   if (attr === 'white') {
     pet.whiteTrait = rollWeighted(WHITE_TRAIT_ROLL);
@@ -334,20 +335,84 @@ export function supportOf(team) {
   return { auraPct, regenPct };
 }
 
-// Effective combat stats for one pet inside a team context.
-export function combatStats(pet, team) {
+// ── HABIT / DATA-SYNC CARDS ──
+// An enemy carries its Color/Type innately (its own nature/appearance —
+// see the habitColor/habitType fields on ANTIVIRUZ entries); a player
+// pet only has one via a socketed card (pet.equip.habit — see
+// EQUIP_SLOTS.habit, data.js). Returns null if neither applies.
+export function habitOf(unit) {
+  if (!unit) return null;
+  const wild = ANTIVIRUZ[unit.speciesId];
+  if (wild && wild.habitColor) return { color: wild.habitColor, type: wild.habitType };
+  const card = unit.equip && unit.equip.habit;
+  if (card && card.color) return { color: card.color, type: card.type };
+  return null;
+}
+
+// Stat-shaped Type passives (the rest — Insect/Goblin/Demon/Vampire/
+// Undead/Plants/Fungi/Machine/Conjuration/Fey — are event procs/hooks
+// applied at specific combat-resolution points in game.js instead, since
+// they don't reduce to a flat multiplier). `opponent` is optional — the
+// Beast/Magical Beast mirror-match check just no-ops without one, which
+// is fine for callers (turnOrder, the speed-gauge peek in runTurn) that
+// only care about a raw SPD comparison and don't have a fixed opponent.
+export function habitStatMods(unit, opponent) {
+  const m = { atk:1, def:1, spd:1, eva:1, crit:1 };
+  const h = habitOf(unit);
+  if (!h || !h.type) return m;
+  const oh = opponent ? habitOf(opponent) : null;
+  const oppIsBeast = oh && (oh.type === 'beast' || oh.type === 'magicalBeast');
+  switch (h.type) {
+    case 'beast':
+      if (oppIsBeast) { m.atk *= 1.10; m.spd *= 1.10; }
+      break;
+    case 'magicalBeast':
+      if (oppIsBeast) { m.atk *= 1.18; m.spd *= 1.18; }
+      break;
+    case 'humanoid':
+      m.atk *= 1.06; m.def *= 1.06; m.spd *= 1.06; m.eva *= 1.06; m.crit *= 1.06;
+      break;
+    case 'aberration':
+      m.eva *= 1.12; m.crit *= 1.12; m.def *= 0.90;
+      break;
+    case 'dragon':
+      m.atk *= (unit.hp / Math.max(1, statsOf(unit).vit) > 0.5) ? 1.15 : 0.85;
+      break;
+    case 'fish':
+      if (unit.hp / Math.max(1, statsOf(unit).vit) > 0.5) m.eva *= 1.12;
+      break;
+    case 'elemental':
+      if (unit.hp / Math.max(1, statsOf(unit).vit) > 0.75) m.def *= 1.15;
+      break;
+    case 'myth': {
+      const s = statsOf(unit);
+      const best = Math.max(s.atk, s.def, s.spd);
+      if (best === s.atk) m.atk *= 1.15;
+      else if (best === s.def) m.def *= 1.15;
+      else m.spd *= 1.15;
+      break;
+    }
+  }
+  return m;
+}
+
+// Effective combat stats for one pet inside a team context. `opponent`
+// is optional (see habitStatMods above) — pass it whenever the actual
+// foe is known so Beast/Magical Beast's mirror-match bonus can apply.
+export function combatStats(pet, team, opponent) {
   const s = statsOf(pet);
   const syn = synergyOf(team).mult;
   const sup = supportOf(team);
   const m = syn * (1 + sup.auraPct);
   const lb = loyaltyBuffs(pet);
   const ail = ailmentMods(pet);
+  const hab = habitStatMods(pet, opponent);
   return {
-    atk:  Math.floor(s.atk * m * ail.atk),
-    def:  Math.floor(s.def * m * lb.def * ail.def),
-    spd:  Math.floor(s.spd * m * lb.spd * ail.spd),
-    crit: Math.max(1, Math.round(s.crit * ail.crit)),
-    eva:  Math.max(1, Math.round(s.eva  * ail.eva)),
+    atk:  Math.floor(s.atk * m * ail.atk * hab.atk),
+    def:  Math.floor(s.def * m * lb.def * ail.def * hab.def),
+    spd:  Math.floor(s.spd * m * lb.spd * ail.spd * hab.spd),
+    crit: Math.max(1, Math.round(s.crit * ail.crit * hab.crit)),
+    eva:  Math.max(1, Math.round(s.eva  * ail.eva  * hab.eva)),
     int:  s.int,
     vit:  s.vit,
     mhp:  s.vit,
@@ -377,8 +442,8 @@ function opposedChance(mine, theirs, { cap = 0.55, k = 1.0, floor = 0.02 } = {})
 }
 
 export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpecial, proc) {
-  const a = combatStats(attacker, atkTeam);
-  const d = combatStats(defender, defTeam);
+  const a = combatStats(attacker, atkTeam, defender);
+  const d = combatStats(defender, defTeam, attacker);
 
   // ── LEVEL GAP ──
   // The stat-vs-stat contests below (evasion, mitigation) are already
@@ -430,8 +495,16 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   const soften = 60 + effDef * 0.75;
   const mitigation = Math.min(0.85, effDef / (effDef + soften));
 
+  // ── HABIT COLOR RELATION ──
+  // Green > Red > Yellow > Blue > Green (+20% each), Dark > all four
+  // (+10%), White > Dark (+20%) — see habitColorMult() (data.js). No
+  // effect if either side has no color (no card/not a wild enemy).
+  const habitMult = habitColorMult(
+    (habitOf(attacker) || {}).color,
+    (habitOf(defender) || {}).color);
+
   let base = (a.atk * pw * specialMult) * (1 - mitigation) / (DMG_SCALE * DMG_DIVISOR);
-  base = Math.max(1, base * variance * levelDmgMult);
+  base = Math.max(1, base * variance * levelDmgMult * habitMult);
 
   // ── CRIT: attacker's CRIT points vs defender's composure ──
   // Composure resists crits, built from DEF + a share of EVA, so a
@@ -457,7 +530,7 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   }
   const total = hitDmgs.reduce((s, d) => s + d, 0);
 
-  return { dmg: total, hits, hitDmgs, crit, evaded: false };
+  return { dmg: total, hits, hitDmgs, crit, evaded: false, habitAdvantage: habitMult > 1 };
 }
 
 // Exposed so the UI can show a pet's EFFECTIVE crit/eva against a
