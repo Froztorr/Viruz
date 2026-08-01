@@ -1110,7 +1110,7 @@ function refreshPdTeamBtn() {
   teamBtn.onclick = () => {
     if (inTeam) removeFromTeam(uid);
     else addToTeam(uid);
-    refreshPdTeamBtn();
+    closePetDetail();
   };
   benchBtn.textContent = inBench ? '➖ นำออกจากสำรอง' : '➕ ตัวสำรอง';
   benchBtn.classList.toggle('primary', !inBench && !inTeam);
@@ -1119,7 +1119,7 @@ function refreshPdTeamBtn() {
   benchBtn.onclick = () => {
     if (inBench) removeFromBench(uid);
     else addToBench(uid);
-    refreshPdTeamBtn();
+    closePetDetail();
   };
 
   const dismissBtn = $('pd-dismiss-btn');
@@ -2030,9 +2030,28 @@ async function playEvolveAnimation(pet, doEvolve) {
 // Looping video background with clickable pins positioned by percentage.
 let currentMapId = 'forest';   // synced with G.currentMapId, see renderWorld()
 
+// G.worldPos = { mapId, nodeId } tracks exactly where the player is
+// currently standing — a zone id, or the synthetic ids 'warpIn'/
+// 'warpOut'. Tapping the node you're already at skips the train ride
+// entirely; tapping anywhere else rides the train there first (see
+// travelTo()). The region boss never touches this — its position is
+// random and fighting it doesn't move the player (see openBossBrief()).
+function worldNodeCoords(map, nodeId) {
+  if (nodeId === 'warpIn') return map.warpIn;
+  if (nodeId === 'warpOut') return map.warpOut;
+  const z = zoneById(nodeId);
+  return z ? { x: z.x, y: z.y } : null;
+}
+function isAtWorldNode(nodeId) {
+  return !!(G.worldPos && G.worldPos.mapId === currentMapId && G.worldPos.nodeId === nodeId);
+}
+
 function renderWorld() {
   currentMapId = G.currentMapId || currentMapId;
   const map = MAPS.find(m => m.id === currentMapId) || MAPS[0];
+  if (!G.worldPos || !MAPS.some(m => m.id === G.worldPos.mapId)) {
+    G.worldPos = { mapId: map.id, nodeId: 'warpIn' };
+  }
   const vid = $('world-video');
   if (vid) {
     const want = map.video;
@@ -2046,17 +2065,6 @@ function renderWorld() {
   setText('world-name', map.name);
   setText('world-thai', map.thai);
   setText('world-lv', `Lv ${map.levelRange[0]}–${map.levelRange[1]}`);
-
-  // map switcher
-  const tabs = $('world-tabs');
-  if (tabs) {
-    tabs.innerHTML = '';
-    MAPS.forEach(m => {
-      const b = el('button','map-tab' + (m.id === currentMapId ? ' on' : ''), m.name);
-      b.onclick = () => { currentMapId = m.id; G.currentMapId = m.id; save(); renderWorld(); };
-      tabs.appendChild(b);
-    });
-  }
 
   const layer = $('world-pins');
   layer.innerHTML = '';
@@ -2075,7 +2083,8 @@ function renderWorld() {
           <i>${z.thai}</i>
           <em>พักฟื้น · ร้านยา</em>
         </span>`;
-      pin.onclick = () => { G.lastSafe = z.id; showScreen('safe'); };
+      const go = () => { G.lastSafe = z.id; showScreen('safe'); };
+      pin.onclick = () => { if (isAtWorldNode(z.id)) go(); else travelTo(z.id, go); };
     } else {
       // Warn when the zone is well above the team's level
       const gap = z.lv[0] - teamLv;
@@ -2088,16 +2097,47 @@ function renderWorld() {
           <i>${z.thai}</i>
           <em>Lv ${z.lv[0]}–${z.lv[1]}</em>
         </span>`;
-      pin.onclick = () => openZone(z);
+      pin.onclick = () => { if (isAtWorldNode(z.id)) openZone(z); else travelTo(z.id, () => openZone(z)); };
     }
     layer.appendChild(pin);
   });
+
+  // Warp gates — warpIn is where the player lands on their first ever
+  // visit to this map; warpOut (only if this isn't the last map) rides
+  // to the next one. Both use the same travel-or-direct routing as a
+  // normal zone.
+  if (map.warpIn) {
+    const pin = el('button', 'zone-pin warp-in');
+    pin.style.left = map.warpIn.x + '%';
+    pin.style.top  = map.warpIn.y + '%';
+    pin.innerHTML = `
+      <span class="pin-dot"></span>
+      <span class="pin-card"><b>🌀 Warp Gate</b><i>จุดเริ่มต้น</i></span>`;
+    pin.onclick = () => { if (!isAtWorldNode('warpIn')) travelTo('warpIn', () => {}); };
+    layer.appendChild(pin);
+  }
+  const mapIdx = MAPS.findIndex(m => m.id === map.id);
+  const nextMap = MAPS[mapIdx + 1];
+  if (map.warpOut && nextMap) {
+    const pin = el('button', 'zone-pin warp-out');
+    pin.style.left = map.warpOut.x + '%';
+    pin.style.top  = map.warpOut.y + '%';
+    pin.innerHTML = `
+      <span class="pin-dot"></span>
+      <span class="pin-card"><b>🌀 Warp Gate</b><em>ไปยัง ${nextMap.name}</em></span>`;
+    const go = () => openWarpGate(map, nextMap);
+    pin.onclick = () => { if (isAtWorldNode('warpOut')) go(); else travelTo('warpOut', go); };
+    layer.appendChild(pin);
+  }
 
   // Region boss — one wandering pin per map, near whichever battle
   // zone it's currently occupying. Offset from the zone's own
   // coordinates (clamped on-canvas) so it sits NEXT TO that pin
   // instead of exactly on top of it — stacking them at identical
-  // coordinates made the zone underneath unclickable.
+  // coordinates made the zone underneath unclickable. Unlike every
+  // other pin, this one is a direct fight, never a train ride — its
+  // spot is random each time, not a real "place" to travel to — and
+  // winning/losing leaves the player's position untouched.
   const bossSt = ensureBossSpawned(map.id);
   if (bossSt && bossSt.alive) {
     const bz = zoneById(bossSt.zoneId);
@@ -2118,6 +2158,165 @@ function renderWorld() {
       layer.appendChild(pin);
     }
   }
+
+  // "You are here" marker — sits on top of whichever node the player
+  // is currently standing at, a small crop of their first team pet.
+  if (G.worldPos && G.worldPos.mapId === map.id) {
+    const coords = worldNodeCoords(map, G.worldPos.nodeId);
+    const pet = activeTeam()[0] || G.roster[0];
+    if (coords && pet) {
+      const marker = el('div', 'here-marker');
+      marker.style.left = coords.x + '%';
+      marker.style.top  = coords.y + '%';
+      marker.innerHTML = `<div class="here-marker-ring">${creatureMarkup(pet, '')}</div><div class="here-marker-tail"></div>`;
+      layer.appendChild(marker);
+    }
+  }
+}
+
+// Confirmation before actually stepping through a warpOut gate into
+// the next map — resets G.worldPos to that map's own warpIn.
+function openWarpGate(map, nextMap) {
+  modal(`🌀 Warp Gate`, wrap => {
+    const box = el('div', 'zone-brief');
+    box.innerHTML = `
+      <div class="zb-desc">ประตูมิติเชื่อมสู่ ${nextMap.name} (${nextMap.thai})</div>
+      <div class="zb-meta"><span>ระดับศัตรู <b>Lv ${nextMap.levelRange[0]}–${nextMap.levelRange[1]}</b></span></div>`;
+    const go = el('button', 'btn primary wide', '🌀 ก้าวเข้าประตู');
+    go.onclick = () => {
+      closeModal();
+      currentMapId = nextMap.id;
+      G.currentMapId = nextMap.id;
+      G.worldPos = { mapId: nextMap.id, nodeId: 'warpIn' };
+      save();
+      renderWorld();
+    };
+    box.appendChild(go);
+    wrap.appendChild(box);
+  });
+}
+
+// ── TRAIN TRAVEL ──
+// A pixel-style train rides from the player's current node to the
+// destination, drawing a broken trail line behind it (a "rail" div
+// whose width grows and whose dashed top border reads as the track),
+// 3-5s scaled by on-screen distance. 30% chance of a single Mimic
+// ambush partway through — battle plays out for real, a win offers a
+// 3-card reward choice, then the ride resumes to the same destination.
+const TRAIN_SVG = `<svg viewBox="0 0 40 30" xmlns="http://www.w3.org/2000/svg">
+  <rect x="1" y="9" width="25" height="15" fill="#2b2f3a" stroke="#000" stroke-width="1"/>
+  <rect x="5" y="3" width="11" height="8" fill="#3df0ff" stroke="#000" stroke-width="1"/>
+  <rect x="26" y="13" width="9" height="9" fill="#ffd23f" stroke="#000" stroke-width="1"/>
+  <circle cx="8" cy="25" r="3.4" fill="#111" stroke="#666" stroke-width="1"/>
+  <circle cx="18" cy="25" r="3.4" fill="#111" stroke="#666" stroke-width="1"/>
+</svg>`;
+let worldTravelBusy = false;
+function animateRailTo(rail, totalDist, ms, fromDist) {
+  return new Promise(resolve => {
+    rail.style.transition = 'none';
+    rail.style.width = fromDist + 'px';
+    void rail.offsetWidth;
+    requestAnimationFrame(() => {
+      rail.style.transition = `width ${ms}ms linear`;
+      rail.style.width = totalDist + 'px';
+    });
+    setTimeout(resolve, ms);
+  });
+}
+async function travelTo(destNodeId, onArrive) {
+  if (worldTravelBusy) return;
+  const map = MAPS.find(m => m.id === currentMapId);
+  if (!map || !G.worldPos) return;
+  const fromCoords = worldNodeCoords(map, G.worldPos.nodeId);
+  const toCoords = worldNodeCoords(map, destNodeId);
+  if (!fromCoords || !toCoords) return;
+
+  worldTravelBusy = true;
+  const stage = $('world-stage');
+  const trainLayer = $('world-train-layer');
+  const rect = stage.getBoundingClientRect();
+  const x0 = (fromCoords.x / 100) * rect.width, y0 = (fromCoords.y / 100) * rect.height;
+  const x1 = (toCoords.x / 100) * rect.width, y1 = (toCoords.y / 100) * rect.height;
+  const dist = Math.hypot(x1 - x0, y1 - y0);
+  const angle = Math.atan2(y1 - y0, x1 - x0) * 180 / Math.PI;
+  const maxDist = Math.hypot(rect.width, rect.height);
+  const duration = 3000 + Math.min(1, dist / maxDist) * 2000;
+
+  const rail = el('div', 'train-rail');
+  rail.style.left = x0 + 'px';
+  rail.style.top = y0 + 'px';
+  rail.style.transform = `rotate(${angle}deg)`;
+  rail.innerHTML = `<div class="train-sprite">${TRAIN_SVG}</div>`;
+  trainLayer.innerHTML = '';
+  trainLayer.appendChild(rail);
+
+  const ambush = Math.random() < 0.3;
+  const ambushFrac = 0.4 + Math.random() * 0.3;
+
+  await animateRailTo(rail, ambush ? dist * ambushFrac : dist, ambush ? duration * ambushFrac : duration, 0);
+
+  if (ambush) {
+    const flash = el('div', 'train-ambush-flash', '<span>⚠ MIMIC!</span>');
+    trainLayer.appendChild(flash);
+    await wait(650);
+    flash.remove();
+    const teamLv = Math.max(1, ...activeTeam().map(p => p.level));
+    const mimicLevel = teamLv + 5 + Math.floor(Math.random() * 6);
+    const { win, mimic } = await startMimicAmbush(mimicLevel);
+    if (win) await showMimicRewardCards(mimic);
+    await animateRailTo(rail, dist, duration * (1 - ambushFrac), dist * ambushFrac);
+  }
+
+  trainLayer.innerHTML = '';
+  worldTravelBusy = false;
+  G.worldPos = { mapId: currentMapId, nodeId: destNodeId };
+  save();
+  renderWorld();
+  onArrive();
+}
+
+// Pick exactly one reward — gold coin (Bitz), thunder (EXP split
+// across the team), or sword (a guaranteed rare-or-better equip roll).
+function showMimicRewardCards(mimic) {
+  return new Promise(resolve => {
+    const bitzAmt = Math.round(20 * mimic.level * (1 + Math.random() * 0.4));
+    const expAmt = Math.round(15 * mimic.level * (1 + Math.random() * 0.4));
+    modal('🎁 เอาชนะ Mimic!', wrap => {
+      const box = el('div');
+      box.innerHTML = `
+        <div class="muted" style="text-align:center;margin-bottom:8px">เลือกรางวัลได้ 1 อย่าง</div>
+        <div class="reward-cards">
+          <div class="reward-card" data-t="bitz"><div class="rc-icon">💰</div><div class="rc-label">+${bitzAmt} Bitz</div></div>
+          <div class="reward-card" data-t="exp"><div class="rc-icon">⚡</div><div class="rc-label">+${expAmt} EXP</div></div>
+          <div class="reward-card" data-t="item"><div class="rc-icon">⚔️</div><div class="rc-label">ไอเทมหายาก+</div></div>
+        </div>`;
+      box.querySelectorAll('.reward-card').forEach(c => {
+        c.onclick = () => {
+          const t = c.dataset.t;
+          if (t === 'bitz') {
+            G.bitz += bitzAmt;
+            toast(`💰 +${bitzAmt} Bitz`);
+          } else if (t === 'exp') {
+            const team = activeTeam();
+            const share = Math.floor(expAmt / Math.max(1, team.length));
+            team.forEach(p => grantExp(p, share));
+            toast(`⚡ +${expAmt} EXP`);
+          } else {
+            const grade = ['polymorphic', 'zeroday', 'apt'][Math.floor(Math.random() * 3)];
+            const maxLevel = Math.max(1, ...activeTeam().map(p => p.level));
+            const item = rollEquipment(maxLevel, grade);
+            G.equipBag = G.equipBag || [];
+            G.equipBag.push(item);
+            toast(`⚔️ ได้ ${item.name}!`);
+          }
+          save(); renderHUD();
+          closeModal();
+          resolve();
+        };
+      });
+      wrap.appendChild(box);
+    });
+  });
 }
 
 // Boss briefing — same spirit as openZone()'s briefing but for the
@@ -3440,6 +3639,35 @@ function startZone(target) {
   scheduleTurn(1200);
 }
 
+// ── TRAIN-RIDE MIMIC AMBUSH ──
+// A single-enemy fight identical in shape to startBossFight(), except
+// it resolves through a Promise instead of the normal battle-report
+// screen -- see the battle.mode === 'mimic' branch in endBattle() and
+// travelTo() in the World map section, which awaits this.
+function startMimicAmbush(level) {
+  return new Promise(resolve => {
+    const team = activeTeam();
+    const mimic = spawnAntiviruz('mimic', level);
+    battle = {
+      mode: 'mimic',
+      team, enemies: [mimic],
+      wave: 0, turn: 0, activeIdx: 0, phase: 'ally', round: 0, over: false,
+      totalExp: 0, totalBitz: 0,
+      mimicResolve: resolve,
+    };
+    showScreen('battle');
+    setText('battle-title', `Mimic! (Lv.${mimic.level})`);
+    setText('battle-wave', 'ซุ่มโจมตีกลางทาง');
+    clearBattleLog();
+    blog('⚠️ Mimic ซุ่มโจมตีระหว่างทาง!', 'sys');
+    applyBattleStartEquip(battle.team);
+    renderBattle();
+    startRegen();
+    startSkillCooldownTicker();
+    scheduleTurn(1200);
+  });
+}
+
 function startArena() {
   const team = activeTeam();
   if (team.length < 1) { toast('ยังไม่ได้จัดทีม'); return; }
@@ -4619,6 +4847,11 @@ async function checkBattleEnd() {
     battle.enemies.forEach(e => {
       if (e.hp <= 0 && !e._expCredited) {
         e._expCredited = true;
+        // A mimic ambush hands out its reward entirely through the
+        // post-battle 3-card picker (see showMimicRewardCards()) --
+        // skip the normal auto exp/bitz/drop-roll credit so the win
+        // isn't double-rewarded.
+        if (battle.mode === 'mimic') return;
         const gained = expForKill(e, fighter);
         battle.totalExp = (battle.totalExp || 0) + gained;
         battle.expGapBlocked = battle.expGapBlocked || (gained === 0 && fighter.level - e.level > EXP_GAP_MAX);
@@ -4711,6 +4944,22 @@ function endBattle(win) {
       };
     }
     save();
+    return;
+  }
+
+  // A train-ride ambush skips the normal battle-report screen entirely
+  // -- the travel code (startMimicAmbush()'s caller, see travelTo() in
+  // the World map section) is awaiting battle.mimicResolve and takes
+  // it from here: reward-card picker on a win, then resume the ride.
+  if (battle.mode === 'mimic') {
+    battle.team.forEach(p => { if (p.hp <= 0) p.hp = Math.max(1, Math.floor(statsOf(p).mhp * (TUNING.loseHpRestore || 0.1))); });
+    save();
+    const resolve = battle.mimicResolve;
+    const mimic = battle.enemies[0];
+    battle = null;
+    showScreen('world');
+    renderAll();
+    if (resolve) resolve({ win, mimic });
     return;
   }
 
@@ -5391,7 +5640,7 @@ function renderBattleSide(pet, elId, isEnemy) {
     ${stonedOverlay}
     ${rageMarks}
     <div class="bu-sprite-wrap${pet.isBoss ? ' is-boss' : ''}">
-      ${creatureMarkup(pet, 'bu-sprite float' + (needFlip ? ' flip' : ''))}
+      ${creatureMarkup(pet, 'bu-sprite' + (pet.noFloat ? '' : ' float') + (needFlip ? ' flip' : ''))}
     </div>`;
   wrap.appendChild(unit);
   // Only an ally can be tapped to fire a ready bonus crit — a foe has no

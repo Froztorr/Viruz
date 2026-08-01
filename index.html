@@ -1438,19 +1438,21 @@ body.care-game-open{overflow:hidden}
 @keyframes cellPop{0%{font-size:0}100%{font-size:30px}}
 
 /* ── WORLD MAP ── */
-.world-sub{font-size:20px;color:var(--muted)}
-#world-tabs{display:flex;gap:8px;margin-bottom:10px}
-.map-tab{font-family:var(--pixel);font-size:23px;padding:8px 12px;
-  border:1px solid var(--line);background:var(--panel);color:var(--muted);
-  clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,0 100%)}
-.map-tab.on{border-color:var(--cyan);color:var(--cyan);
-  box-shadow:0 0 14px rgba(55,230,255,.22)}
-#world-stage{position:relative;width:100%;aspect-ratio:9/16;max-height:74vh;
+#world-stage{position:relative;width:100%;aspect-ratio:9/16;max-height:86vh;
   overflow:hidden;border:1px solid var(--line2);background:#05060f}
 #world-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 #world-scrim{position:absolute;inset:0;pointer-events:none;
   background:radial-gradient(ellipse at 50% 50%,transparent 45%,rgba(4,6,14,.5) 100%)}
+.world-name-overlay{position:absolute;top:10px;left:50%;transform:translateX(-50%);
+  z-index:4;text-align:center;padding:5px 16px;background:rgba(6,8,18,.62);
+  backdrop-filter:blur(3px);border:1px solid rgba(140,190,255,.3);
+  clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px));
+  pointer-events:none;white-space:nowrap}
+.world-name-overlay b{display:block;font-family:var(--pixel);font-size:20px;color:#eaf4ff;
+  text-shadow:0 0 10px rgba(140,190,255,.6)}
+.world-name-overlay span{font-size:14px;color:var(--muted)}
 #world-pins{position:absolute;inset:0}
+#world-train-layer{position:absolute;inset:0;z-index:5;pointer-events:none}
 
 .zone-pin{position:absolute;transform:translate(-50%,-50%);
   display:flex;flex-direction:column;align-items:center;gap:3px;z-index:2}
@@ -1496,6 +1498,61 @@ body.care-game-open{overflow:hidden}
 .boss-card em{color:#ff9a3d !important;font-weight:bold}
 .boss-pin:hover .boss-card,.boss-pin:active .boss-card{
   border-color:#ff6a4a !important;box-shadow:0 0 18px rgba(255,60,30,.5) !important}
+
+/* ── WARP GATE PINS ──
+   warpIn (near the lowest-level zone, entry point on first visit) and
+   warpOut (red, near the highest-level zone, leads to the next map) —
+   same .zone-pin shape/pulse as a normal pin, distinct icon+colors. */
+.zone-pin.warp-in .pin-dot{background:#3df0ff;
+  box-shadow:0 0 0 4px rgba(61,240,255,.25),0 0 14px rgba(61,240,255,.8)}
+.zone-pin.warp-out .pin-dot{background:#ff3d3d;width:20px;height:20px;
+  box-shadow:0 0 0 5px rgba(255,61,61,.3),0 0 16px rgba(255,40,40,.9)}
+.zone-pin.warp-in .pin-card{border-color:rgba(61,240,255,.6)}
+.zone-pin.warp-out .pin-card{border-color:rgba(255,61,61,.6)}
+.zone-pin.warp-out .pin-card em{color:#ff8a8a}
+
+/* "you are here" marker — a small round crop of the player's first
+   team pet's own sprite, non-clickable (the pin underneath still
+   handles taps), sitting right on top of whichever node the player is
+   currently standing at. */
+.here-marker{position:absolute;transform:translate(-50%,-115%);z-index:3;
+  width:34px;height:34px;pointer-events:none;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.7))}
+.here-marker-ring{position:absolute;inset:0;border-radius:50%;
+  border:2px solid #ffd23f;box-shadow:0 0 10px rgba(255,210,63,.7);
+  background:rgba(10,14,28,.85);overflow:hidden;display:flex;align-items:center;justify-content:center}
+.here-marker-ring img,.here-marker-ring svg{width:82%;height:82%}
+.here-marker-tail{position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);
+  width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;
+  border-top:7px solid #ffd23f}
+
+/* ── TRAIN TRAVEL ── a "rail" div grows from the departure point
+   toward the destination (border-top dashed = the broken trail line),
+   with the train sprite riding at its leading edge. Rotated to match
+   the travel angle, transform-origin pinned to the start point. */
+.train-rail{position:absolute;top:0;left:0;height:0;
+  border-top:3px dashed #ffd23f;transform-origin:0 0;
+  filter:drop-shadow(0 0 4px rgba(255,210,63,.6))}
+.train-sprite{position:absolute;right:-2px;top:-13px;width:30px;height:26px;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.6))}
+.train-sprite svg{width:100%;height:100%;display:block}
+.train-ambush-flash{position:absolute;inset:0;z-index:6;display:flex;
+  align-items:center;justify-content:center;background:rgba(120,10,10,.35);
+  animation:trainAmbushFlash .5s ease-out both}
+.train-ambush-flash span{font-family:var(--pixel);font-size:30px;color:#fff;
+  text-shadow:0 0 14px #ff3d3d,0 2px 3px #000;animation:trainAmbushShake .4s ease-in-out 2}
+@keyframes trainAmbushFlash{from{opacity:0}to{opacity:1}}
+@keyframes trainAmbushShake{0%,100%{transform:translateX(0)}50%{transform:translateX(-6px) rotate(-2deg)}}
+
+/* ── AMBUSH REWARD CARDS ── shown after winning a train-ride mimic
+   fight; pick exactly one. */
+.reward-cards{display:flex;gap:10px;justify-content:center;padding:6px 0}
+.reward-card{flex:1;max-width:120px;padding:12px 8px;text-align:center;
+  background:var(--panel2);border:1px solid var(--line2);cursor:pointer;transition:.15s}
+.reward-card:active{transform:scale(.95)}
+.reward-card:hover{border-color:var(--gold);box-shadow:0 0 14px rgba(255,210,63,.3)}
+.reward-card .rc-icon{font-size:34px;margin-bottom:6px}
+.reward-card .rc-label{font-size:14px;color:var(--muted)}
 
 /* zone briefing modal */
 .zone-brief{font-size:15px}
@@ -2519,17 +2576,21 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ HACK ═══ -->
+  <!-- Header/back-button/realm-tabs strip removed -- warp gate nodes
+       (see buildWorldWarpPins() in game.js) replaced free realm
+       switching, and the map name now overlays the video itself so the
+       map gets the full screen instead of a fixed header eating into
+       it. -->
   <section id="screen-world" class="pane">
-    <div class="screen-head">
-      <button class="back-btn" data-fallback="map">← กลับ</button>
-      <h2>🗺️ <span id="world-name">—</span></h2>
-      <span class="world-sub"><span id="world-thai"></span> · <span id="world-lv"></span></span>
-    </div>
-    <div id="world-tabs"></div>
     <div id="world-stage">
       <video id="world-video" muted loop playsinline autoplay></video>
       <div id="world-scrim"></div>
+      <div class="world-name-overlay">
+        <b id="world-name">—</b>
+        <span><i id="world-thai"></i> · <span id="world-lv"></span></span>
+      </div>
       <div id="world-pins"></div>
+      <div id="world-train-layer"></div>
     </div>
     <p class="muted" style="margin-top:8px">
       แตะจุดสีแดงเพื่อเข้าสู้ · จุดสีเขียวคือที่พักปลอดภัย

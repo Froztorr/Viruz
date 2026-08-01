@@ -384,18 +384,25 @@ export const SPECIES_KEYS = Object.keys(SPECIES);
 // Each map has a looping video background and clickable pin locations.
 // Pin x/y are PERCENTAGES of the video frame so they scale on any screen.
 // Coordinates were measured directly from the marked reference images.
+// warpIn: where the player lands the first time they ever open this
+// map — sits near the lowest-level zone. warpOut: the red gate that
+// leads to the NEXT map in this array, sitting near the highest-level
+// zone (the last map has none — nowhere further to go yet). Both are
+// nudged off the zone's own pin so they don't overlap it.
 export const MAPS = [
   {
     id:'forest', name:'Verdant Realm', thai:'ดินแดนพงไพร',
     video:'assets/maps/forest.mp4', poster:'assets/maps/forest.jpg',
     levelRange:[1,50],
     desc:'ดินแดนเริ่มต้น — ป่า ภูเขา ทะเลทราย และเกาะกลางทะเล',
+    warpIn:{ x:12, y:9 }, warpOut:{ x:55, y:91 },
   },
   {
     id:'hell', name:'Infernal Realm', thai:'ดินแดนนรก',
     video:'assets/maps/hell.mp4', poster:'assets/maps/hell.jpg',
     levelRange:[51,100],
     desc:'ดินแดนขั้นสูง — ลาวา ปีศาจ และปราสาทจอมมาร',
+    warpIn:{ x:10, y:90 }, warpOut:null,
   },
 ];
 
@@ -536,6 +543,16 @@ export const ANTIVIRUZ = {
   butler_vamp:  { id:'butler_vamp',  name:'ManorButler',   gif:'butler',       ext:'png', faces:'right', scale:1.0, base:{atk:64,def:22,spd:19, mhp:110}, attr:null     , habitColor:'dark', habitType:'humanoid' },
   vampire_lady: { id:'vampire_lady', name:'VampireLady',   gif:'vampire_lady', ext:'png', faces:'right', scale:1.06, base:{atk:72,def:24,spd:22, mhp:130}, attr:null     , habitColor:'dark', habitType:'vampire' },
   vampire_lord: { id:'vampire_lord', name:'VampireLord',   gif:'vampire_lord', ext:'png', faces:'right', scale:1.18, base:{atk:82,def:32,spd:21, mhp:160}, attr:'red'    , habitColor:'dark', habitType:'vampire' },
+
+  // ── TRAIN AMBUSH ──
+  // Never appears in a zone `pool` — spawned only by the 30% surprise-
+  // attack roll mid train-ride (see rollTrainAmbush() in game.js), at
+  // teamLevel + a random 5-10, not the zone's own level range. Stays
+  // grounded (no float animation) unlike every other creature — see
+  // the `.bu-sprite.no-float` CSS rule keyed off this species.
+  mimic: { id:'mimic', name:'Mimic', gif:'mimic', ext:'png', faces:'right', scale:1.1,
+    base:{atk:30,def:16,spd:10,mhp:70}, attr:null, habitColor:'dark', habitType:'conjuration',
+    noFloat:true },
 
   // ── SECURITY GUARDS (raid defense) ──
   // Not wild encounters — never appear in a zone `pool`, so they never

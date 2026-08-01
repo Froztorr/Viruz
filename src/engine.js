@@ -758,6 +758,7 @@ export function spawnAntiviruz(defId, level) {
     ext: def.ext || null,
     faces: def.faces || 'right',
     scale: def.scale || 1,
+    noFloat: def.noFloat || false,
     rarity: 'normal',
     attr,
     stage: 0,
