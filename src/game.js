@@ -923,6 +923,7 @@ function closePetDetail() {
   document.body.classList.remove('pet-detail-open');
   PD = null;
 }
+const PD_PAGE_RENDER = [renderPdStats, renderPdEquip, renderTree];
 function goPdPage(i, instant) {
   const track = $('pd-track');
   if (!track) return;
@@ -931,6 +932,12 @@ function goPdPage(i, instant) {
   track.style.transform = `translateX(-${pdPage * 100}%)`;
   if (instant) { void track.offsetWidth; track.style.transition = ''; }
   document.querySelectorAll('.pd-tab').forEach((t, idx) => t.classList.toggle('on', idx === pdPage));
+  // Each page was only ever rendered once, at modal-open time — so
+  // equipping gear on the Equip tab then swiping to Stats (or vice
+  // versa) showed stale numbers until the whole modal was closed and
+  // reopened. Re-render whichever page is now visible instead.
+  const render = PD_PAGE_RENDER[pdPage];
+  if (render) render();
 }
 function wirePetDetail() {
   const close = $('pd-close');
