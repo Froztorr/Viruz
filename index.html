@@ -1494,18 +1494,31 @@ body.care-game-open{overflow:hidden}
 @keyframes pinPulse{
   0%,100%{transform:scale(1)}
   50%{transform:scale(1.22)}}
+/* Default: a small, translucent single-line chip (name only) so the
+   map/video reads through and neighboring nodes don't visually collide.
+   Full detail (thai name + level/kind, in .pin-extra) only unfolds on
+   hover/active, widening past the truncated default and lifting above
+   neighbors via z-index — it doesn't need to survive past a tap since
+   the pin's onclick already fires the travel/fight on release. */
 .pin-card{display:flex;flex-direction:column;align-items:center;
-  padding:4px 9px;background:rgba(6,10,20,.9);border:1px solid rgba(140,190,255,.45);
-  backdrop-filter:blur(3px);white-space:nowrap;transition:.14s;
-  clip-path:polygon(0 0,calc(100% - 5px) 0,100% 5px,100% 100%,0 100%)}
-.pin-card b{font-family:var(--pixel);font-size:20px;letter-spacing:.4px;color:#eaf4ff}
-.pin-card i{font-size:16px;color:var(--muted);font-style:normal}
-.pin-card em{font-size:16px;font-style:normal;color:var(--cyan)}
+  max-width:72px;padding:2px 7px;background:rgba(6,10,20,.5);
+  border:1px solid rgba(140,190,255,.4);backdrop-filter:blur(1.5px);
+  white-space:nowrap;overflow:hidden;transition:.16s;
+  clip-path:polygon(0 0,calc(100% - 4px) 0,100% 4px,100% 100%,0 100%)}
+.pin-card b{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;
+  font-family:var(--pixel);font-size:12px;letter-spacing:.3px;color:#eaf4ff}
+.pin-extra{display:flex;flex-direction:column;align-items:center;
+  max-height:0;opacity:0;transition:.16s;overflow:hidden}
+.pin-card i{font-size:14px;color:var(--muted);font-style:normal}
+.pin-card em{font-size:14px;font-style:normal;color:var(--cyan)}
 .zone-pin.safe .pin-card em{color:var(--green)}
 .zone-pin.hard .pin-card em{color:#ff6a6a}
+.zone-pin:hover,.zone-pin:active{z-index:20}
 .zone-pin:hover .pin-card,.zone-pin:active .pin-card{
+  max-width:none;background:rgba(6,10,20,.78);
   border-color:var(--cyan);transform:translateY(-2px);
   box-shadow:0 0 16px rgba(55,230,255,.35)}
+.zone-pin:hover .pin-extra,.zone-pin:active .pin-extra{max-height:60px;opacity:1}
 
 /* region boss pin — dark red, bigger, a slowly-rotating radiant glow
    behind the dot so it reads as "moving" without literally animating
@@ -1520,10 +1533,11 @@ body.care-game-open{overflow:hidden}
   background:conic-gradient(from 0deg,rgba(180,10,10,0) 0%,rgba(255,40,20,.55) 18%,rgba(180,10,10,0) 40%);
   animation:bossRadiant 2.6s linear infinite;pointer-events:none}
 @keyframes bossRadiant{to{transform:rotate(360deg)}}
-.boss-card{border-color:rgba(255,90,60,.6) !important;background:rgba(20,4,4,.92) !important}
+.boss-card{border-color:rgba(255,90,60,.6) !important;background:rgba(20,4,4,.5) !important}
 .boss-card b{color:#ff6a4a}
 .boss-card em{color:#ff9a3d !important;font-weight:bold}
 .boss-pin:hover .boss-card,.boss-pin:active .boss-card{
+  background:rgba(20,4,4,.8) !important;
   border-color:#ff6a4a !important;box-shadow:0 0 18px rgba(255,60,30,.5) !important}
 
 /* ── WARP GATE PINS ──
