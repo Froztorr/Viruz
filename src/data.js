@@ -1507,9 +1507,9 @@ export function mutationWeightsFromParts(parts) {
 
 // Potions sold at safe spots. Bought here, consumed in battle.
 export const POTIONS = [
-  { id:'pot_s', name:'Small Potion', icon:'🧪', cost:120, heal:0.35, desc:'ฟื้น HP 35% ระหว่างสู้' },
-  { id:'pot_m', name:'Large Potion', icon:'⚗️', cost:320, heal:0.70, desc:'ฟื้น HP 70% ระหว่างสู้' },
-  { id:'pot_f', name:'Full Elixir',  icon:'🍶', cost:700, heal:1.00, desc:'ฟื้น HP เต็ม ระหว่างสู้' },
+  { id:'pot_s', name:'Small Potion', icon:'🧪', img:'assets/potions/pot_s.png', cost:120, heal:0.35, desc:'ฟื้น HP 35% ระหว่างสู้' },
+  { id:'pot_m', name:'Large Potion', icon:'⚗️', img:'assets/potions/pot_m.png', cost:320, heal:0.70, desc:'ฟื้น HP 70% ระหว่างสู้' },
+  { id:'pot_f', name:'Full Elixir',  icon:'🍶', img:'assets/potions/pot_f.png', cost:700, heal:1.00, desc:'ฟื้น HP เต็ม ระหว่างสู้' },
 ];
 // ── THROWABLE BATTLE ITEMS ──
 // The in-battle potion/poison bar is now two pouches (see #potion-bar
@@ -1529,17 +1529,17 @@ export const POTIONS = [
 // extended to these too. Poisons are bought at the Tech Shop instead,
 // kept in their own G.poisons bag.
 export const THROW_UTILITY_POTIONS = [
-  { id:'tp_mp',      name:'MP Potion',     icon:'💧', kind:'mp',       amt:0.5,  cost:180, desc:'ฟื้น MP 50% ของสูงสุด' },
-  { id:'tp_spd',     name:'Speed Draught', icon:'🥤', kind:'spd_buff', amt:0.40, cost:260, desc:'SPD +40% ตลอดการต่อสู้นี้' },
-  { id:'tp_crit',    name:'Crit Elixir',   icon:'🍸', kind:'crit_buff',amt:0.5,  cost:280, desc:'CRIT +50% ตลอดการต่อสู้นี้' },
-  { id:'tp_cleanse', name:'Cleanse Tonic', icon:'✨', kind:'cleanse',  cost:220, desc:'ล้างสถานะติดลบทั้งหมด' },
+  { id:'tp_mp',      name:'MP Potion',     icon:'💧', img:'assets/potions/tp_mp.png',      kind:'mp',       amt:0.5,  cost:180, desc:'ฟื้น MP 50% ของสูงสุด' },
+  { id:'tp_spd',     name:'Speed Draught', icon:'🥤', img:'assets/potions/tp_spd.png',     kind:'spd_buff', amt:0.40, cost:260, desc:'SPD +40% ตลอดการต่อสู้นี้' },
+  { id:'tp_crit',    name:'Crit Elixir',   icon:'🍸', img:'assets/potions/tp_crit.png',    kind:'crit_buff',amt:0.5,  cost:280, desc:'CRIT +50% ตลอดการต่อสู้นี้' },
+  { id:'tp_cleanse', name:'Cleanse Tonic', icon:'✨', img:'assets/potions/tp_cleanse.png', kind:'cleanse',  cost:220, desc:'ล้างสถานะติดลบทั้งหมด' },
 ];
 // The poison pouch's whole pool — bought at the Tech Shop, kept in
 // G.poisons (separate bag from G.potions).
 export const THROW_POISONS = [
-  { id:'tx_freeze', name:'Freeze Curse', icon:'❄️', kind:'ailment', ailment:'freeze', turns:5, cost:240, desc:'แช่แข็ง 5 เทิร์น' },
-  { id:'tx_stone',  name:'Stone Curse',  icon:'🗿', kind:'ailment', ailment:'stoned', turns:5, cost:240, desc:'กลายเป็นหิน 5 เทิร์น' },
-  { id:'tx_charm',  name:'Charm Curse',  icon:'💗', kind:'ailment', ailment:'charm',  turns:5, cost:260, desc:'สะกดให้หลงเสน่ห์ 5 เทิร์น' },
+  { id:'tx_freeze', name:'Freeze Curse', icon:'❄️', img:'assets/potions/tx_freeze.png', kind:'ailment', ailment:'freeze', turns:5, cost:240, desc:'แช่แข็ง 5 เทิร์น' },
+  { id:'tx_stone',  name:'Stone Curse',  icon:'🗿', img:'assets/potions/tx_stone.png',  kind:'ailment', ailment:'stoned', turns:5, cost:240, desc:'กลายเป็นหิน 5 เทิร์น' },
+  { id:'tx_charm',  name:'Charm Curse',  icon:'💗', img:'assets/potions/tx_charm.png',  kind:'ailment', ailment:'charm',  turns:5, cost:260, desc:'สะกดให้หลงเสน่ห์ 5 เทิร์น' },
 ];
 
 // Sold separately at the Tech Shop (not a safe-spot potion) — an
