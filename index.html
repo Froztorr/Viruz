@@ -1061,6 +1061,13 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .pet-card.in-def::after{background:var(--gold)}
 .pet-card.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
   min-height:180px;border-style:dashed;color:var(--muted)}
+/* ── CHARACTER SCREEN DRAG-TO-SWAP ── see wireCharSlotDrag() in game.js */
+.pet-card.char-drag-source{opacity:.35}
+.pet-card.char-drop-hover{border-color:var(--gold);
+  box-shadow:inset 0 1px 0 var(--rim),0 0 22px rgba(255,207,63,.6),0 6px 18px rgba(0,0,0,.5)}
+.char-drag-ghost{position:fixed;z-index:70;pointer-events:none;
+  transform:translate(-50%,-50%) scale(1.06);opacity:.92;
+  transition:none;box-shadow:0 10px 30px rgba(0,0,0,.6)}
 .pet-card.empty.small{min-height:120px}
 .empty-mark{font-size:30px;opacity:.5}
 .empty-t{font-size:20px;margin-top:4px}
@@ -1704,6 +1711,24 @@ body.care-game-open{overflow:hidden}
   font-size:30px;filter:drop-shadow(0 0 6px rgba(255,255,255,.6));
   transition:filter .12s}
 .throw-carry.over-target{filter:drop-shadow(0 0 12px rgba(255,230,90,.95))}
+/* 3x enlarge the instant the flick starts (see onThrowPointerMove's
+   lock-in) so the item reads clearly instead of hiding under the
+   finger that's now dragging it around. */
+.throw-carry.throw-carry-big{font-size:90px}
+
+/* Effect-text + remaining-stock box shown beside whichever wedge is
+   "hot" while still deciding (before dragging past the lock radius) —
+   see updateThrowExplain() in game.js. */
+.throw-explain{position:fixed;transform:translate(-100%,-50%);
+  opacity:0;pointer-events:none;transition:opacity .12s;
+  display:flex;flex-direction:column;gap:2px;max-width:150px;
+  padding:6px 9px;border-radius:8px;background:rgba(6,10,20,.94);
+  border:1px solid rgba(140,190,255,.5)}
+.throw-explain.on{opacity:1}
+.throw-explain.on-right{transform:translate(0,-50%)}
+.throw-explain b{font-family:var(--pixel);font-size:13px;color:#eaf4ff}
+.throw-explain span{font-size:12px;color:var(--muted);line-height:1.3}
+.throw-explain i{font-size:11px;font-style:normal;color:var(--gold)}
 
 /* impact "glass breaking" burst — small tinted shard fragments flying
    outward, same rotate-then-translate-local-X idiom as dustPuff()'s
@@ -1718,6 +1743,18 @@ body.care-game-open{overflow:hidden}
 @keyframes glassShardFly{
   0%{opacity:1;transform:rotate(var(--ga,0deg)) translateX(2px) scale(1)}
   100%{opacity:0;transform:rotate(var(--ga,0deg)) translateX(var(--gd,32px)) scale(.35)}}
+
+/* Brief 1s color wash directly over the struck creature's own sprite —
+   see bodyFlashEffect() in game.js, appended into that unit's own
+   .bu-sprite-wrap so it moves/scales with the sprite for free. */
+.throw-body-flash{position:absolute;inset:-6px;border-radius:50%;
+  pointer-events:none;z-index:4;animation:throwBodyFlash 1s ease-out forwards}
+.throw-body-flash.green{background:radial-gradient(rgba(92,214,92,.75),rgba(92,214,92,0) 70%)}
+.throw-body-flash.red{background:radial-gradient(rgba(255,60,60,.75),rgba(255,60,60,0) 70%)}
+@keyframes throwBodyFlash{
+  0%{opacity:0}
+  15%{opacity:1}
+  100%{opacity:0}}
 .potion-empty{font-size:18px;color:var(--muted)}
 .heal-pop{position:absolute;transform:translate(-50%,-50%);z-index:9;
   font-family:var(--pixel);font-size:30px;color:#4ee88a;
@@ -2632,9 +2669,12 @@ img.bu-sprite.is-art2{--raster-mult:2}
     </div>
   </section>
 
-  <!-- ═══ CHARACTER (quick team/bench manager — reachable from the
-       drawer knob's Characters button, anywhere in the game, unlike
-       Home Base which is only walked to from the map) ═══ -->
+  <!-- ═══ CHARACTER (drawer knob, reachable anywhere mid-adventure,
+       unlike Home Base which is only walked to from the map) — ONLY
+       the current 5 team/bench slots, no wider roster. You can't add,
+       remove, or dismiss from here, only drag one of these 5 onto
+       another to swap their positions — see wireCharSlotDrag(). Full
+       roster management lives at Home Base instead. ═══ -->
   <section id="screen-character" class="pane">
     <div class="screen-head">
       <button class="back-btn" data-fallback="map">← กลับ</button>
@@ -2650,10 +2690,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
       <div class="section-title">// ตัวสำรอง (สูงสุด 2) //</div>
       <div id="char-bench-slots" class="card-row"></div>
     </div>
-    <div class="section">
-      <div class="section-title">// คลัง VIRUZ — แตะเพื่อดูสถานะ //</div>
-      <div id="char-roster-grid" class="grid"></div>
-    </div>
+    <div class="muted" style="text-align:center;padding:8px 0">ลากตัวการ์ดสลับตำแหน่งกันได้</div>
   </section>
 
   <!-- ═══ CLINIC ═══ -->
@@ -2686,6 +2723,10 @@ img.bu-sprite.is-art2{--raster-mult:2}
     <div class="section">
       <div class="section-title">// ฉุกเฉิน //</div>
       <div id="shop-revive" class="grid"></div>
+    </div>
+    <div class="section">
+      <div class="section-title">// พิษ (ปาใส่ศัตรูในสนามรบ) //</div>
+      <div id="shop-poisons" class="grid"></div>
     </div>
     <div class="section">
       <div class="section-title">// บอทป้องกันฐาน //</div>

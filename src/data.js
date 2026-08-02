@@ -1522,21 +1522,24 @@ export const POTIONS = [
 // item shares one 10s real-time cooldown per its own id (see
 // itemOnCooldown()/startItemCooldown() in game.js).
 //
-// The potion pouch's wheel pool is the shop-bought POTIONS above
-// (still heal from the same G.potions bag count, just thrown instead
-// of tapped) PLUS these free utility potions — no Bitz cost, no bag
-// count, gated only by the shared cooldown.
+// The wheel only ever shows items you actually have stock of, and an
+// item drops out of the wheel the instant its stock hits 0 (see
+// throwItemAvailable() in game.js) — same stock model as the existing
+// POTIONS above (bought at the Safe Spot, kept in G.potions), just
+// extended to these too. Poisons are bought at the Tech Shop instead,
+// kept in their own G.poisons bag.
 export const THROW_UTILITY_POTIONS = [
-  { id:'tp_mp',      name:'MP Potion',     icon:'💧', kind:'mp',       amt:0.5,  desc:'ฟื้น MP 50% ของสูงสุด' },
-  { id:'tp_spd',     name:'Speed Draught', icon:'🥤', kind:'spd_buff', amt:0.40, desc:'SPD +40% ตลอดการต่อสู้นี้' },
-  { id:'tp_crit',    name:'Crit Elixir',   icon:'🍸', kind:'crit_buff',amt:0.5,  desc:'CRIT +50% ตลอดการต่อสู้นี้' },
-  { id:'tp_cleanse', name:'Cleanse Tonic', icon:'✨', kind:'cleanse',  desc:'ล้างสถานะติดลบทั้งหมด' },
+  { id:'tp_mp',      name:'MP Potion',     icon:'💧', kind:'mp',       amt:0.5,  cost:180, desc:'ฟื้น MP 50% ของสูงสุด' },
+  { id:'tp_spd',     name:'Speed Draught', icon:'🥤', kind:'spd_buff', amt:0.40, cost:260, desc:'SPD +40% ตลอดการต่อสู้นี้' },
+  { id:'tp_crit',    name:'Crit Elixir',   icon:'🍸', kind:'crit_buff',amt:0.5,  cost:280, desc:'CRIT +50% ตลอดการต่อสู้นี้' },
+  { id:'tp_cleanse', name:'Cleanse Tonic', icon:'✨', kind:'cleanse',  cost:220, desc:'ล้างสถานะติดลบทั้งหมด' },
 ];
-// The poison pouch's whole pool — free, same cooldown gate.
+// The poison pouch's whole pool — bought at the Tech Shop, kept in
+// G.poisons (separate bag from G.potions).
 export const THROW_POISONS = [
-  { id:'tx_freeze', name:'Freeze Curse', icon:'❄️', kind:'ailment', ailment:'freeze', turns:5, desc:'แช่แข็ง 5 เทิร์น' },
-  { id:'tx_stone',  name:'Stone Curse',  icon:'🗿', kind:'ailment', ailment:'stoned', turns:5, desc:'กลายเป็นหิน 5 เทิร์น' },
-  { id:'tx_charm',  name:'Charm Curse',  icon:'💗', kind:'ailment', ailment:'charm',  turns:5, desc:'สะกดให้หลงเสน่ห์ 5 เทิร์น' },
+  { id:'tx_freeze', name:'Freeze Curse', icon:'❄️', kind:'ailment', ailment:'freeze', turns:5, cost:240, desc:'แช่แข็ง 5 เทิร์น' },
+  { id:'tx_stone',  name:'Stone Curse',  icon:'🗿', kind:'ailment', ailment:'stoned', turns:5, cost:240, desc:'กลายเป็นหิน 5 เทิร์น' },
+  { id:'tx_charm',  name:'Charm Curse',  icon:'💗', kind:'ailment', ailment:'charm',  turns:5, cost:260, desc:'สะกดให้หลงเสน่ห์ 5 เทิร์น' },
 ];
 
 // Sold separately at the Tech Shop (not a safe-spot potion) — an
