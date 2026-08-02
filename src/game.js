@@ -699,7 +699,9 @@ function wireDrawer() {
   // Same convention for the generic modal — click the dark backdrop
   // (not the content box itself) to dismiss it.
   const modalBack = $('modal-back');
-  if (modalBack) modalBack.onclick = (e) => { if (e.target === modalBack) closeModal(); };
+  if (modalBack) modalBack.onclick = (e) => {
+    if (e.target === modalBack && modalBack.dataset.dismissable !== '0') closeModal();
+  };
 }
 
 function wireGlobalUI() {
@@ -2469,7 +2471,7 @@ function showMimicRewardCards(mimic) {
         };
       });
       wrap.appendChild(box);
-    });
+    }, { dismissable: false });
   });
 }
 
@@ -4390,7 +4392,13 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('on'), 2200);
 }
 
-function modal(title, buildFn) {
+// `dismissable:false` hides the × close button and disables tapping the
+// dark backdrop — for the rare modal where the player MUST pick one of
+// the options shown (see showMimicRewardCards()), since this modal's
+// resolution drives a real pending Promise: dismissing it any other way
+// used to leave that Promise unresolved forever, hanging travelTo()'s
+// train mid-ride with no way to ever finish the trip.
+function modal(title, buildFn, { dismissable = true } = {}) {
   const back = $('modal-back');
   const body = $('modal-body');
   if (!back || !body) return;
@@ -4398,7 +4406,12 @@ function modal(title, buildFn) {
   body.innerHTML = '';
   buildFn(body);
   back.classList.add('on');
-  $('modal-close').onclick = closeModal;
+  back.dataset.dismissable = dismissable ? '1' : '0';
+  const closeBtn = $('modal-close');
+  if (closeBtn) {
+    closeBtn.style.display = dismissable ? '' : 'none';
+    closeBtn.onclick = dismissable ? closeModal : null;
+  }
 }
 function closeModal() {
   const back = $('modal-back');
@@ -5314,6 +5327,14 @@ function showBattleResults(win, bitz, exp, results, returnTo) {
 
 function fleeBattle() {
   if (!battle || battle.over) return;
+  // A mimic ambush is a forced encounter mid-ride ("once a ride" per
+  // spec) AND its outcome drives a pending Promise the train's resume
+  // animation is awaiting (see travelTo()/startMimicAmbush()) — fleeing
+  // here used to null out `battle` without ever resolving that Promise,
+  // permanently hanging the ride with no way to finish the trip.
+  // Blocking the flee button entirely is simpler and safer than trying
+  // to resolve it correctly from every possible exit path.
+  if (battle.mode === 'mimic') { toast('หนีจาก Mimic ไม่ได้ระหว่างซุ่มโจมตี!'); return; }
   battle.over = true;
   clearTimeout(battleTimer);
   clearInterval(regenTimer);
@@ -5985,6 +6006,8 @@ function renderBattle() {
   renderBench();
   renderPotionBar();
   renderSkillBar();
+  const fleeBtn = $('flee-btn');
+  if (fleeBtn) fleeBtn.classList.toggle('flee-locked', battle.mode === 'mimic');
 }
 
 // ── SPECIAL SKILL BAR ──

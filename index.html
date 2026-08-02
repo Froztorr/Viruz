@@ -137,6 +137,15 @@
    touchend guard in game.js for browsers that ignore this. */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 html,body{height:100%}
+/* Kill text-selection and the iOS long-press "select/copy/save image"
+   callout everywhere in the game — a held finger anywhere (a drag gesture
+   on the throw-potion wheel, a long tap on a pet sprite, ...) should never
+   fall through to the browser's native selection/callout UI, which was
+   cancelling mid-drag gestures (a pointercancel fires the instant the
+   browser takes over for its own text-selection). The one real text
+   input (#player-name) is explicitly exempted back to normal behavior. */
+*{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
+input,textarea{-webkit-touch-callout:default;-webkit-user-select:text;user-select:text}
 body{
   background:var(--bg); color:var(--txt);
   font-family:var(--mono); font-size:20px; letter-spacing:.3px;
@@ -2260,6 +2269,10 @@ img.bu-sprite.is-art2{--raster-mult:2}
 .blog-line.buff{color:#4dff9e} .blog-line.win{color:#ffcf3f}
 .blog-line.lose{color:#ff4d6a} .blog-line.sys{color:#9c8ac4}
 #battle-ctrl{display:flex;align-items:center;gap:8px;padding:0 12px 14px}
+/* Forced encounter — flee is blocked outright (see fleeBattle()) during
+   a mimic ambush; dimmed rather than truly disabled so a tap still
+   surfaces the explanatory toast instead of doing nothing silently. */
+#flee-btn.flee-locked{opacity:.4;border-color:var(--line)}
 .speed-btn{font-family:var(--mono);font-size:20px;padding:5px 10px;
   border:1px solid var(--line);background:var(--panel)}
 .speed-btn.on{border-color:var(--green);color:var(--green)}
