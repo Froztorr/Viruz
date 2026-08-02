@@ -5841,6 +5841,7 @@ function refreshUnitVitals(pet, isEnemy) {
     } else if (!isStoned && stonedEl) {
       stonedEl.remove();
     }
+    updateCurseTint(pet, unitEl);
     unitEl.classList.toggle('crit-ready', !isEnemy && critPct >= 100);
   }
 }
@@ -6044,6 +6045,57 @@ function finishRaid(win, loot) {
   renderAll();
 }
 
+// Which of a pet's active ailments (if any) should tint its whole
+// sprite — the 3 thrown curses (Freeze/Stone/Charm) plus the Corrupted
+// mutation debuff, all thematically "afflictions" rather than plain
+// combat buffs/debuffs. Picks whichever is first in the ailments list;
+// battles essentially never stack more than one of these at once.
+const CURSE_TINT_AILMENT_IDS = ['freeze', 'charm', 'stoned', 'corrupt'];
+function curseTintColor(pet) {
+  const a = (pet.ailments || []).find(x => CURSE_TINT_AILMENT_IDS.includes(x.id));
+  if (!a) return null;
+  const A = AILMENTS[a.id];
+  return A ? A.color : null;
+}
+// Creates/updates/removes the pulsating tint overlay in place — shared
+// by the initial renderBattleSide() paint and every later
+// refreshUnitVitals() tick, so it stays in sync turn-to-turn and
+// disappears the instant the curse actually lifts.
+//
+// A flat colored rectangle with mix-blend-mode looked like a solid box
+// behind the creature instead of a tint ON it, because blend modes
+// composite against whatever's already painted under the WHOLE
+// rectangle, not just the sprite's own opaque pixels. Fixed by using
+// the sprite itself as a CSS mask, so the color only ever shows through
+// where the creature is actually opaque — works the same way for a
+// raster <img> (mask-image: url(that same src)) and a procedural inline
+// <svg> (no separate file to point at, so its live markup is inlined as
+// a data: URI and used as the mask instead). Both ways read the sprite
+// straight out of the DOM, so this never has to duplicate whatever
+// creatureMarkup()/creatureMarkupFor() decided to render.
+function spriteMaskUrl(spriteEl) {
+  if (!spriteEl) return null;
+  if (spriteEl.tagName === 'IMG') return `url("${spriteEl.src}")`;
+  return `url("data:image/svg+xml,${encodeURIComponent(spriteEl.outerHTML)}")`;
+}
+function updateCurseTint(pet, unitEl) {
+  if (!unitEl) return;
+  const wrap = unitEl.querySelector('.bu-sprite-wrap');
+  const spriteEl = unitEl.querySelector('.bu-sprite');
+  if (!wrap) return;
+  const color = curseTintColor(pet);
+  let tintEl = wrap.querySelector('.curse-tint');
+  if (color && spriteEl) {
+    if (!tintEl) { tintEl = el('div', 'curse-tint'); wrap.appendChild(tintEl); }
+    tintEl.style.setProperty('--curse-color', color);
+    const maskUrl = spriteMaskUrl(spriteEl);
+    tintEl.style.maskImage = maskUrl;
+    tintEl.style.webkitMaskImage = maskUrl;
+  } else if (tintEl) {
+    tintEl.remove();
+  }
+}
+
 // Shared badge-row markup for a pet's active ailments — poison/frenzy
 // show a stack count (they never expire on a turn timer, see
 // STACKING_AILMENT_IDS in data.js), everything else still shows its
@@ -6097,6 +6149,11 @@ function renderBattleSide(pet, elId, isEnemy) {
   const sc = Math.min(pet.scale || 1, safeTotalScale / rasterMult);
 
   unit.style.setProperty('--cr-scale', sc);
+  // Also exposed on the shared ancestor (not just the raster-specific
+  // .bu-sprite class rule) so .curse-tint — a sibling of .bu-sprite,
+  // not a descendant of it — can inherit the same multiplier and stay
+  // sized to match the actual rendered sprite.
+  unit.style.setProperty('--raster-mult', rasterMult);
   const rageMarks = (pet.isBoss && pet.bossPhase === 2)
     ? `<div class="rage-marks"><span>💢</span><span>😡</span><span>💢</span></div>` : '';
   // Stoned gets its own big overlay above the head (placeholder emoji —
@@ -6113,6 +6170,9 @@ function renderBattleSide(pet, elId, isEnemy) {
       ${creatureMarkup(pet, 'bu-sprite' + (pet.noFloat ? '' : ' float') + (needFlip ? ' flip' : ''))}
     </div>`;
   wrap.appendChild(unit);
+  // Needs the sprite element actually in the DOM first (reads its own
+  // src/markup to build the mask — see updateCurseTint()).
+  updateCurseTint(pet, unit);
   // Only an ally can be tapped to fire a ready bonus crit — a foe has no
   // player to tap for it and auto-fires the instant its gauge fills
   // (see runTurn).
