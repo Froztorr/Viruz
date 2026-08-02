@@ -1225,6 +1225,15 @@ function equipIconHtml(item, fallbackEmoji) {
   const radiant = RADIANT_GRADES.includes(item.grade);
   return `<img src="${item.icon}" class="eq-icon-img${radiant ? ' grade-radiant' : ''}" style="--eq-glow:${g.glow}" alt="">`;
 }
+// Potions/poisons (POTIONS, THROW_UTILITY_POTIONS, THROW_POISONS) carry
+// a real `img` sprite alongside their `icon` emoji fallback — same
+// image-else-emoji convention as equipIconHtml() above, just without
+// the grade-glow styling since these aren't rolled loot.
+function potionIconHtml(item, cls = '') {
+  if (!item) return '';
+  if (item.img) return `<img src="${item.img}" class="${cls} pot-icon-img" alt="">`;
+  return `<span class="${cls}">${item.icon}</span>`;
+}
 function equipStatLine(item) {
   if (item.slotId === 'habit') {
     const c = HABIT_COLORS[item.color], t = HABIT_TYPES[item.type];
@@ -1868,7 +1877,7 @@ function renderShop() {
       const owned = (G.poisons && G.poisons[px.id]) || 0;
       const card = el('div', 'shop-card');
       card.innerHTML = `
-        <div class="sc-icon">${px.icon}</div>
+        <div class="sc-icon">${potionIconHtml(px)}</div>
         <div class="sc-name">${px.name}</div>
         <div class="sc-desc">${px.desc}</div>
         <div class="sc-cost">${px.cost.toLocaleString()} Bitz</div>
@@ -2993,7 +3002,7 @@ function renderInvThrowLoadout() {
       const idx = chosen.indexOf(item.id);
       const on = idx !== -1;
       const chip = el('div', 'throw-loadout-chip' + (on ? ' on' : ''));
-      chip.innerHTML = `<span class="tlc-icon">${item.icon}</span>
+      chip.innerHTML = `${potionIconHtml(item, 'tlc-icon')}
         <span class="tlc-name">${item.name}</span>
         ${on ? `<span class="tlc-n">${idx + 1}</span>` : ''}`;
       chip.title = item.desc;
@@ -3062,7 +3071,7 @@ function renderInvPotions() {
     const n = owned[p.id] || 0;
     if (!n) return;
     any = true;
-    box.appendChild(invBox(p.icon, n, () => showItemDetail(p.icon, p.name, p.desc)));
+    box.appendChild(invBox(potionIconHtml(p), n, () => showItemDetail(potionIconHtml(p), p.name, p.desc)));
   });
   const reviveN = owned[REVIVE_POTION.id] || 0;
   if (reviveN) {
@@ -3920,7 +3929,7 @@ function renderSafeSpot() {
     const owned = (G.potions && G.potions[pt.id]) || 0;
     const card = el('div','shop-card');
     card.innerHTML = `
-      <div class="sc-icon">${pt.icon}</div>
+      <div class="sc-icon">${potionIconHtml(pt)}</div>
       <div class="sc-name">${pt.name}</div>
       <div class="sc-desc">${pt.desc}</div>
       <div class="sc-cost">${pt.cost} Bitz</div>
@@ -6371,7 +6380,7 @@ function startThrowGesture(e, kind) {
     const w = el('div', 'throw-wedge');
     w.style.left = wx + 'px';
     w.style.top = wy + 'px';
-    w.innerHTML = `<span class="tw-icon">${item.icon}</span><span class="tw-name">${item.name}</span>`;
+    w.innerHTML = `${potionIconHtml(item, 'tw-icon')}<span class="tw-name">${item.name}</span>`;
     layer.appendChild(w);
     return { item, x: wx, y: wy, el: w };
   });
@@ -6421,7 +6430,7 @@ function onThrowPointerMove(e) {
       if (g.explain) { g.explain.remove(); g.explain = null; }
       // Enlarged 3x the instant the flick starts, so the item stays
       // clearly visible right under the finger instead of hiding under it.
-      const carry = el('div', 'throw-carry throw-carry-big', best.item.icon);
+      const carry = el('div', 'throw-carry throw-carry-big', potionIconHtml(best.item));
       $('throw-layer').appendChild(carry);
       g.carryEl = carry;
     }

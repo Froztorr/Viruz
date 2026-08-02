@@ -2415,6 +2415,15 @@ img.bu-sprite.is-art2{--raster-mult:2}
 @keyframes gradeRadiant{
   0%,100%{filter:drop-shadow(0 0 4px var(--eq-glow,transparent)) drop-shadow(0 0 8px var(--eq-glow,transparent))}
   50%{filter:drop-shadow(0 0 9px var(--eq-glow,transparent)) drop-shadow(0 0 18px var(--eq-glow,transparent))}}
+
+/* Potion/poison sprite icons (see potionIconHtml() in game.js) — sized
+   in em so the SAME rule scales correctly in every context an emoji
+   icon used to (shop cards, wheel wedges, the loadout tab, the carried
+   throw icon at both its normal and 3x-enlarged size), just by
+   inheriting whatever font-size that context already sets. */
+.pot-icon-img{width:1em;height:1em;object-fit:contain;
+  image-rendering:pixelated;vertical-align:middle;display:inline-block}
+.sc-icon .pot-icon-img{width:36px;height:36px;display:block;margin:0 auto}
 .eq-slot-info{flex:1;min-width:0}
 .eq-slot-name{font-family:var(--pixel);font-size:18px}
 .eq-slot-name.muted{color:var(--muted)}
