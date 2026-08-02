@@ -2348,6 +2348,33 @@ function isAtWorldNode(nodeId) {
   return !!(G.worldPos && G.worldPos.mapId === currentMapId && G.worldPos.nodeId === nodeId);
 }
 
+// ── TWO-TAP NODE CONFIRM ──
+// Tapping a node no longer fires travel/the fight briefing straight
+// away — the first tap just "arms" that node, expanding its pin-card
+// (name/level/kind, the .pin-extra detail) same as the old hover/active
+// reveal, and auto-disarms after 5s if never confirmed. Tapping the
+// SAME node again within that window is the actual confirm and runs
+// the real action; tapping any OTHER node re-arms fresh on that one
+// instead (whichever pin is armed, only one at a time). The region
+// boss pin is unaffected — it was never a travel target to begin with.
+let armedPinId = null;
+let armedPinTimer = null;
+function disarmPin() {
+  clearTimeout(armedPinTimer);
+  armedPinTimer = null;
+  armedPinId = null;
+  document.querySelectorAll('.zone-pin.armed').forEach(p => p.classList.remove('armed'));
+}
+function wireArmedPinTap(pin, id, action) {
+  pin.onclick = () => {
+    if (armedPinId === id) { disarmPin(); action(); return; }
+    disarmPin();
+    armedPinId = id;
+    pin.classList.add('armed');
+    armedPinTimer = setTimeout(disarmPin, 5000);
+  };
+}
+
 function renderWorld() {
   currentMapId = G.currentMapId || currentMapId;
   const map = MAPS.find(m => m.id === currentMapId) || MAPS[0];
@@ -2385,7 +2412,7 @@ function renderWorld() {
           <span class="pin-extra"><i>${z.thai}</i><em>พักฟื้น · ร้านยา</em></span>
         </span>`;
       const go = () => { G.lastSafe = z.id; showScreen('safe'); };
-      pin.onclick = () => { if (isAtWorldNode(z.id)) go(); else travelTo(z.id, go); };
+      wireArmedPinTap(pin, z.id, () => { if (isAtWorldNode(z.id)) go(); else travelTo(z.id, go); });
     } else {
       // Warn when the zone is well above the team's level
       const gap = z.lv[0] - teamLv;
@@ -2397,7 +2424,7 @@ function renderWorld() {
           <b>${z.name}</b>
           <span class="pin-extra"><i>${z.thai}</i><em>Lv ${z.lv[0]}–${z.lv[1]}</em></span>
         </span>`;
-      pin.onclick = () => { if (isAtWorldNode(z.id)) openZone(z); else travelTo(z.id, () => openZone(z)); };
+      wireArmedPinTap(pin, z.id, () => { if (isAtWorldNode(z.id)) openZone(z); else travelTo(z.id, () => openZone(z)); });
     }
     layer.appendChild(pin);
   });
@@ -2413,7 +2440,7 @@ function renderWorld() {
     pin.innerHTML = `
       <span class="pin-dot"></span>
       <span class="pin-card"><b>🌀 Warp Gate</b><span class="pin-extra"><i>จุดเริ่มต้น</i></span></span>`;
-    pin.onclick = () => { if (isAtWorldNode('warpIn')) openWarpInMenu(map); else travelTo('warpIn', () => {}); };
+    wireArmedPinTap(pin, 'warpIn', () => { if (isAtWorldNode('warpIn')) openWarpInMenu(map); else travelTo('warpIn', () => {}); });
     layer.appendChild(pin);
   }
   const mapIdx = MAPS.findIndex(m => m.id === map.id);
@@ -2426,7 +2453,7 @@ function renderWorld() {
       <span class="pin-dot"></span>
       <span class="pin-card"><b>🌀 Warp Gate</b><span class="pin-extra"><em>ไปยัง ${nextMap.name}</em></span></span>`;
     const go = () => openWarpGate(map, nextMap);
-    pin.onclick = () => { if (isAtWorldNode('warpOut')) go(); else travelTo('warpOut', go); };
+    wireArmedPinTap(pin, 'warpOut', () => { if (isAtWorldNode('warpOut')) go(); else travelTo('warpOut', go); });
     layer.appendChild(pin);
   }
 
