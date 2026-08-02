@@ -478,6 +478,15 @@ function openWindow(id) {
 }
 
 function closeWindow(id) {
+  // The red traffic-light dot closing the World screen used to fall
+  // through to the "no windows left open" case below and land straight
+  // on the Real World map — a free, immersion-breaking shortcut out of
+  // the warp-gate world that completely bypassed the actual gate. Only
+  // the warpIn gate's own menu is allowed to do that now.
+  if (id === 'win-main' && (currentMainId === 'world' || currentMainId === 'safe')) {
+    toast('ออกจากแผนที่โลกได้ที่ประตูวาร์ปเท่านั้น');
+    return;
+  }
   const container = windowEl(id);
   windowStack = windowStack.filter(x => x !== id);
   minimizedWindows.delete(id);
