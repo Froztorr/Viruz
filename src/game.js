@@ -210,6 +210,7 @@ async function boot() {
     // Drop team/defense references to pets that no longer exist
     const ids = new Set(G.roster.map(p => p.uid));
     G.potions = G.potions || {};
+    G.poisons = G.poisons || {};
     G.foods   = G.foods   || {};
     G.toys    = G.toys    || [];
     G.care    = G.care    || {};
@@ -244,6 +245,7 @@ async function boot() {
   wirePetDetail();
   wireInventoryTabs();
   wireThrowPouches();
+  wireCharSlotDrag();
   startTopBarClock();
   startDownStateTicker();
   wireClickRipple();
@@ -903,7 +905,15 @@ function petCard(pet, opts = {}) {
   card.style.setProperty('--glow', a.glow);
   if (opts.selected) card.classList.add('sel');
   const state = petState(pet);
-  if (state !== 'alive') card.classList.add('down', 'ps-' + state);
+  if (state !== 'alive') card.classList.add('ps-' + state);
+  // The blanket dim/greyscale (.down) is for the genuinely-unusable
+  // states only (error/incubating/ready). A fresh Down pet should
+  // still read as basically fine at frac=0 — the .ps-wipe overlay
+  // below IS the dimming, growing from fully transparent to fully
+  // grey over the real 5-minute window, so it needs the undimmed
+  // starting point to actually be visible as a countdown instead of
+  // disappearing into an already-grey card from the first frame.
+  if (state !== 'alive' && state !== 'down') card.classList.add('down');
 
   // Down: a grey wipe wraps counter-clockwise around the sprite over
   // the real 5-minute window. Error: a glitch filter over the sprite.
@@ -1152,6 +1162,20 @@ function refreshPdTeamBtn() {
   const teamBtn = $('pd-team-btn');
   const benchBtn = $('pd-bench-btn');
   if (!teamBtn || !benchBtn || !PD) return;
+  // The Character screen (drawer knob, usable anywhere mid-adventure)
+  // only allows drag-to-swap between its own 5 fixed slots now — no
+  // pulling in or dismissing pets from the wider roster. Only Home Base
+  // still does full team/bench/dismiss management (see wireCharSlotDrag()
+  // and the roster-grid removed from #screen-character in index.html).
+  const teamBtns = teamBtn.closest('.pd-team-btns');
+  const dismissBtn = $('pd-dismiss-btn');
+  if (currentMainId === 'character') {
+    if (teamBtns) teamBtns.style.display = 'none';
+    if (dismissBtn) dismissBtn.style.display = 'none';
+    return;
+  }
+  if (teamBtns) teamBtns.style.display = '';
+  if (dismissBtn) dismissBtn.style.display = '';
   const uid = PD.pet.uid;
   const inTeam = G.teamIds.includes(uid);
   const inBench = (G.benchIds || []).includes(uid);
@@ -1173,7 +1197,6 @@ function refreshPdTeamBtn() {
     closePetDetail();
   };
 
-  const dismissBtn = $('pd-dismiss-btn');
   if (dismissBtn) {
     const canDismiss = !inTeam && !inBench && G.roster.length > 1;
     dismissBtn.disabled = !canDismiss;
@@ -1403,6 +1426,119 @@ function renderTeamBenchPanel(prefix) {
       roster.appendChild(c);
     });
   }
+}
+
+// ── CHARACTER SCREEN: DRAG-TO-SWAP ──
+// The Character screen (drawer knob) only shows the current 5 team/
+// bench slots — no wider roster, no add/remove (see refreshPdTeamBtn()
+// hiding those buttons when currentMainId==='character' and the
+// roster-grid removed from #screen-character in index.html). The only
+// way to rearrange here is dragging one of the 5 onto another, which
+// swaps their positions outright. A plain tap (no real drag) still
+// falls through to the card's own onclick (open detail, read-only).
+let charDragState = null;
+function charSlotIndexOf(cardEl) {
+  const teamWrap = $('char-team-slots'), benchWrap = $('char-bench-slots');
+  if (teamWrap) { const i = Array.from(teamWrap.children).indexOf(cardEl); if (i !== -1) return i; }
+  if (benchWrap) { const i = Array.from(benchWrap.children).indexOf(cardEl); if (i !== -1) return 3 + i; }
+  return -1;
+}
+function petAtCharSlot(idx) {
+  return idx < 3 ? (activeTeam()[idx] || null) : (benchTeam()[idx - 3] || null);
+}
+const CHAR_DRAG_THRESHOLD = 12;
+function wireCharSlotDrag() {
+  ['char-team-slots', 'char-bench-slots'].forEach(id => {
+    const wrap = $(id);
+    if (!wrap) return;
+    wrap.addEventListener('pointerdown', e => {
+      const card = e.target.closest('.pet-card');
+      if (!card || card.classList.contains('empty')) return;
+      const idx = charSlotIndexOf(card);
+      if (idx === -1) return;
+      charDragState = { idx, startX: e.clientX, startY: e.clientY, dragging: false, ghost: null, pointerId: e.pointerId, sourceCard: card };
+    });
+  });
+  window.addEventListener('pointermove', onCharSlotDragMove);
+  window.addEventListener('pointerup', onCharSlotDragEnd);
+}
+// Team and bench sit in separate stacked sections that don't both fit
+// on a typical phone screen at once (each pet-card row alone can run
+// ~300px tall) — dragging from one to the other needs the page to
+// scroll while a finger is still down and can't also swipe. Auto-
+// scrolls #win-main-body while the drag point sits near its top/bottom
+// edge, same idea as any drag-and-drop list on a scrollable page.
+let charAutoScrollTimer = null;
+function updateCharAutoScroll(clientY) {
+  const body = $('win-main-body');
+  if (!body) return;
+  const r = body.getBoundingClientRect();
+  const EDGE = 70, MAXSPD = 14;
+  let spd = 0;
+  if (clientY < r.top + EDGE) spd = -MAXSPD * (1 - Math.max(0, clientY - r.top) / EDGE);
+  else if (clientY > r.bottom - EDGE) spd = MAXSPD * (1 - Math.max(0, r.bottom - clientY) / EDGE);
+  clearInterval(charAutoScrollTimer);
+  charAutoScrollTimer = null;
+  if (spd !== 0) {
+    charAutoScrollTimer = setInterval(() => { body.scrollTop += spd; }, 16);
+  }
+}
+function onCharSlotDragMove(e) {
+  const s = charDragState;
+  if (!s || e.pointerId !== s.pointerId) return;
+  const dx = e.clientX - s.startX, dy = e.clientY - s.startY;
+  if (!s.dragging) {
+    if (Math.hypot(dx, dy) < CHAR_DRAG_THRESHOLD) return;
+    s.dragging = true;
+    const r = s.sourceCard.getBoundingClientRect();
+    const ghost = s.sourceCard.cloneNode(true);
+    ghost.className = s.sourceCard.className + ' char-drag-ghost';
+    ghost.style.width = r.width + 'px';
+    ghost.style.height = r.height + 'px';
+    document.body.appendChild(ghost);
+    s.ghost = ghost;
+    s.sourceCard.classList.add('char-drag-source');
+  }
+  if (s.ghost) {
+    s.ghost.style.left = e.clientX + 'px';
+    s.ghost.style.top = e.clientY + 'px';
+  }
+  updateCharAutoScroll(e.clientY);
+  document.querySelectorAll('#char-team-slots .pet-card, #char-bench-slots .pet-card')
+    .forEach(c => c.classList.remove('char-drop-hover'));
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const targetCard = under && under.closest('.pet-card');
+  if (targetCard && targetCard !== s.sourceCard &&
+      (targetCard.parentElement.id === 'char-team-slots' || targetCard.parentElement.id === 'char-bench-slots')) {
+    targetCard.classList.add('char-drop-hover');
+  }
+}
+function onCharSlotDragEnd(e) {
+  const s = charDragState;
+  if (!s || e.pointerId !== s.pointerId) return;
+  charDragState = null;
+  clearInterval(charAutoScrollTimer);
+  charAutoScrollTimer = null;
+  if (s.ghost) s.ghost.remove();
+  if (s.sourceCard) s.sourceCard.classList.remove('char-drag-source');
+  document.querySelectorAll('.char-drop-hover').forEach(c => c.classList.remove('char-drop-hover'));
+  if (!s.dragging) return; // plain tap -- let the card's own onclick handle it
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const targetCard = under && under.closest('.pet-card');
+  if (!targetCard) return;
+  const toIdx = charSlotIndexOf(targetCard);
+  if (toIdx === -1 || toIdx === s.idx) return;
+  const petA = petAtCharSlot(s.idx);
+  const petB = petAtCharSlot(toIdx);
+  const setSlot = (idx, uid) => {
+    if (idx < 3) G.teamIds[idx] = uid;
+    else { G.benchIds = G.benchIds || []; G.benchIds[idx - 3] = uid; }
+  };
+  setSlot(s.idx, petB ? petB.uid : undefined);
+  setSlot(toIdx, petA ? petA.uid : undefined);
+  save();
+  renderCharacter();
+  renderHUD();
 }
 
 function renderHome() {
@@ -1720,6 +1856,33 @@ function renderShop() {
       toast(`ซื้อ ${REVIVE_POTION.name} แล้ว — ใช้ได้จากกระเป๋าไอเทม`);
     };
     revive.appendChild(card);
+  }
+
+  // Poison curses — kept in their own G.poisons bag (separate from
+  // G.potions), same buy-then-stock model, feeding the poison pouch's
+  // battle wheel (see throwItemAvailable() in the battle section).
+  const poisons = $('shop-poisons');
+  if (poisons) {
+    poisons.innerHTML = '';
+    THROW_POISONS.forEach(px => {
+      const owned = (G.poisons && G.poisons[px.id]) || 0;
+      const card = el('div', 'shop-card');
+      card.innerHTML = `
+        <div class="sc-icon">${px.icon}</div>
+        <div class="sc-name">${px.name}</div>
+        <div class="sc-desc">${px.desc}</div>
+        <div class="sc-cost">${px.cost.toLocaleString()} Bitz</div>
+        <div class="sc-owned">มี ${owned} ชิ้น</div>
+        <button class="btn">ซื้อ</button>`;
+      card.querySelector('button').onclick = () => {
+        if (G.bitz < px.cost) { toast('Bitz ไม่พอ'); return; }
+        G.bitz -= px.cost;
+        G.poisons = G.poisons || {};
+        G.poisons[px.id] = (G.poisons[px.id] || 0) + 1;
+        save(); renderShop(); renderHUD();
+      };
+      poisons.appendChild(card);
+    });
   }
 
   const bots = $('shop-bots');
@@ -3720,11 +3883,13 @@ function renderSafeSpot() {
   const backBtn = $('safe-potions-back');
   if (backBtn) backBtn.onclick = closeShop;
 
-  // Potion shop
+  // Potion shop — heal potions plus the free-slot utility potions
+  // (MP/Speed/Crit/Cleanse) that now also need to be bought and
+  // stocked to show up in the battle wheel (see throwItemAvailable()).
   const shop = $('safe-potions');
   if (!shop) return;
   shop.innerHTML = '';
-  POTIONS.forEach(pt => {
+  [...POTIONS, ...THROW_UTILITY_POTIONS].forEach(pt => {
     const owned = (G.potions && G.potions[pt.id]) || 0;
     const card = el('div','shop-card');
     card.innerHTML = `
@@ -6108,11 +6273,17 @@ function throwLoadout(kind) {
     ? G.throwLoadout[kind] : pool.map(x => x.id).slice(0, 5);
   return ids.map(id => pool.find(x => x.id === id)).filter(Boolean).slice(0, 5);
 }
-// A potion item is only actually throwable right now if it's a free
-// utility one, OR a bag potion the player still has stock of.
-function throwItemAvailable(item) {
-  if (item.heal == null) return true;
-  return (G.potions && G.potions[item.id] > 0);
+// Every throwable item now needs real stock to show up in its wheel —
+// potions (heal AND the free-slot utility ones alike) draw from
+// G.potions, poisons from G.poisons, both bought at a shop. An item
+// with 0 left simply isn't offered (see startThrowGesture()'s filter).
+function throwItemAvailable(item, kind) {
+  const bag = kind === 'poison' ? G.poisons : G.potions;
+  return !!(bag && bag[item.id] > 0);
+}
+function throwItemStock(item, kind) {
+  const bag = kind === 'poison' ? G.poisons : G.potions;
+  return (bag && bag[item.id]) || 0;
 }
 function itemOnCooldown(id) {
   if (!battle) return false;
@@ -6129,11 +6300,11 @@ function renderPotionBar() {
   const potionPouch = $('throw-potion-pouch');
   const poisonPouch = $('throw-poison-pouch');
   if (potionPouch) {
-    const any = throwLoadout('potion').some(it => throwItemAvailable(it) && !itemOnCooldown(it.id));
+    const any = throwLoadout('potion').some(it => throwItemAvailable(it, 'potion') && !itemOnCooldown(it.id));
     potionPouch.classList.toggle('on-cd', !any);
   }
   if (poisonPouch) {
-    const any = throwLoadout('poison').some(it => !itemOnCooldown(it.id));
+    const any = throwLoadout('poison').some(it => throwItemAvailable(it, 'poison') && !itemOnCooldown(it.id));
     poisonPouch.classList.toggle('on-cd', !any);
   }
 }
@@ -6155,8 +6326,8 @@ const THROW_WHEEL_R = 78;  // px radius the wedges sit at
 
 function startThrowGesture(e, kind) {
   if (!battle || battle.over) return;
-  const items = throwLoadout(kind).filter(it => throwItemAvailable(it) && !itemOnCooldown(it.id));
-  if (!items.length) { toast(kind === 'potion' ? 'ยาหมดหรือติดคูลดาวน์ทั้งหมด' : 'พิษติดคูลดาวน์ทั้งหมด'); return; }
+  const items = throwLoadout(kind).filter(it => throwItemAvailable(it, kind) && !itemOnCooldown(it.id));
+  if (!items.length) { toast(kind === 'potion' ? 'ยาหมดหรือติดคูลดาวน์ทั้งหมด' : 'พิษหมดหรือติดคูลดาวน์ทั้งหมด'); return; }
   e.preventDefault();
   const layer = $('throw-layer');
   if (!layer) return;
@@ -6174,11 +6345,30 @@ function startThrowGesture(e, kind) {
     w.style.left = wx + 'px';
     w.style.top = wy + 'px';
     w.innerHTML = `<span class="tw-icon">${item.icon}</span><span class="tw-name">${item.name}</span>`;
-    w.title = item.desc;
     layer.appendChild(w);
     return { item, x: wx, y: wy, el: w };
   });
-  throwGesture = { kind, cx, cy, wedges, locked: false, item: null, carryEl: null, pointerId: e.pointerId };
+  const explain = el('div', 'throw-explain');
+  layer.appendChild(explain);
+  throwGesture = { kind, cx, cy, wedges, explain, locked: false, item: null, carryEl: null, pointerId: e.pointerId };
+}
+
+// Positions the effect-text/remaining-count box beside whichever wedge
+// is currently "hot", while the player is still deciding (hasn't
+// dragged past the lock radius yet).
+function updateThrowExplain(g, hotWedge) {
+  if (!g.explain) return;
+  if (!hotWedge) { g.explain.classList.remove('on'); return; }
+  const item = hotWedge.item;
+  const n = throwItemStock(item, g.kind);
+  g.explain.innerHTML = `<b>${item.name}</b><span>${item.desc}</span><i>เหลือ ${n} ชิ้น</i>`;
+  // Sits to whichever side of the wedge has more room, so it never
+  // runs off the edge of the screen.
+  const onRight = hotWedge.x < window.innerWidth / 2;
+  g.explain.classList.toggle('on-right', onRight);
+  g.explain.style.left = (hotWedge.x + (onRight ? 14 : -14)) + 'px';
+  g.explain.style.top = hotWedge.y + 'px';
+  g.explain.classList.add('on');
 }
 
 function onThrowPointerMove(e) {
@@ -6196,11 +6386,15 @@ function onThrowPointerMove(e) {
       if (score > bestScore) { bestScore = score; best = w; }
     });
     if (best) best.el.classList.add('hot');
+    updateThrowExplain(g, best);
     if (dist > THROW_LOCK_R && best) {
       g.locked = true;
       g.item = best.item;
       g.wedges.forEach(w => w.el.remove());
-      const carry = el('div', 'throw-carry', best.item.icon);
+      if (g.explain) { g.explain.remove(); g.explain = null; }
+      // Enlarged 3x the instant the flick starts, so the item stays
+      // clearly visible right under the finger instead of hiding under it.
+      const carry = el('div', 'throw-carry throw-carry-big', best.item.icon);
       $('throw-layer').appendChild(carry);
       g.carryEl = carry;
     }
@@ -6217,15 +6411,21 @@ function onThrowPointerUp(e) {
   const g = throwGesture;
   if (!g || (g.pointerId != null && e.pointerId !== g.pointerId)) return;
   throwGesture = null;
-  const layer = $('throw-layer');
   if (g.locked && g.item) {
     const side = throwHitSide(e.clientX, e.clientY);
     if (side) resolveThrow(g.kind, g.item, side, e.clientX, e.clientY);
+    // Only the carried icon itself needs cleaning up here — NOT the
+    // whole #throw-layer (a previous version wiped it with innerHTML,
+    // which also instantly deleted the glass-break/body-flash effects
+    // resolveThrow() just spawned into that same layer, before they
+    // ever got a chance to actually animate — that's what looked like
+    // the poison/potion icon "staying stuck" on the character instead
+    // of disappearing: the wrong thing was vanishing).
     if (g.carryEl) g.carryEl.remove();
   } else {
     g.wedges.forEach(w => w.el.remove());
+    if (g.explain) g.explain.remove();
   }
-  if (layer) layer.innerHTML = '';
 }
 
 // Which side of the battlefield a screen point landed on — checked
@@ -6250,16 +6450,18 @@ function resolveThrow(kind, item, side, x, y) {
   if (!battle || battle.over) return;
   const pet = side === 'ally' ? activeAlly() : activeFoe();
   if (!pet) return;
-  if (item.heal != null && !(G.potions && G.potions[item.id] > 0)) { toast('ยาหมดแล้ว'); return; }
+  const bag = kind === 'poison' ? G.poisons : G.potions;
+  if (!(bag && bag[item.id] > 0)) { toast(kind === 'poison' ? 'พิษหมดแล้ว' : 'ยาหมดแล้ว'); return; }
+  bag[item.id]--;
 
   glassBreakBurst(x, y, kind === 'potion' ? 'rgba(140,220,255,.9)' : 'rgba(200,140,255,.9)');
+  bodyFlashEffect(pet, kind === 'potion' ? 'green' : 'red');
   startItemCooldown(item.id);
 
   const wrongSide = (kind === 'potion' && side === 'foe') || (kind === 'poison' && side === 'ally');
   const tag = wrongSide ? ' (ปาพลาด!)' : '';
 
   if (item.heal != null) {
-    G.potions[item.id]--;
     const mhp = statsOf(pet).mhp;
     const before = pet.hp;
     pet.hp = clamp(Math.floor(pet.hp + mhp * item.heal), 0, mhp);
@@ -6308,6 +6510,17 @@ function glassBreakBurst(x, y, color) {
   burst.innerHTML = inner;
   layer.appendChild(burst);
   setTimeout(() => burst.remove(), 550);
+}
+
+// A brief 1s colored wash over the actual struck creature's own sprite
+// — green for a landed potion, red for a landed poison — on top of
+// (not instead of) the glass-break burst at the contact point.
+function bodyFlashEffect(pet, colorKind) {
+  const unitEl = document.querySelector(`.bunit[data-uid="${pet.uid}"] .bu-sprite-wrap`);
+  if (!unitEl) return;
+  const flash = el('div', 'throw-body-flash ' + colorKind);
+  unitEl.appendChild(flash);
+  setTimeout(() => flash.remove(), 1000);
 }
 
 // ── CAMERA ──
