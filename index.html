@@ -2232,6 +2232,30 @@ body.care-game-open{overflow:hidden}
 /* the wrapper keeps the scaled sprite anchored to the platform */
 .bu-sprite-wrap{display:flex;align-items:flex-end;justify-content:center;
   min-height:76px}
+/* Curse tint — a persistent (not one-shot) colored wash over the whole
+   sprite for as long as a Freeze/Charm/Stone curse or the Corrupted
+   debuff is active (see updateCurseTint()/curseTintColor() in game.js,
+   AILMENTS[id].color in data.js is the source of truth per-curse — pink
+   for Charm, icy blue for Freeze, etc). This is a flat colored box —
+   what actually keeps it confined to the creature's own silhouette
+   (instead of reading as a solid rectangle) is mask-image, set in JS to
+   the sprite's own src (raster) or its live inline markup as a data URI
+   (procedural SVG) — see spriteMaskUrl(). mix-blend-mode:color then
+   recolors the creature toward that hue while preserving its own
+   shading, rather than just flattening it to a block of color. The
+   pulse breathes between ~30-70% so it reads as "about 50% intensity"
+   on average, matching the ask. Removed the instant the ailment itself
+   clears — see the same function. Sized/positioned to match .bu-sprite
+   exactly: same box, same bottom-center anchor, same scale transform. */
+.curse-tint{position:absolute;left:50%;bottom:0;width:76px;height:76px;
+  margin-left:-38px;transform-origin:50% 100%;
+  transform:scale(calc(var(--cr-scale,1) * var(--raster-mult,1)));
+  background:var(--curse-color,#fff);
+  mask-repeat:no-repeat;mask-position:center bottom;mask-size:contain;
+  -webkit-mask-repeat:no-repeat;-webkit-mask-position:center bottom;-webkit-mask-size:contain;
+  mix-blend-mode:color;pointer-events:none;z-index:2;
+  animation:curseTintPulse 1.4s ease-in-out infinite}
+@keyframes curseTintPulse{0%,100%{opacity:.3}50%{opacity:.7}}
 /* GIF creatures are raster; keep pixel art crisp and match SVG sizing */
 img.is-gif{image-rendering:pixelated;object-fit:contain}
 /* v2 PNG species art (attribute/mutation-colored) — same story: real
