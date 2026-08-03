@@ -1061,9 +1061,13 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .pet-card.char-drag-source{opacity:.35}
 .pet-card.char-drop-hover{border-color:var(--gold);
   box-shadow:inset 0 1px 0 var(--rim),0 0 22px rgba(255,207,63,.6),0 6px 18px rgba(0,0,0,.5)}
+/* Just the creature sprite, enlarged and centered directly on the
+   pointer -- same idea as the battle potion/poison wheel's carried
+   icon (.throw-carry), not a scaled clone of the whole stat card. */
 .char-drag-ghost{position:fixed;z-index:70;pointer-events:none;
-  transform:translate(-50%,-50%) scale(1.06);opacity:.92;
-  transition:none;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+  width:86px;height:86px;display:flex;align-items:center;justify-content:center;
+  transform:translate(-50%,-50%) scale(1.5);
+  transition:none;filter:drop-shadow(0 8px 16px rgba(0,0,0,.6)) drop-shadow(0 0 10px rgba(255,255,255,.55))}
 .pet-card.empty.small{min-height:120px}
 .empty-mark{font-size:30px;opacity:.5}
 .empty-t{font-size:20px;margin-top:4px}
