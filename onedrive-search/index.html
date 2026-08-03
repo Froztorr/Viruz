@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OneDrive File Search</title>
+<link rel="icon" href="data:," />
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #131722;
+    --panel-2: #1a2030;
+    --border: #262d3f;
+    --text: #e6e8ee;
+    --muted: #8891a7;
+    --accent: #4f8cff;
+    --accent-2: #2f6fe0;
+    --danger: #ff5c5c;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 {
+    font-size: 18px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  header h1 .logo {
+    width: 22px;
+    height: 22px;
+    display: inline-block;
+  }
+  #account-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    margin-top: 12px;
+  }
+  label:first-of-type { margin-top: 0; }
+  input[type="text"], select {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+  }
+  input[type="text"]:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .hint code {
+    background: var(--panel-2);
+    padding: 1px 5px;
+    border-radius: 4px;
+    color: #c8d0e0;
+  }
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background 0.15s ease;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { background: var(--accent-2); }
+  .btn-primary:disabled {
+    background: #333a4d;
+    color: #777f94;
+    cursor: not-allowed;
+  }
+  .btn-secondary {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); }
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    border: 1px solid rgba(255, 92, 92, 0.4);
+  }
+  .btn-danger:hover { background: rgba(255, 92, 92, 0.1); }
+  #search-row {
+    display: flex;
+    gap: 10px;
+  }
+  #search-row input { flex: 1; }
+  #status {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 10px;
+    min-height: 18px;
+  }
+  #status.error { color: var(--danger); }
+  #results {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  #results li {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  #results li:last-child { border-bottom: none; }
+  .file-icon {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .file-meta {
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .file-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .file-actions button, .file-actions a {
+    font-size: 12px;
+    padding: 6px 10px;
+    text-decoration: none;
+    display: inline-block;
+  }
+  a.btn-link {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 6px;
+  }
+  a.btn-link:hover { background: var(--accent-2); }
+  #empty-state {
+    text-align: center;
+    color: var(--muted);
+    padding: 30px 0;
+    font-size: 14px;
+  }
+  .hidden { display: none !important; }
+  .row {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>
+    <svg class="logo" viewBox="0 0 24 24" fill="none"><path d="M6 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 16.2 8.3 4.5 4.5 0 0 1 17.5 18H6z" fill="#4f8cff"/></svg>
+    OneDrive File Search
+  </h1>
+  <div id="account-box">
+    <span id="account-label"></span>
+    <button id="signout-btn" class="btn-secondary hidden">Sign out</button>
+  </div>
+</header>
+
+<main>
+  <section id="setup-card" class="card">
+    <h2>1. Connect your Microsoft account</h2>
+    <label for="client-id">Azure AD Application (client) ID</label>
+    <input type="text" id="client-id" placeholder="e.g. 11111111-2222-3333-4444-555555555555" />
+    <div class="hint">
+      From an Azure App registration you own. See <code>README.md</code> in this folder for
+      step-by-step setup instructions.
+    </div>
+
+    <label for="tenant">Account type</label>
+    <select id="tenant">
+      <option value="consumers">Personal Microsoft account (outlook.com, live.com, hotmail.com)</option>
+      <option value="organizations">Work or school account (Microsoft 365 / Azure AD)</option>
+      <option value="common">Both personal and work/school</option>
+    </select>
+    <div class="hint">
+      Redirect URI to register on the app: <code id="redirect-uri-hint"></code>
+    </div>
+
+    <div class="row">
+      <button id="signin-btn" class="btn-primary">Sign in with Microsoft</button>
+    </div>
+    <div id="status"></div>
+  </section>
+
+  <section id="search-card" class="card hidden">
+    <h2>2. Search your OneDrive</h2>
+    <div id="search-row">
+      <input type="text" id="search-input" placeholder="Search files and folders by name..." autocomplete="off" />
+    </div>
+    <div id="search-status" class="hint"></div>
+  </section>
+
+  <section id="results-card" class="card hidden">
+    <h2>Results</h2>
+    <ul id="results"></ul>
+    <div id="empty-state" class="hidden">No matching files found.</div>
+  </section>
+</main>
+
+<script src="vendor/msal-browser.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
