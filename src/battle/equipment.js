@@ -212,32 +212,53 @@ export function unequipItem(pet, slotId) {
   G.equipBag.push(item);
   save();
 }
+// Locking an item is purely a guard against your OWN future taps —
+// blocks the single sell/dust actions below and gets skipped by
+// Sell All, so gear you actually care about can't be liquidated by an
+// accidental tap or a careless bulk-sell.
+export function toggleEquipLock(item) {
+  item.locked = !item.locked;
+  save();
+  toast(item.locked ? `🔒 ล็อก ${item.name}` : `🔓 ปลดล็อก ${item.name}`);
+}
+// Both return true/false so callers (the equipment detail modal) know
+// whether to actually close/refresh, or leave the modal open on a
+// blocked (locked) attempt so the toast explaining why is visible
+// instead of just bouncing back to the grid.
 export function sellEquip(item) {
+  if (item.locked) { toast('ล็อกอยู่ — ปลดล็อกก่อนขาย'); return false; }
   G.equipBag = (G.equipBag || []).filter(x => x.uid !== item.uid);
   G.bitz += sellValueOf(item);
   save();
   toast(`💰 ขาย ${item.name} +${sellValueOf(item)} Bitz`);
+  return true;
 }
 export function dustEquip(item) {
+  if (item.locked) { toast('ล็อกอยู่ — ปลดล็อกก่อนสลาย'); return false; }
   G.equipBag = (G.equipBag || []).filter(x => x.uid !== item.uid);
   G.dust = (G.dust || 0) + dustValueOf(item);
   save();
   toast(`🧬 สลาย ${item.name} +${dustValueOf(item)} Dust`);
+  return true;
 }
 
 // Bulk-sell button — off by default (G.sellAllIncludeRare falsy) only
 // ever touches the lowest/"normal" grade (script), so it can't
 // accidentally liquidate rare gear; the checkbox opts into selling
 // every grade in the bag instead, and always asks to confirm first
-// since that's the one destructive path here.
+// since that's the one destructive path here. Locked items are always
+// skipped regardless of the grade filter.
 function sellAllEquip() {
   const bag = G.equipBag || [];
   const includeRare = !!G.sellAllIncludeRare;
-  const targets = includeRare ? bag.slice() : bag.filter(x => x.grade === EQUIP_GRADE_KEYS[0]);
-  if (!targets.length) { toast('ไม่มีไอเทมให้ขาย'); return; }
+  const pool = includeRare ? bag.slice() : bag.filter(x => x.grade === EQUIP_GRADE_KEYS[0]);
+  const targets = pool.filter(x => !x.locked);
+  const lockedSkipped = pool.length - targets.length;
+  if (!targets.length) { toast(lockedSkipped ? '🔒 ไอเทมทั้งหมดถูกล็อกไว้' : 'ไม่มีไอเทมให้ขาย'); return; }
   const total = targets.reduce((s, x) => s + sellValueOf(x), 0);
   const label = includeRare ? 'ทุกเกรด' : EQUIP_GRADES[EQUIP_GRADE_KEYS[0]].thai;
-  if (!confirm(`ขายอุปกรณ์ ${targets.length} ชิ้น (${label}) รวม 💰${total} Bitz?`)) return;
+  const lockNote = lockedSkipped ? ` (ข้าม ${lockedSkipped} ชิ้นที่ล็อกไว้)` : '';
+  if (!confirm(`ขายอุปกรณ์ ${targets.length} ชิ้น (${label}) รวม 💰${total} Bitz?${lockNote}`)) return;
   const uids = new Set(targets.map(x => x.uid));
   G.equipBag = bag.filter(x => !uids.has(x.uid));
   G.bitz += total;

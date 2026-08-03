@@ -1,9 +1,9 @@
 // Auto-split from the original monolithic game.js as part of a
 // codebase reorganization pass -- see git history for prior structure.
 
-import { CRAFT_RECIPES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, FOODS, INGREDIENTS, MATERIALS, MEAT_ITEM, POTIONS, RECIPES, REVIVE_POTION, TOYS, craftEquipment, dustValueOf, sellValueOf } from '../data.js';
+import { CRAFT_RECIPES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, FOODS, INGREDIENTS, MATERIALS, MEAT_ITEM, PAYLOAD_EFFECTS, POTIONS, RECIPES, REVIVE_POTION, STAT_META, TOYS, craftEquipment, dustValueOf, sellValueOf } from '../data.js';
 import { petState, reviveDownPet } from '../engine.js';
-import { dustEquip, equipGradeMeta, sellEquip } from '../battle/equipment.js';
+import { dustEquip, equipGradeMeta, sellEquip, toggleEquipLock } from '../battle/equipment.js';
 import { throwLoadout, throwPool } from '../battle/extras.js';
 import { equipIconHtml, equipStatLine, potionIconHtml } from './pet-detail.js';
 import { $, G, battle, el, save, setText } from '../state.js';
@@ -194,16 +194,66 @@ export function renderEquipBag() {
     const g = equipGradeMeta(item);
     const slot = EQUIP_SLOTS[item.slotId];
     const iconHtml = equipIconHtml(item, slot.icon);
-    box.appendChild(invBox(iconHtml, item.lvlReq, () => {
-      showItemDetail(iconHtml, item.name, `${slot.name} · Lv.${item.lvlReq}<br>${equipStatLine(item)}`, `
-        <div class="eq-card-btns">
-          <button class="btn small" data-act="sell">💰 ${sellValueOf(item)}</button>
-          <button class="btn small" data-act="dust">🧬 ${dustValueOf(item)}</button>
-        </div>`);
-      $('modal-body').querySelector('[data-act="sell"]').onclick = () => { sellEquip(item); closeModal(); renderEquipBag(); };
-      $('modal-body').querySelector('[data-act="dust"]').onclick = () => { dustEquip(item); closeModal(); renderEquipBag(); renderCraft(); };
-    }, g.color));
+    const itemBox = invBox(iconHtml, item.lvlReq, () => showEquipDetail(item), g.color);
+    if (item.locked) itemBox.appendChild(el('div', 'inv-box-lock', '🔒'));
+    box.appendChild(itemBox);
   });
+}
+
+// Richer equipment detail card: graded header, a rough "power" total
+// (sum of the item's own stat lines — payload items roll one effect
+// instead of stats, so they show that instead), a per-stat breakdown,
+// a lock toggle, then the usual sell/dust actions.
+function showEquipDetail(item) {
+  const g = equipGradeMeta(item);
+  const slot = EQUIP_SLOTS[item.slotId];
+  const iconHtml = equipIconHtml(item, slot.icon);
+  const power = Object.values(item.stats || {}).reduce((s, v) => s + v, 0);
+
+  const statRows = Object.keys(item.stats || {})
+    .map(k => `<div class="eqd-stat-row"><span>${STAT_META[k].icon} ${STAT_META[k].name}</span><b>+${item.stats[k]}</b></div>`)
+    .join('');
+
+  let effectHtml = '';
+  if (item.effectId) {
+    const eff = PAYLOAD_EFFECTS[item.effectId];
+    const gi = EQUIP_GRADE_KEYS.indexOf(item.grade);
+    const mag = (eff.mag || [])[gi] || 0;
+    const pct = mag > 0 ? ` (${Math.round(mag * 100)}%)` : '';
+    effectHtml = `<div class="eqd-effect">${eff.icon} <b>${eff.name}${pct}</b><br><span class="muted">${eff.desc}</span></div>`;
+  }
+  const habitHtml = item.slotId === 'habit' ? `<div class="eqd-effect">${equipStatLine(item)}</div>` : '';
+
+  const renderBody = () => {
+    const body = $('modal-body');
+    if (!body) return;
+    const box = el('div', 'eqd');
+    box.style.setProperty('--grade', g.color);
+    box.innerHTML = `
+      <div class="eqd-head">
+        <div class="eqd-icon-box">${iconHtml}</div>
+        <div class="eqd-headinfo">
+          <div class="eqd-name">${item.name}</div>
+          <div class="eqd-slot">${slot.name} · Lv.${item.lvlReq}</div>
+          <div class="eqd-grade" style="color:${g.color}">${g.thai}</div>
+        </div>
+        <button class="eqd-lock${item.locked ? ' on' : ''}" id="eqd-lock-btn">${item.locked ? '🔒' : '🔓'}</button>
+      </div>
+      ${power ? `<div class="eqd-power">พลังรวม <b>${power}</b></div>` : ''}
+      ${statRows ? `<div class="eqd-stats">${statRows}</div>` : ''}
+      ${effectHtml}${habitHtml}
+      <div class="eq-card-btns">
+        <button class="btn small" data-act="sell">💰 ${sellValueOf(item)}</button>
+        <button class="btn small" data-act="dust">🧬 ${dustValueOf(item)}</button>
+      </div>`;
+    body.innerHTML = '';
+    body.appendChild(box);
+    $('eqd-lock-btn').onclick = () => { toggleEquipLock(item); renderBody(); renderEquipBag(); };
+    body.querySelector('[data-act="sell"]').onclick = () => { if (sellEquip(item)) { closeModal(); renderEquipBag(); } };
+    body.querySelector('[data-act="dust"]').onclick = () => { if (dustEquip(item)) { closeModal(); renderEquipBag(); renderCraft(); } };
+  };
+  modal(item.name, () => {});
+  renderBody();
 }
 
 // Spend Dust on one of a few fixed recipes to self-craft a random
