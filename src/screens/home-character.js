@@ -154,11 +154,15 @@ function onCharSlotDragMove(e) {
   if (!s.dragging) {
     if (Math.hypot(dx, dy) < CHAR_DRAG_THRESHOLD) return;
     s.dragging = true;
-    const r = s.sourceCard.getBoundingClientRect();
-    const ghost = s.sourceCard.cloneNode(true);
-    ghost.className = s.sourceCard.className + ' char-drag-ghost';
-    ghost.style.width = r.width + 'px';
-    ghost.style.height = r.height + 'px';
+    // Carry just the creature sprite under the finger (same idea as
+    // the battle potion/poison wheel's carried icon) instead of a
+    // clone of the whole stat card -- cloning the full card centered
+    // its large translucent body on the pointer with the actual
+    // artwork sitting well above it, so nothing that looked like "the
+    // pet" was ever actually under your finger.
+    const spriteWrap = s.sourceCard.querySelector('.pc-sprite-wrap');
+    const ghost = el('div', 'char-drag-ghost');
+    ghost.innerHTML = spriteWrap ? spriteWrap.innerHTML : s.sourceCard.innerHTML;
     document.body.appendChild(ghost);
     s.ghost = ghost;
     s.sourceCard.classList.add('char-drag-source');
