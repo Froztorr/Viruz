@@ -1408,10 +1408,6 @@ export const MUTATION_TREES = {
 };
 
 export function treeForMutation(mutation) { return MUTATION_TREES[mutation] || null; }
-export function nodeByIdMutation(mutation, id) {
-  const t = treeForMutation(mutation);
-  return t ? (t.nodes.find(n => n.id === id) || null) : null;
-}
 
 // ── STAGE-2 ART ──
 // The 14 upgraded species render from real per-attribute PNG art
