@@ -655,10 +655,15 @@ export function ailmentMods(unit) {
 // ── SPEED COUNTER ──
 // Called once per turn for a unit. Accrues based on the SPD gap with its
 // current opponent; at >= 1 the unit acts twice and the counter resets.
+// Uses modulo rather than a single `-= 1` so it always actually drops
+// back under 1 regardless of how big a single gain was (a big SPD gap,
+// or just slow drift over many turns landing on an overshoot) --
+// `-= 1` alone could leave it >= 1 forever, permanently showing "full"
+// on the gauge without the counter ever visibly resetting again.
 export function advanceSpeedCounter(unit, mySpd, foeSpd) {
   unit.spdCounter = (unit.spdCounter || 0) + speedGain(mySpd, foeSpd);
   if (unit.spdCounter >= 1) {
-    unit.spdCounter -= 1;
+    unit.spdCounter %= 1;
     return 2;      // double action this turn
   }
   return 1;
