@@ -1226,6 +1226,19 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .tl-slot-icon{font-size:30px}
 .tl-slot-label{font-size:13px;text-align:center;line-height:1.2}
 .tl-slot-count{font-size:12px;color:var(--gold)}
+/* ── SYNCHRONIZE (Tech Lab section) ── see renderSynchronize() in
+   src/screens/shop.js. Reuses .tl-slot's base look, just wider/taller
+   to fit a name + rarity + level line instead of one icon+label. */
+.sync-slots{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.sync-slot{width:120px;height:120px;flex:0 0 auto}
+.sync-slot-sprite{width:52px;height:52px;display:block;margin:0 auto 2px}
+.sync-plus{font-size:22px;color:var(--muted);flex:0 0 auto}
+.sync-base-label{font-size:14px;color:var(--muted);margin-bottom:6px}
+.sync-base-pick{display:flex;gap:10px;margin-bottom:12px}
+.sync-base-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:8px 4px;background:var(--panel2);border:2px solid var(--line);color:var(--muted)}
+.sync-base-btn.on{border-color:var(--cyan);color:var(--txt);box-shadow:0 0 12px rgba(55,230,255,.3)}
+.sync-base-sprite{width:44px;height:44px;display:block}
 .tl-odds{margin-bottom:12px;padding:8px 10px;background:var(--panel);border:1px solid var(--line)}
 .tl-odds-title{font-size:14px;color:var(--muted);margin-bottom:5px}
 .tl-odds-row{display:flex;justify-content:space-between;font-size:16px;padding:2px 0}

@@ -894,6 +894,22 @@ export const STAT_META = {
   vit:  { name:'VIT',  icon:'❤️', thai:'พลังชีวิต (HP สูงสุด)' },
 };
 
+// ── SYNCHRONIZE ──
+// Sacrificing 2 same-rarity, fully-leveled pets fuses them into 1 new
+// pet at the next rarity tier — a shortcut past the RNG of hatching a
+// rare egg, at the cost of two already-invested pets. Rolled once per
+// successful synchronize and stamped onto the resulting pet (see
+// synchronizePets() in engine.js) — a small permanent stat percentage,
+// on top of (not instead of) everything else that rarity/level/gear
+// already grant.
+export const SYNC_BONUSES = [
+  { stat:'atk',  pct:0.10, name:'ระบบโจมตีเสริม' },
+  { stat:'def',  pct:0.10, name:'เกราะเสริม' },
+  { stat:'spd',  pct:0.10, name:'วงจรเร่งความเร็ว' },
+  { stat:'crit', pct:0.15, name:'โปรเซสเซอร์คริติคอล' },
+  { stat:'eva',  pct:0.15, name:'ระบบพรางตัว' },
+];
+
 // ── EQUIPMENT ──
 // 3 slots per pet, named after the real components of a computer
 // virus. Each slot has a flavor bias (which stats it rolls more

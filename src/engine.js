@@ -13,7 +13,7 @@ import {
   MUTATION_KEYS, MUTATION_ROLL, treeForMutation,
   bossPoolForMap, BOSS_TUNING,
   speedGain, SKILL_TIER_BONUS,
-  HABIT_TYPES, habitColorMult, HABIT_CARD_DROP_CHANCE } from './data.js';
+  HABIT_TYPES, habitColorMult, HABIT_CARD_DROP_CHANCE, SYNC_BONUSES } from './data.js';
 
 // ── Helpers ──
 export function uid() {
@@ -115,6 +115,11 @@ export function statsOf(pet) {
   const stageMult = [1, 1.5, 2.0][pet.stage] || 1;
   const growth = 1 + rar.statPL * 0.18;
   const loyMult = loyaltyTier(pet.loyalty).mult;
+  // A pet born from Synchronize (see synchronizePets() below) carries
+  // one small permanent percentage bonus on a single stat, on top of
+  // everything else here.
+  const sb = pet.syncBonus;
+  const syncMult = k => (sb && sb.stat === k) ? 1 + sb.pct : 1;
 
   // HP_SCALE compresses base HP, which is fine at high level but leaves
   // Lv1-3 creatures with 8-23 HP — less than a single normal hit, so
@@ -144,12 +149,12 @@ export function statsOf(pet) {
   const eq = equipmentBonuses(pet);
 
   const out = {
-    atk: Math.max(1, Math.floor(raw.atk * am.atk * stageMult * loyMult) + tb.atk + eq.atk),
-    def: Math.max(1, Math.floor(raw.def * am.def * stageMult * loyMult) + tb.def + eq.def),
-    spd: Math.max(1, Math.floor(raw.spd * am.spd * stageMult * loyMult) + tb.spd + eq.spd),
+    atk: Math.max(1, Math.floor(raw.atk * am.atk * stageMult * loyMult * syncMult('atk')) + tb.atk + eq.atk),
+    def: Math.max(1, Math.floor(raw.def * am.def * stageMult * loyMult * syncMult('def')) + tb.def + eq.def),
+    spd: Math.max(1, Math.floor(raw.spd * am.spd * stageMult * loyMult * syncMult('spd')) + tb.spd + eq.spd),
     vit: Math.max(8, Math.floor(raw.vit * am.mhp * stageMult * loyMult) + tb.vit + eq.vit),
-    crit: Math.max(1, Math.round(raw.crit + tb.crit + eq.crit)),
-    eva:  Math.max(1, Math.round(raw.eva  + tb.eva  + eq.eva)),
+    crit: Math.max(1, Math.round(raw.crit * syncMult('crit') + tb.crit + eq.crit)),
+    eva:  Math.max(1, Math.round(raw.eva  * syncMult('eva')  + tb.eva  + eq.eva)),
     int:  Math.max(10, Math.floor(raw.int * loyMult) + tb.int),
   };
   // `mhp` kept as an alias so older call sites keep working.
@@ -769,6 +774,42 @@ export function evolve(pet, force = false, mutationRoll = null) {
   }
   pet.hp = statsOf(pet).mhp;
   return next;
+}
+
+// ── SYNCHRONIZE ──
+// An alternate, faster path to a higher rarity than hatching a new egg
+// and hoping: sacrifice 2 pets of the SAME rarity, both already at that
+// rarity's max level, to fuse them into 1 new pet one rarity tier
+// higher. The result is stamped `synced` and can never be fed into
+// another Synchronize itself — without that, a single starting pair
+// could bootstrap all the way to Mythic from nothing but grinding one
+// rarity over and over.
+export function canSynchronize(petA, petB) {
+  if (!petA || !petB) return { ok:false, reason:'เลือก VIRUZ 2 ตัว' };
+  if (petA.uid === petB.uid) return { ok:false, reason:'ต้องเป็น VIRUZ คนละตัวกัน' };
+  if (petA.synced || petB.synced) return { ok:false, reason:'ตัวที่มาจากการซิงค์ครั้งก่อน ใช้ซิงค์ซ้ำไม่ได้' };
+  if (petA.rarity !== petB.rarity) return { ok:false, reason:'ต้องเป็นเรริตี้เดียวกันทั้งคู่' };
+  const rarIdx = RARITY_KEYS.indexOf(petA.rarity);
+  if (rarIdx === -1 || rarIdx >= RARITY_KEYS.length - 1) return { ok:false, reason:'อยู่เรริตี้สูงสุดแล้ว ซิงค์ต่อไม่ได้' };
+  const capLv = RARITY[petA.rarity].maxLv;
+  if (petA.level < capLv || petB.level < capLv) return { ok:false, reason:`ต้องถึง Lv.${capLv} (สูงสุดของเรริตี้นี้) ทั้งคู่` };
+  return { ok:true, nextRarity: RARITY_KEYS[rarIdx + 1], startLevel: capLv };
+}
+
+// `baseSpeciesId`/`baseAttr` pick which parent's identity (species +
+// attribute) the fused pet keeps — the other parent contributes
+// nothing but its level/rarity toward the eligibility check above.
+export function synchronizePets(petA, petB, baseSpeciesId, baseAttr) {
+  const chk = canSynchronize(petA, petB);
+  if (!chk.ok) return null;
+  const pet = createPet(baseSpeciesId, chk.nextRarity, baseAttr);
+  pet.level = chk.startLevel;
+  pet.exp = 0;
+  pet.expNeed = TUNING.expCurve(pet.level);
+  pet.synced = true;
+  pet.syncBonus = { ...SYNC_BONUSES[Math.floor(Math.random() * SYNC_BONUSES.length)] };
+  pet.hp = statsOf(pet).mhp;
+  return pet;
 }
 
 // ── ANTIVIRUZ SPAWN ──
