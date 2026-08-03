@@ -1147,9 +1147,8 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .inv-tab .it-ic{font-size:19px;line-height:1}
 .inv-tab.on{background:linear-gradient(160deg,var(--magenta),#8a3ce0);color:#fff;
   border-color:transparent;box-shadow:0 3px 12px rgba(214,40,158,.4)}
-.inv-viewport{overflow:hidden}
-.inv-track{display:flex;transition:transform .25s ease}
-.inv-page{flex:0 0 100%;min-width:0;padding:2px}
+.inv-page{display:none;padding:2px}
+.inv-page.on{display:block}
 .inv-subtitle{font-family:var(--pixel);font-size:16px;color:var(--cyan);margin:10px 0 6px}
 .inv-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .inv-box{position:relative;aspect-ratio:1;background:var(--panel2);
@@ -1172,12 +1171,12 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
 .throw-loadout-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
 .throw-loadout-chip{position:relative;display:flex;align-items:center;gap:6px;
   padding:6px 10px;background:var(--panel2);border:1px solid var(--line);
-  border-radius:6px;cursor:pointer;opacity:.55}
+  border-radius:6px;cursor:pointer;opacity:.75}
 .throw-loadout-chip.on{opacity:1;border-color:var(--cyan);box-shadow:0 0 8px rgba(55,230,255,.25)}
 .throw-loadout-chip:active{transform:scale(.96)}
 .tlc-icon{font-size:19px}
-.tlc-name{font-size:14px;color:var(--muted)}
-.throw-loadout-chip.on .tlc-name{color:#eaf4ff}
+.tlc-name{font-size:14px;color:var(--txt);font-weight:500}
+.throw-loadout-chip.on .tlc-name{color:var(--cyan)}
 .tlc-n{position:absolute;top:-6px;right:-6px;width:17px;height:17px;border-radius:50%;
   background:var(--cyan);color:#031018;font-size:11px;font-weight:bold;
   display:flex;align-items:center;justify-content:center}
@@ -2650,19 +2649,19 @@ img.bu-sprite.is-art2{--raster-mult:2}
     </div>
     <div id="inv-viewport" class="inv-viewport">
       <div id="inv-track" class="inv-track">
-        <div class="inv-page">
+        <div class="inv-page on" data-page="0">
           <div id="inv-grid-items" class="inv-grid"></div>
         </div>
-        <div class="inv-page">
+        <div class="inv-page" data-page="1">
           <div id="inv-grid-potions" class="inv-grid"></div>
         </div>
-        <div class="inv-page">
+        <div class="inv-page" data-page="2">
           <div class="inv-subtitle">// อุปกรณ์ //</div>
           <div id="inv-grid-parts" class="inv-grid"></div>
           <div class="inv-subtitle">// คราฟต์ — DUST: <span id="craft-dust">0</span> //</div>
           <div id="inv-grid-craft" class="inv-grid"></div>
         </div>
-        <div class="inv-page">
+        <div class="inv-page" data-page="3">
           <div class="inv-subtitle">// วงล้อยา (ปาให้ตัวเอง) — เลือกได้สูงสุด 5 //</div>
           <div id="inv-loadout-potion" class="throw-loadout-grid"></div>
           <div class="inv-subtitle">// วงล้อพิษ (ปาใส่ศัตรู) — เลือกได้สูงสุด 5 //</div>

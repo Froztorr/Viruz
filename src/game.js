@@ -3169,15 +3169,14 @@ function renderCraft() {
   });
 }
 
-// ── Inventory tab bar — same swipe/tap pattern as the pet detail
-// modal's tab track, just on a free-scrolling page instead of a
-// fixed-height overlay.
+// ── Inventory tab bar — each category is its own separate page
+// (.inv-page.on), fully display:none'd when inactive so an
+// oversized/scrolled page can never bleed into a neighboring tab
+// (swipe gesture wired the same way as the pet detail modal's tabs).
 let invPage = 0;
 function goInvPage(i) {
-  const track = $('inv-track');
-  if (!track) return;
   invPage = Math.max(0, Math.min(3, i));
-  track.style.transform = `translateX(-${invPage * 100}%)`;
+  document.querySelectorAll('.inv-page').forEach((p, idx) => p.classList.toggle('on', idx === invPage));
   document.querySelectorAll('.inv-tab').forEach((t, idx) => t.classList.toggle('on', idx === invPage));
 }
 function wireInventoryTabs() {
