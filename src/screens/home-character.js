@@ -125,6 +125,15 @@ export function wireCharSlotDrag() {
   });
   window.addEventListener('pointermove', onCharSlotDragMove);
   window.addEventListener('pointerup', onCharSlotDragEnd);
+  // A real touch drag can be interrupted without ever firing pointerup
+  // (a system swipe gesture, an incoming notification, switching apps,
+  // a multi-touch quirk) -- when that happens the browser fires
+  // pointercancel/lostpointercapture instead, and if nothing cleaned up
+  // on those too, the floating sprite ghost (a position:fixed child of
+  // <body>, not scoped to any one screen) would be stranded on screen
+  // forever, showing through every other page the player visits.
+  window.addEventListener('pointercancel', onCharSlotDragCancel);
+  window.addEventListener('lostpointercapture', onCharSlotDragCancel);
 }
 // Team and bench sit in separate stacked sections that don't both fit
 // on a typical phone screen at once (each pet-card row alone can run
@@ -186,15 +195,30 @@ function onCharSlotDragMove(e) {
     targetCard.classList.add('char-drop-hover');
   }
 }
-function onCharSlotDragEnd(e) {
+// Shared teardown for every way a drag can end -- a real drop
+// (pointerup), or an aborted gesture (pointercancel/lostpointercapture)
+// -- so the ghost/dimmed-source/hover-highlight can never survive past
+// the gesture that created them. Returns the drag-state snapshot (or
+// null if this pointerId wasn't the one dragging) so callers that need
+// to know whether a real drag happened can still check it after
+// charDragState itself has been cleared.
+function endCharDrag(pointerId) {
   const s = charDragState;
-  if (!s || e.pointerId !== s.pointerId) return;
+  if (!s || pointerId !== s.pointerId) return null;
   charDragState = null;
   clearInterval(charAutoScrollTimer);
   charAutoScrollTimer = null;
   if (s.ghost) s.ghost.remove();
   if (s.sourceCard) s.sourceCard.classList.remove('char-drag-source');
   document.querySelectorAll('.char-drop-hover').forEach(c => c.classList.remove('char-drop-hover'));
+  return s;
+}
+function onCharSlotDragCancel(e) {
+  endCharDrag(e.pointerId);
+}
+function onCharSlotDragEnd(e) {
+  const s = endCharDrag(e.pointerId);
+  if (!s) return;
   if (!s.dragging) return; // plain tap -- let the card's own onclick handle it
   const under = document.elementFromPoint(e.clientX, e.clientY);
   const targetCard = under && under.closest('.pet-card');
