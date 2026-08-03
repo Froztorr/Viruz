@@ -1453,9 +1453,6 @@ function charSlotIndexOf(cardEl) {
   if (benchWrap) { const i = Array.from(benchWrap.children).indexOf(cardEl); if (i !== -1) return 3 + i; }
   return -1;
 }
-function petAtCharSlot(idx) {
-  return idx < 3 ? (activeTeam()[idx] || null) : (benchTeam()[idx - 3] || null);
-}
 const CHAR_DRAG_THRESHOLD = 12;
 function wireCharSlotDrag() {
   ['char-team-slots', 'char-bench-slots'].forEach(id => {
@@ -1467,6 +1464,7 @@ function wireCharSlotDrag() {
       const idx = charSlotIndexOf(card);
       if (idx === -1) return;
       charDragState = { idx, startX: e.clientX, startY: e.clientY, dragging: false, ghost: null, pointerId: e.pointerId, sourceCard: card };
+      try { card.setPointerCapture(e.pointerId); } catch (err) {}
     });
   });
   window.addEventListener('pointermove', onCharSlotDragMove);
@@ -1509,6 +1507,11 @@ function onCharSlotDragMove(e) {
     s.ghost = ghost;
     s.sourceCard.classList.add('char-drag-source');
   }
+  // Once a real drag has started, stop the gesture from also being
+  // read as a page-scroll — touch-action:none on the cards (see CSS)
+  // is the main guard, this is just a belt-and-suspenders backstop so
+  // the ghost never stutters/loses tracking mid-drag.
+  if (e.cancelable) e.preventDefault();
   if (s.ghost) {
     s.ghost.style.left = e.clientX + 'px';
     s.ghost.style.top = e.clientY + 'px';
@@ -1538,14 +1541,23 @@ function onCharSlotDragEnd(e) {
   if (!targetCard) return;
   const toIdx = charSlotIndexOf(targetCard);
   if (toIdx === -1 || toIdx === s.idx) return;
-  const petA = petAtCharSlot(s.idx);
-  const petB = petAtCharSlot(toIdx);
-  const setSlot = (idx, uid) => {
-    if (idx < 3) G.teamIds[idx] = uid;
-    else { G.benchIds = G.benchIds || []; G.benchIds[idx - 3] = uid; }
-  };
-  setSlot(s.idx, petB ? petB.uid : undefined);
-  setSlot(toIdx, petA ? petA.uid : undefined);
+  // Rebuild both arrays from scratch out of a padded 5-slot model
+  // (3 team + 2 bench, empty slots as null) instead of poking a raw
+  // index directly into G.teamIds/G.benchIds — those arrays are
+  // normally *compacted* (no gaps) by every other code path, so a
+  // partial write that left a hole behind (e.g. dragging into an
+  // empty slot) would silently desync compacted display-index reads
+  // from raw storage-index writes on the very next drag, duplicating
+  // one pet and dropping another. Always deriving both arrays fresh
+  // from actual pet references here makes that class of bug
+  // impossible regardless of how many empty slots are involved.
+  const slots = [0, 1, 2].map(i => activeTeam()[i] || null)
+    .concat([0, 1].map(i => benchTeam()[i] || null));
+  const tmp = slots[s.idx];
+  slots[s.idx] = slots[toIdx];
+  slots[toIdx] = tmp;
+  G.teamIds = slots.slice(0, 3).filter(Boolean).map(p => p.uid);
+  G.benchIds = slots.slice(3).filter(Boolean).map(p => p.uid);
   save();
   renderCharacter();
   renderHUD();
