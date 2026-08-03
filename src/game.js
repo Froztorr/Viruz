@@ -244,6 +244,7 @@ async function boot() {
   wireCareGame();
   wirePetDetail();
   wireInventoryTabs();
+  wireEquipControls();
   wireThrowPouches();
   wireCharSlotDrag();
   startTopBarClock();
@@ -3112,7 +3113,22 @@ function useRevivePotion() {
 // Item boxes in the equipment bag — tapping one shows its full stats
 // plus sell/dust buttons (each can be sold for Bitz or dusted
 // (disenchanted) into Dust, the crafting currency used below).
+// Sort compare for the equipment bag grid. With no explicit mode
+// chosen (G.equipSortMode falsy — the "not selected" state, toggled
+// back to by tapping an active chip again) it defaults to rarity
+// first, then level, matching the un-sorted default requested.
+function equipSortCompare(a, b) {
+  const gi = x => EQUIP_GRADE_KEYS.indexOf(x.grade);
+  switch (G.equipSortMode) {
+    case 'level': return (b.lvlReq - a.lvlReq) || (gi(b) - gi(a));
+    case 'value': return sellValueOf(b) - sellValueOf(a);
+    default: return (gi(b) - gi(a)) || (b.lvlReq - a.lvlReq);
+  }
+}
 function renderEquipBag() {
+  document.querySelectorAll('#eq-sort-row .chip-btn').forEach(btn => {
+    btn.classList.toggle('on', G.equipSortMode === btn.dataset.sort);
+  });
   const box = $('inv-grid-parts');
   if (!box) return;
   box.innerHTML = '';
@@ -3121,7 +3137,7 @@ function renderEquipBag() {
     box.innerHTML = `<div class="inv-empty-msg">ยังไม่มีอุปกรณ์ — ดรอปจากศัตรู หรือคราฟต์เองด้านล่าง</div>`;
     return;
   }
-  const sorted = [...bag].sort((a,b) => EQUIP_GRADE_KEYS.indexOf(b.grade) - EQUIP_GRADE_KEYS.indexOf(a.grade));
+  const sorted = [...bag].sort(equipSortCompare);
   sorted.forEach(item => {
     const g = equipGradeMeta(item);
     const slot = EQUIP_SLOTS[item.slotId];
@@ -3175,7 +3191,7 @@ function renderCraft() {
 // (swipe gesture wired the same way as the pet detail modal's tabs).
 let invPage = 0;
 function goInvPage(i) {
-  invPage = Math.max(0, Math.min(3, i));
+  invPage = Math.max(0, Math.min(2, i));
   document.querySelectorAll('.inv-page').forEach((p, idx) => p.classList.toggle('on', idx === invPage));
   document.querySelectorAll('.inv-tab').forEach((t, idx) => t.classList.toggle('on', idx === invPage));
 }
@@ -4547,6 +4563,49 @@ function dustEquip(item) {
   G.dust = (G.dust || 0) + dustValueOf(item);
   save();
   toast(`🧬 สลาย ${item.name} +${dustValueOf(item)} Dust`);
+}
+
+// Bulk-sell button — off by default (G.sellAllIncludeRare falsy) only
+// ever touches the lowest/"normal" grade (script), so it can't
+// accidentally liquidate rare gear; the checkbox opts into selling
+// every grade in the bag instead, and always asks to confirm first
+// since that's the one destructive path here.
+function sellAllEquip() {
+  const bag = G.equipBag || [];
+  const includeRare = !!G.sellAllIncludeRare;
+  const targets = includeRare ? bag.slice() : bag.filter(x => x.grade === EQUIP_GRADE_KEYS[0]);
+  if (!targets.length) { toast('ไม่มีไอเทมให้ขาย'); return; }
+  const total = targets.reduce((s, x) => s + sellValueOf(x), 0);
+  const label = includeRare ? 'ทุกเกรด' : EQUIP_GRADES[EQUIP_GRADE_KEYS[0]].thai;
+  if (!confirm(`ขายอุปกรณ์ ${targets.length} ชิ้น (${label}) รวม 💰${total} Bitz?`)) return;
+  const uids = new Set(targets.map(x => x.uid));
+  G.equipBag = bag.filter(x => !uids.has(x.uid));
+  G.bitz += total;
+  save();
+  toast(`💰 ขาย ${targets.length} ชิ้น +${total} Bitz`);
+  renderEquipBag();
+}
+function updateSellAllBtnLabel() {
+  const btn = $('sellall-btn');
+  if (!btn) return;
+  btn.textContent = G.sellAllIncludeRare ? '💰 ขายทั้งหมด (ทุกเกรด)' : '💰 ขายทั้งหมด (เกรดต่ำสุด)';
+}
+function wireEquipControls() {
+  document.querySelectorAll('#eq-sort-row .chip-btn').forEach(btn => {
+    btn.onclick = () => {
+      G.equipSortMode = (G.equipSortMode === btn.dataset.sort) ? null : btn.dataset.sort;
+      save();
+      renderEquipBag();
+    };
+  });
+  const toggle = $('sellall-rare-toggle');
+  if (toggle) {
+    toggle.checked = !!G.sellAllIncludeRare;
+    toggle.onchange = () => { G.sellAllIncludeRare = toggle.checked; save(); updateSellAllBtnLabel(); };
+  }
+  const btn = $('sellall-btn');
+  if (btn) btn.onclick = sellAllEquip;
+  updateSellAllBtnLabel();
 }
 
 // ═══════════════ LOG / TOAST / MODAL ═══════════════

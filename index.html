@@ -1164,6 +1164,14 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
   background:rgba(0,0,0,.65);border-radius:4px;padding:0 4px;line-height:1.4}
 .inv-empty-msg{grid-column:1/-1;color:var(--muted);font-size:15px;padding:14px;text-align:center}
 
+/* Equipment tab — sort chips + sell-all row (see renderEquipBag()/
+   sellAllEquip() in game.js). "on" chip toggles off back to the
+   default sort (rarity desc, then level desc) when tapped again. */
+.eq-sort-row{display:flex;align-items:center;gap:6px;margin:0 0 8px;flex-wrap:wrap}
+.eq-sort-label{font-size:14px;color:var(--muted)}
+.eq-sellall-row{display:flex;align-items:center;justify-content:space-between;
+  gap:8px;margin:10px 0 4px;flex-wrap:wrap}
+
 /* ── WHEEL LOADOUT (Inventory tab) ──
    Tap to add/remove an item from that pouch's up-to-5 wheel — the
    numbered badge is the order it'll sit around the wheel. See
@@ -2629,7 +2637,7 @@ img.bu-sprite.is-art2{--raster-mult:2}
   </section>
 
   <!-- ═══ INVENTORY ═══
-       3 swipeable sub-tabs (Items/Potions/Accessory Parts), same
+       3 swipeable sub-tabs (Items/Potions+Wheel/Equipment), same
        tab+track+swipe pattern as the pet detail modal (see .pd-tabs/
        .pd-viewport/.pd-track and wireInventoryTabs() in game.js). Each
        page is a dense grid of small square boxes (icon + a single
@@ -2645,7 +2653,6 @@ img.bu-sprite.is-art2{--raster-mult:2}
       <button class="inv-tab on" data-page="0"><span class="it-ic">🎒</span>ไอเทม</button>
       <button class="inv-tab" data-page="1"><span class="it-ic">🧪</span>ยา</button>
       <button class="inv-tab" data-page="2"><span class="it-ic">⚔️</span>อุปกรณ์</button>
-      <button class="inv-tab" data-page="3"><span class="it-ic">🎡</span>วงล้อ</button>
     </div>
     <div id="inv-viewport" class="inv-viewport">
       <div id="inv-track" class="inv-track">
@@ -2654,18 +2661,26 @@ img.bu-sprite.is-art2{--raster-mult:2}
         </div>
         <div class="inv-page" data-page="1">
           <div id="inv-grid-potions" class="inv-grid"></div>
-        </div>
-        <div class="inv-page" data-page="2">
-          <div class="inv-subtitle">// อุปกรณ์ //</div>
-          <div id="inv-grid-parts" class="inv-grid"></div>
-          <div class="inv-subtitle">// คราฟต์ — DUST: <span id="craft-dust">0</span> //</div>
-          <div id="inv-grid-craft" class="inv-grid"></div>
-        </div>
-        <div class="inv-page" data-page="3">
           <div class="inv-subtitle">// วงล้อยา (ปาให้ตัวเอง) — เลือกได้สูงสุด 5 //</div>
           <div id="inv-loadout-potion" class="throw-loadout-grid"></div>
           <div class="inv-subtitle">// วงล้อพิษ (ปาใส่ศัตรู) — เลือกได้สูงสุด 5 //</div>
           <div id="inv-loadout-poison" class="throw-loadout-grid"></div>
+        </div>
+        <div class="inv-page" data-page="2">
+          <div class="inv-subtitle">// อุปกรณ์ //</div>
+          <div class="eq-sort-row" id="eq-sort-row">
+            <span class="eq-sort-label">เรียงตาม:</span>
+            <button class="chip-btn" data-sort="level">เลเวล</button>
+            <button class="chip-btn" data-sort="rarity">หายาก</button>
+            <button class="chip-btn" data-sort="value">มูลค่า</button>
+          </div>
+          <div id="inv-grid-parts" class="inv-grid"></div>
+          <div class="eq-sellall-row">
+            <label class="ps-toggle"><input type="checkbox" id="sellall-rare-toggle"><span>รวมเกรดอื่นด้วย</span></label>
+            <button class="btn small" id="sellall-btn">💰 ขายทั้งหมด</button>
+          </div>
+          <div class="inv-subtitle">// คราฟต์ — DUST: <span id="craft-dust">0</span> //</div>
+          <div id="inv-grid-craft" class="inv-grid"></div>
         </div>
       </div>
     </div>
