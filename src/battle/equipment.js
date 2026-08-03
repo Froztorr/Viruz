@@ -1,0 +1,270 @@
+// Auto-split from the original monolithic game.js as part of a
+// codebase reorganization pass -- see git history for prior structure.
+
+import { AILMENTS, ANTIVIRUZ, BOSS_TUNING, CODE_PART_IDS, EQUIP_DROP_CHANCE, EQUIP_GRADES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, HABIT_CARD_DROP_CHANCE, MATERIALS, MEAT_DROP_CHANCE, MEAT_ITEM, PAYLOAD_EFFECTS, SPECIES, codePartDropChance, craftEquipment, dustValueOf, rollEquipment, sellValueOf } from '../data.js';
+import { addAilment, habitOf, maxMP, restoreMP, statsOf, uid } from '../engine.js';
+import { healPop } from './combat.js';
+import { startArena, startBossFight, startRaidFight, startZone } from './encounters.js';
+import { checkBattleEnd } from './turn-loop.js';
+import { renderEquipBag } from '../screens/inventory.js';
+import { $, G, battle, save } from '../state.js';
+import { blog, toast } from '../ui-shell.js';
+
+// ═══════════════ EQUIPMENT: battle procs ═══════════════
+// Returns { item, affix } for the equipped item (if any) whose attr
+// affinity matches this pet's OWN attribute, or null. A green (speed)
+// item is a speed-themed named item — it only procs on a green pet.
+function payloadEffectOf(pet) {
+  const item = pet && pet.equip && pet.equip.payload;
+  if (!item || !item.effectId) return null;
+  const eff = PAYLOAD_EFFECTS[item.effectId];
+  if (!eff) return null;
+  const gi = EQUIP_GRADE_KEYS.indexOf(item.grade);
+  return { item, eff, mag: (eff.mag || [])[gi] || 0 };
+}
+
+// Resets every per-fight fighter field at the start of a battle: the
+// first-strike flag (Overclock/Adaptive Strike are consumed on that
+// fighter's first attack, see firstStrikeProc() below; Data Leech/Kill
+// Reboot/Toxin Injector are per-hit, handled in applyPayloadOnHit()
+// instead), MP, the speed/crit gauges, ailments (poison/frenzy now
+// persist until the fight ends, so a stale stack from a PREVIOUS fight
+// must not survive into this one), and the block/cooldown trackers.
+// Previously only startBossFight/startZone hand-rolled this reset
+// inline and startRaidFight/startArena skipped it entirely — a
+// leftover poison/frenzy stack (or a full crit gauge) from a fight that
+// just ended could otherwise carry straight into the next one.
+export function applyBattleStartEquip(team) {
+  (team || []).forEach(pet => {
+    if (!pet) return;
+    pet._firstStrikeUsed = false;
+    pet.mp = statsOf(pet).int;
+    pet.spdCounter = 0;
+    pet.critGauge = 0;
+    pet.ailments = [];
+    pet._shield = 0;
+    pet._cooldowns = {};
+    pet._habitAtkCount = 0;
+    pet._habitUndeadUsed = false;
+    pet._tookDamageThisTurn = false;
+  });
+}
+
+// Overclock (guaranteed crit) / Adaptive Strike (guaranteed double
+// hit) — consumed on the fighter's first ACTUAL attack roll of the
+// battle (basic or special), not on non-damaging specials. Works for
+// any pet regardless of attribute — only the Payload slot matters.
+function firstStrikeProc(attacker) {
+  if (!attacker || attacker._firstStrikeUsed) return null;
+  const info = payloadEffectOf(attacker);
+  if (!info) return null;
+  if (info.item.effectId === 'overclock') {
+    attacker._firstStrikeUsed = true;
+    blog(`⚔️ ${attacker.name} — ${info.eff.name}!`, 'buff');
+    return { forceCrit: true };
+  }
+  if (info.item.effectId === 'adaptive') {
+    attacker._firstStrikeUsed = true;
+    blog(`🌪️ ${attacker.name} — ${info.eff.name}!`, 'buff');
+    return { forceHits: 2 };
+  }
+  return null;
+}
+
+// Merges the equipment first-strike proc with the two Habit Type
+// passives that force a guaranteed crit rather than reducing to a flat
+// stat multiplier: Insect (every 5th attack this fight) and Goblin (any
+// attack against a target under 50% HP). Equipment wins if it also has
+// something queued — kept simple, no stacking of forced outcomes.
+export function buildAttackProc(attacker, target) {
+  const equipProc = firstStrikeProc(attacker);
+  if (equipProc) return equipProc;
+  const hab = habitOf(attacker);
+  if (!hab) return null;
+  if (hab.type === 'insect') {
+    attacker._habitAtkCount = (attacker._habitAtkCount || 0) + 1;
+    if (attacker._habitAtkCount % 5 === 0) return { forceCrit: true };
+  }
+  if (hab.type === 'goblin' && target && target.hp > 0) {
+    const mhp = statsOf(target).vit;
+    if (target.hp / mhp < 0.5) return { forceCrit: true };
+  }
+  return null;
+}
+
+// Data Leech (lifesteal) / Kill Reboot (MP on kill) / Toxin Injector
+// (poison chance) — all per-hit, checked after damage lands. `target`
+// is expected to already have res.dmg subtracted from its hp.
+export function applyPayloadOnHit(attacker, target, res, side) {
+  if (!res || res.evaded || !res.dmg) return;
+  const info = payloadEffectOf(attacker);
+  if (!info || info.mag <= 0) return;
+  if (info.item.effectId === 'leech') {
+    const heal = Math.max(1, Math.floor(res.dmg * info.mag));
+    const mx = statsOf(attacker).vit;
+    attacker.hp = Math.min(mx, attacker.hp + heal);
+    healPop(attacker, heal);
+    blog(`🩸 ${attacker.name} — ${info.eff.name}: +${heal} HP`, 'buff');
+  } else if (info.item.effectId === 'manaregen' && target.hp <= 0) {
+    const before = attacker.mp || 0;
+    restoreMP(attacker, Math.floor(maxMP(attacker) * info.mag));
+    if (attacker.mp > before) blog(`🔌 ${attacker.name} — ${info.eff.name}: +${attacker.mp - before} MP`, 'buff');
+  } else if (info.item.effectId === 'toxin' && target.hp > 0 && Math.random() < info.mag) {
+    addAilment(target, { ...AILMENTS.poison, turns: 2 });
+    blog(`☠️ ${target.name} ติดพิษจาก ${attacker.name}!`, side);
+  }
+}
+
+// ═══════════════ EQUIPMENT: drops, sell, dust, craft ═══════════════
+// Rolled once per newly-credited enemy kill (see checkBattleEnd).
+// Capped at the dropping enemy's own level, per spec.
+export function rollEquipDrop(enemy) {
+  if (!enemy || Math.random() >= EQUIP_DROP_CHANCE) return;
+  // Bosses roll one grade tier above what their level alone would
+  // give — reuses the Deep Craft weighting as a stand-in "better loot"
+  // table rather than inventing a new one.
+  const item = enemy.isBoss
+    ? craftEquipment('deep', Math.max(1, enemy.level || 1))
+    : rollEquipment(Math.max(1, enemy.level || 1));
+  G.equipBag = G.equipBag || [];
+  G.equipBag.push(item);
+  const slot = EQUIP_SLOTS[item.slotId];
+  toast(`🎁 ${item.name} (Lv.${item.lvlReq})`);
+  blog(`${slot.icon} ดรอปอุปกรณ์: ${item.name}`, 'win');
+}
+
+// Evolution materials — Code Parts drop from any Lv1-50 kill (5%→50%,
+// scaled by the enemy's level), Malware Cores ONLY from a region boss
+// (25% flat, on top of everything else it drops). See MATERIALS/
+// codePartDropChance()/BOSS_TUNING in data.js.
+export function addMaterial(matId, n = 1) {
+  G.materials = G.materials || {};
+  G.materials[matId] = (G.materials[matId] || 0) + n;
+}
+export function rollMaterialDrop(enemy) {
+  if (!enemy) return;
+  if (Math.random() < codePartDropChance(Math.max(1, enemy.level || 1))) {
+    const matId = CODE_PART_IDS[Math.floor(Math.random() * CODE_PART_IDS.length)];
+    addMaterial(matId);
+    const m = MATERIALS[matId];
+    toast(`${m.icon} ${m.name}`);
+    blog(`${m.icon} ดรอป: ${m.name}`, 'win');
+  }
+  if (enemy.isBoss && Math.random() < BOSS_TUNING.malwareCoreChance) {
+    addMaterial('malware_core');
+    const m = MATERIALS.malware_core;
+    toast(`${m.icon} ${m.name}!`);
+    blog(`${m.icon} บอสดรอป: ${m.name}!`, 'win');
+  }
+}
+
+// Habit/Data-Sync card — low-rate drop named after whichever wild
+// ANTIVIRUZ enemy (world zone, boss, or raid guard — anything with a
+// habitColor/habitType fixed on its ANTIVIRUZ entry) landed the kill.
+// An Arena opponent (built from a player SPECIES, not ANTIVIRUZ) has no
+// such entry and never drops one. Lands in the same G.equipBag as
+// regular gear — same slotId-keyed equip/unequip flow, see equipItem().
+export function rollHabitCard(enemy) {
+  if (!enemy || Math.random() >= HABIT_CARD_DROP_CHANCE) return;
+  const def = ANTIVIRUZ[enemy.speciesId];
+  if (!def || !def.habitColor) return;
+  const item = {
+    uid: uid(), slotId: 'habit', sourceId: enemy.speciesId,
+    name: `${def.name} Card`, color: def.habitColor, type: def.habitType,
+    grade: 'trojan', lvlReq: 1,
+  };
+  G.equipBag = G.equipBag || [];
+  G.equipBag.push(item);
+  toast(`🎴 ${item.name}`);
+  blog(`🎴 ดรอปการ์ด: ${item.name}`, 'win');
+}
+
+// Meat is the one cooking ingredient that can't be bought — hunting
+// is the only source, same drop-per-kill shape as equipment above.
+export function rollMeatDrop(enemy) {
+  if (!enemy || Math.random() >= MEAT_DROP_CHANCE) return;
+  G.ingredients = G.ingredients || { veg:0, bun:0, meat:0 };
+  G.ingredients.meat = (G.ingredients.meat || 0) + 1;
+  toast(`${MEAT_ITEM.icon} ได้ ${MEAT_ITEM.name}`);
+  blog(`${MEAT_ITEM.icon} ดรอปวัตถุดิบ: ${MEAT_ITEM.name}`, 'win');
+}
+
+export function equipGradeMeta(item) { return EQUIP_GRADES[item.grade] || EQUIP_GRADES.script; }
+
+// Equip `item` (from G.equipBag) onto `pet`'s slot. Whatever was
+// there before goes back into the bag — nothing is ever destroyed by
+// swapping.
+export function equipItem(pet, item) {
+  if (!pet || !item) return;
+  pet.equip = pet.equip || { payload:null, exploit:null, rootkit:null, habit:null };
+  const prev = pet.equip[item.slotId];
+  G.equipBag = (G.equipBag || []).filter(x => x.uid !== item.uid);
+  if (prev) G.equipBag.push(prev);
+  pet.equip[item.slotId] = item;
+  save();
+}
+export function unequipItem(pet, slotId) {
+  if (!pet || !pet.equip) return;
+  const item = pet.equip[slotId];
+  if (!item) return;
+  pet.equip[slotId] = null;
+  G.equipBag = G.equipBag || [];
+  G.equipBag.push(item);
+  save();
+}
+export function sellEquip(item) {
+  G.equipBag = (G.equipBag || []).filter(x => x.uid !== item.uid);
+  G.bitz += sellValueOf(item);
+  save();
+  toast(`💰 ขาย ${item.name} +${sellValueOf(item)} Bitz`);
+}
+export function dustEquip(item) {
+  G.equipBag = (G.equipBag || []).filter(x => x.uid !== item.uid);
+  G.dust = (G.dust || 0) + dustValueOf(item);
+  save();
+  toast(`🧬 สลาย ${item.name} +${dustValueOf(item)} Dust`);
+}
+
+// Bulk-sell button — off by default (G.sellAllIncludeRare falsy) only
+// ever touches the lowest/"normal" grade (script), so it can't
+// accidentally liquidate rare gear; the checkbox opts into selling
+// every grade in the bag instead, and always asks to confirm first
+// since that's the one destructive path here.
+function sellAllEquip() {
+  const bag = G.equipBag || [];
+  const includeRare = !!G.sellAllIncludeRare;
+  const targets = includeRare ? bag.slice() : bag.filter(x => x.grade === EQUIP_GRADE_KEYS[0]);
+  if (!targets.length) { toast('ไม่มีไอเทมให้ขาย'); return; }
+  const total = targets.reduce((s, x) => s + sellValueOf(x), 0);
+  const label = includeRare ? 'ทุกเกรด' : EQUIP_GRADES[EQUIP_GRADE_KEYS[0]].thai;
+  if (!confirm(`ขายอุปกรณ์ ${targets.length} ชิ้น (${label}) รวม 💰${total} Bitz?`)) return;
+  const uids = new Set(targets.map(x => x.uid));
+  G.equipBag = bag.filter(x => !uids.has(x.uid));
+  G.bitz += total;
+  save();
+  toast(`💰 ขาย ${targets.length} ชิ้น +${total} Bitz`);
+  renderEquipBag();
+}
+function updateSellAllBtnLabel() {
+  const btn = $('sellall-btn');
+  if (!btn) return;
+  btn.textContent = G.sellAllIncludeRare ? '💰 ขายทั้งหมด (ทุกเกรด)' : '💰 ขายทั้งหมด (เกรดต่ำสุด)';
+}
+export function wireEquipControls() {
+  document.querySelectorAll('#eq-sort-row .chip-btn').forEach(btn => {
+    btn.onclick = () => {
+      G.equipSortMode = (G.equipSortMode === btn.dataset.sort) ? null : btn.dataset.sort;
+      save();
+      renderEquipBag();
+    };
+  });
+  const toggle = $('sellall-rare-toggle');
+  if (toggle) {
+    toggle.checked = !!G.sellAllIncludeRare;
+    toggle.onchange = () => { G.sellAllIncludeRare = toggle.checked; save(); updateSellAllBtnLabel(); };
+  }
+  const btn = $('sellall-btn');
+  if (btn) btn.onclick = sellAllEquip;
+  updateSellAllBtnLabel();
+}
+

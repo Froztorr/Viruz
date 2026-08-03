@@ -18,16 +18,31 @@ Push to GitHub, then Settings → Pages → Deploy from branch → `main` / root
 ## Structure
 
 ```
-index.html              UI shell + all styles
-src/data.js             attributes, species, dungeons, items — edit this to tune
-src/engine.js           stat math, synergy, combat resolution (pure, no DOM)
-src/game.js             state, screens, battle loop
-src/net.js              backend adapter — swap LocalBackend for Firebase later
-assets/video/           background.mp4 (city hub)
-assets/maps/            forest.mp4 / hell.mp4 + poster frames
-assets/ui/              city_map.jpg (video poster fallback)
-src/sprites.js          creature renderer — handles both GIF art and inline SVG
-assets/sprites/<name>/  still.gif + attack.gif for GIF-based species
+index.html                  UI shell markup
+styles.css                  all styles
+src/data.js                 attributes, species, dungeons, items — edit this to tune
+src/engine.js               stat math, synergy, combat resolution (pure, no DOM)
+src/net.js                  backend adapter — swap LocalBackend for Firebase later
+src/sprites.js              creature renderer — handles both GIF art and inline SVG
+src/state.js                shared state (G, battle), core DOM helpers, boot sequence
+src/ui-shell.js             window chrome, top bar, team strip, log/toast/modal
+src/main.js                 entry point — window.VIRUZ API + boot() call
+src/screens/pet-detail.js   pet detail window (stats / equipment / skill tree tabs)
+src/screens/home-character.js  home base + character (team/bench drag-swap) screens
+src/screens/shop.js         clinic, shop, food shop, cooking, tech lab evolution
+src/screens/world.js        world map, node travel, train rides
+src/screens/skilltree.js    skill tree screen + skill explainer
+src/screens/care.js         care (Tamagotchi) minigame + all sub-minigames
+src/screens/inventory.js    bag (items/potions+wheel/equipment) + equip bag/craft
+src/battle/encounters.js    safe spot, raid fight, region bosses, mimic ambush, arena entrance
+src/battle/equipment.js     equipment battle procs, drops, sell/dust/craft
+src/battle/turn-loop.js     core battle turn loop, cooldowns, team buffs
+src/battle/combat.js        damage/impact presentation, attack sequence
+src/battle/extras.js        skill bar, throwable potions/poisons, camera, VFX
+assets/video/               background.mp4 (city hub)
+assets/maps/                forest.mp4 / hell.mp4 + poster frames
+assets/ui/                  city_map.jpg (video poster fallback)
+assets/sprites/<name>/      still.gif + attack.gif for GIF-based species
 ```
 
 ## Adding a species
@@ -66,7 +81,7 @@ There are no skill buttons — attacks are chosen automatically.
 
 Presentation tuning lives in two places:
 - `TUNING.turnBaseMs` (src/data.js) — gap between exchanges
-- `playAttack()` (src/game.js) — wind-up / lunge / hit-stop / return timings
+- `playAttackSequence()` (src/battle/combat.js) — wind-up / lunge / hit-stop / return timings
 
 The attack sequence is: turn banner → wind-up (pull back) → lunge →
 contact (impact burst + giant damage number + hit-stop freeze + screen

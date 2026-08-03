@@ -573,17 +573,6 @@ export function computeDamage(attacker, atkTeam, defender, defTeam, skill, isSpe
   return { dmg: total, hits, hitDmgs, crit, evaded: false, habitAdvantage: habitMult > 1 };
 }
 
-// Exposed so the UI can show a pet's EFFECTIVE crit/eva against a
-// specific opponent rather than a meaningless absolute number.
-export function critChanceVs(attacker, atkTeam, defender, defTeam) {
-  const a = combatStats(attacker, atkTeam), d = combatStats(defender, defTeam);
-  return opposedChance(a.crit, d.def * 0.35 + d.eva * 0.45, { cap: 0.42, k: 0.55, floor: 0.06 });
-}
-export function evaChanceVs(defender, defTeam, attacker, atkTeam) {
-  const a = combatStats(attacker, atkTeam), d = combatStats(defender, defTeam);
-  return opposedChance(d.eva, a.spd * 0.55 + a.crit * 0.25, { cap: 0.45, k: 1.1, floor: 0.05 });
-}
-
 // ── AILMENTS ──
 // Poison/frenzy (STACKING_AILMENT_IDS) ADD their stacks together across
 // repeat casts instead of just refreshing duration, and carry no `turns`
@@ -927,9 +916,6 @@ export function healTeam(team, pct) {
 }
 export function teamAlive(team) {
   return team.some(p => p && p.hp > 0);
-}
-export function firstAlive(team) {
-  return team.find(p => p && p.hp > 0) || null;
 }
 
 
