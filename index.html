@@ -1140,23 +1140,29 @@ button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:n
    track's height is simply whichever sub-tab is tallest, with
    #inv-viewport clipping the other two off-screen horizontally. */
 .inv-tabs{display:flex;gap:6px;margin:8px 0}
-.inv-tab{flex:1;padding:7px 4px;font-size:16px;text-align:center;
-  background:var(--panel2);border:1px solid var(--line2);color:var(--muted)}
-.inv-tab.on{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 10px rgba(61,240,255,.3)}
+.inv-tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;padding:8px 4px 7px;font-size:12px;line-height:1.15;text-align:center;
+  background:var(--panel2);border:1px solid var(--line2);color:var(--muted);
+  border-radius:16px;transition:background .15s,box-shadow .15s}
+.inv-tab .it-ic{font-size:19px;line-height:1}
+.inv-tab.on{background:linear-gradient(160deg,var(--magenta),#8a3ce0);color:#fff;
+  border-color:transparent;box-shadow:0 3px 12px rgba(214,40,158,.4)}
 .inv-viewport{overflow:hidden}
 .inv-track{display:flex;transition:transform .25s ease}
 .inv-page{flex:0 0 100%;min-width:0;padding:2px}
 .inv-subtitle{font-family:var(--pixel);font-size:16px;color:var(--cyan);margin:10px 0 6px}
-.inv-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:5px}
-.inv-box{position:relative;aspect-ratio:1;background:var(--panel2);border:1px solid var(--line);
-  border-radius:5px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.inv-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.inv-box{position:relative;aspect-ratio:1;background:var(--panel2);
+  border:2px solid var(--grade,var(--line));border-radius:12px;
+  box-shadow:0 0 9px var(--grade,transparent),inset 0 0 12px rgba(0,0,0,.15);
+  display:flex;align-items:center;justify-content:center;cursor:pointer}
 .inv-box:active{transform:scale(.93)}
-.inv-box-icon{font-size:22px;line-height:1;display:flex;align-items:center;
+.inv-box-icon{font-size:30px;line-height:1;display:flex;align-items:center;
   justify-content:center;width:100%;height:100%}
-.inv-box-icon img{width:68%;height:68%;object-fit:contain;image-rendering:pixelated;
+.inv-box-icon img{width:72%;height:72%;object-fit:contain;image-rendering:pixelated;
   filter:drop-shadow(0 0 3px var(--grade,transparent))}
-.inv-box-num{position:absolute;bottom:1px;right:2px;font-size:11px;color:var(--gold);
-  background:rgba(0,0,0,.65);border-radius:3px;padding:0 3px;line-height:1.35}
+.inv-box-num{position:absolute;bottom:2px;right:3px;font-size:12px;color:var(--gold);
+  background:rgba(0,0,0,.65);border-radius:4px;padding:0 4px;line-height:1.4}
 .inv-empty-msg{grid-column:1/-1;color:var(--muted);font-size:15px;padding:14px;text-align:center}
 
 /* ── WHEEL LOADOUT (Inventory tab) ──
@@ -2637,10 +2643,10 @@ img.bu-sprite.is-art2{--raster-mult:2}
       <h2>🎒 กระเป๋า</h2>
     </div>
     <div class="inv-tabs">
-      <button class="inv-tab on" data-page="0">ไอเทม</button>
-      <button class="inv-tab" data-page="1">ยา</button>
-      <button class="inv-tab" data-page="2">อุปกรณ์</button>
-      <button class="inv-tab" data-page="3">วงล้อ</button>
+      <button class="inv-tab on" data-page="0"><span class="it-ic">🎒</span>ไอเทม</button>
+      <button class="inv-tab" data-page="1"><span class="it-ic">🧪</span>ยา</button>
+      <button class="inv-tab" data-page="2"><span class="it-ic">⚔️</span>อุปกรณ์</button>
+      <button class="inv-tab" data-page="3"><span class="it-ic">🎡</span>วงล้อ</button>
     </div>
     <div id="inv-viewport" class="inv-viewport">
       <div id="inv-track" class="inv-track">
