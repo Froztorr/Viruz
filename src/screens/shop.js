@@ -1,13 +1,13 @@
 // Auto-split from the original monolithic game.js as part of a
 // codebase reorganization pass -- see git history for prior structure.
 
-import { ANTIVIRUZ, ATTR, CODE_PART_IDS, DEFENSE_BOTS, EGGS, FOODS, GUARD_TIERS, INGREDIENTS, ITEMS, MATERIALS, MUTATIONS, RARITY, RECIPES, REVIVE_POTION, THROW_POISONS, WHITE_TRAITS, loyaltyProgress, loyaltyTier, mutationWeightsFromParts } from '../data.js';
-import { canEvolve, clamp, evolve, grantExp, healTeam, petState, reviveDownPet, rollEgg, signatureSkillOf, startIncubation, statsOf, uid } from '../engine.js';
+import { ANTIVIRUZ, ATTR, CODE_PART_IDS, DEFENSE_BOTS, EGGS, FOODS, GUARD_TIERS, INGREDIENTS, ITEMS, MATERIALS, MUTATIONS, RARITY, RARITY_KEYS, RECIPES, REVIVE_POTION, STAT_META, THROW_POISONS, WHITE_TRAITS, loyaltyProgress, loyaltyTier, mutationWeightsFromParts } from '../data.js';
+import { canEvolve, canSynchronize, clamp, evolve, grantExp, healTeam, petState, reviveDownPet, rollEgg, signatureSkillOf, startIncubation, statsOf, synchronizePets, uid } from '../engine.js';
 import { creatureMarkupFor } from '../sprites.js';
 import { startRaidFight } from '../battle/encounters.js';
 import { addMaterial, rollMeatDrop } from '../battle/equipment.js';
 import { throwItemAvailable, wait } from '../battle/extras.js';
-import { renderDefensePanel } from './home-character.js';
+import { renderDefensePanel, renderCharacter, renderHome } from './home-character.js';
 import { potionIconHtml } from './pet-detail.js';
 import { $, G, activeTeam, attrIcon, battle, creatureMarkup, el, save } from '../state.js';
 import { closeModal, log, modal, petCard, renderHUD, toast } from '../ui-shell.js';
@@ -259,6 +259,7 @@ export function renderShop() {
 
   renderGuardShop();
   renderTechLab();
+  renderSynchronize();
 }
 
 // ── ANTIVIRUZ SECURITY PACKAGES ──
@@ -602,6 +603,134 @@ function confirmTechLabEvolve(pet) {
       log(`🧪 ${pet.name} วิวัฒน์ขั้นสุดท้าย → ${res.label} · กลายพันธุ์: ${mInfo.name}`, 'win');
       toast(`✨ ${pet.name} วิวัฒน์แล้ว!\n${res.label} · ${mInfo.name}`);
     }
+  });
+}
+
+// ── SYNCHRONIZE ──
+// Fuse 2 same-rarity, fully-leveled pets into 1 new pet a rarity tier
+// higher (see canSynchronize()/synchronizePets() in engine.js) — a
+// faster, deterministic alternative to hatching for a higher rarity,
+// at the cost of two already-invested pets. Picking a pet toggles it
+// into whichever of the 2 slots is open (or clears it if it's already
+// in one); once both slots hold an eligible pair, choosing which one's
+// species/attribute the fused pet keeps unlocks the confirm button.
+let syncAId = null;
+let syncBId = null;
+let syncBaseId = null;
+
+function syncSlotPet(which) {
+  const id = which === 'a' ? syncAId : syncBId;
+  return id ? G.roster.find(p => p.uid === id) : null;
+}
+
+function renderSynchronize() {
+  const picker = $('sync-pet-picker');
+  const panel = $('sync-panel');
+  if (!picker || !panel) return;
+
+  picker.innerHTML = '';
+  G.roster.forEach(p => {
+    const slot = p.uid === syncAId ? 'a' : p.uid === syncBId ? 'b' : null;
+    const chip = el('button', 'care-chip' + (slot ? ' on' : ''));
+    chip.innerHTML = `${creatureMarkup(p, 'care-chip-sprite')}<span>${p.name}${slot ? ` (${slot.toUpperCase()})` : ''}</span>`;
+    chip.onclick = () => {
+      if (slot) {
+        if (slot === 'a') syncAId = null; else syncBId = null;
+      } else if (!syncAId) {
+        syncAId = p.uid;
+      } else if (!syncBId) {
+        syncBId = p.uid;
+      } else {
+        toast('เลือกได้สูงสุด 2 ตัว — เอาตัวที่เลือกไว้ออกก่อน');
+        return;
+      }
+      if (syncAId !== p.uid && syncBId !== p.uid) syncBaseId = null;
+      renderSynchronize();
+    };
+    picker.appendChild(chip);
+  });
+
+  const petA = syncSlotPet('a'), petB = syncSlotPet('b');
+  const slotHtml = (pet, label) => pet
+    ? `<div class="tl-slot filled sync-slot">${creatureMarkup(pet, 'sync-slot-sprite')}
+        <span class="tl-slot-label">${pet.name}<br>${RARITY[pet.rarity].name} · Lv.${pet.level}</span></div>`
+    : `<div class="tl-slot sync-slot"><span class="tl-slot-plus">+</span><span class="tl-slot-label">${label}</span></div>`;
+
+  let bodyHtml = `<div class="sync-slots">${slotHtml(petA, 'VIRUZ ตัวที่ 1')}<div class="sync-plus">+</div>${slotHtml(petB, 'VIRUZ ตัวที่ 2')}</div>`;
+
+  let canConfirm = false;
+  if (petA && petB) {
+    const chk = canSynchronize(petA, petB);
+    bodyHtml += `<div class="tl-status ${chk.ok ? 'ok' : 'bad'}">${chk.ok ? `✅ พร้อมซิงค์ → ${RARITY[chk.nextRarity].name}` : `🔒 ${chk.reason}`}</div>`;
+    if (chk.ok) {
+      if (!syncBaseId) syncBaseId = petA.uid;
+      bodyHtml += `
+        <div class="sync-base-label">เลือกรูปร่าง/ธาตุที่จะสืบทอด:</div>
+        <div class="sync-base-pick">
+          ${[petA, petB].map(p => `
+            <button class="sync-base-btn${syncBaseId === p.uid ? ' on' : ''}" data-uid="${p.uid}">
+              ${creatureMarkup(p, 'sync-base-sprite')}<span>${p.name}</span>
+            </button>`).join('')}
+        </div>`;
+      canConfirm = true;
+    }
+  }
+
+  panel.innerHTML = bodyHtml + `
+    <button class="btn primary wide" id="sync-confirm-btn" ${canConfirm ? '' : 'disabled'}>
+      🔄 ซิงโครไนซ์
+    </button>`;
+
+  if (petA && petB && canConfirm) {
+    panel.querySelectorAll('.sync-base-btn').forEach(btn => {
+      btn.onclick = () => { syncBaseId = btn.dataset.uid; renderSynchronize(); };
+    });
+  }
+  const btn = $('sync-confirm-btn');
+  if (btn) btn.onclick = () => confirmSynchronize(petA, petB);
+}
+
+function confirmSynchronize(petA, petB) {
+  if (!petA || !petB) return;
+  const chk = canSynchronize(petA, petB);
+  if (!chk.ok) { toast(chk.reason); return; }
+  // Same guard dismissPet() uses — pull both out of team/bench/defense
+  // first rather than silently unslotting them out from under the
+  // player.
+  const slotted = [petA, petB].filter(p =>
+    G.teamIds.includes(p.uid) || (G.benchIds || []).includes(p.uid) || (G.defenseIds || []).includes(p.uid));
+  if (slotted.length) { toast(`ถอด ${slotted.map(p => p.name).join(', ')} ออกจากทีม/สำรอง/ฐานก่อน`); return; }
+
+  const base = syncBaseId === petB.uid ? petB : petA;
+  const fused = synchronizePets(petA, petB, base.speciesId, base.attr);
+  if (!fused) { toast('ซิงค์ไม่สำเร็จ'); return; }
+
+  G.roster = G.roster.filter(p => p.uid !== petA.uid && p.uid !== petB.uid);
+  G.roster.push(fused);
+  syncAId = null; syncBId = null; syncBaseId = null;
+  save();
+  syncReveal(fused, petA.name, petB.name);
+  log(`🔄 ซิงโครไนซ์ ${petA.name} + ${petB.name} → ${fused.name} [${RARITY[fused.rarity].name}]`, 'win');
+  renderSynchronize();
+  renderHome(); renderCharacter(); renderHUD();
+}
+
+function syncReveal(pet, nameA, nameB) {
+  const a = ATTR[pet.attr], r = RARITY[pet.rarity];
+  const bonus = pet.syncBonus;
+  const bonusMeta = bonus ? STAT_META[bonus.stat] : null;
+  modal('🔄 ซิงโครไนซ์สำเร็จ!', wrap => {
+    const box = el('div', 'reveal');
+    box.style.setProperty('--attr', a.color);
+    box.style.setProperty('--rar', r.color);
+    box.innerHTML = `
+      <div class="muted" style="margin-bottom:6px">${nameA} + ${nameB} →</div>
+      ${creatureMarkup(pet, 'reveal-sprite float')}
+      <div class="reveal-name">${pet.name}</div>
+      <div class="reveal-rar">${r.name} · Lv.${pet.level}</div>
+      <div class="reveal-attr">${attrIcon(a, 18)} ${a.name} — ${a.desc}</div>
+      ${bonusMeta ? `<div class="reveal-trait">${bonusMeta.icon} ${bonus.name} — ${bonusMeta.name} +${Math.round(bonus.pct*100)}%</div>` : ''}`;
+    wrap.appendChild(box);
   });
 }
 
