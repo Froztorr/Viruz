@@ -1,10 +1,12 @@
 // Auto-split from the original monolithic game.js as part of a
 // codebase reorganization pass -- see git history for prior structure.
 
-import { CRAFT_RECIPES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, FOODS, INGREDIENTS, MATERIALS, MEAT_ITEM, PAYLOAD_EFFECTS, POTIONS, RECIPES, REVIVE_POTION, STAT_META, TOYS, craftEquipment, dustValueOf, sellValueOf } from '../data.js';
+import { CRAFT_RECIPES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, FOODS, HABIT_COLORS, HABIT_TYPES, INGREDIENTS, MATERIALS, MEAT_ITEM, PAYLOAD_EFFECTS, POTIONS, RECIPES, REVIVE_POTION, STAT_META, TOYS, craftEquipment, dustValueOf, sellValueOf } from '../data.js';
 import { petState, reviveDownPet } from '../engine.js';
 import { iconHtml } from '../icons.js';
 import { applyItemRarity, rarityChipHtml, rarityOf, rarityOfGrade } from '../item-rarity.js';
+import { canFuse, cardPowerOf, cardSpriteSrc, cardTierIndex, cardTierMeta, cardTierOf, findFusablePairs, fuseCards, isHabitCard, isMaxTier } from '../habit-fusion.js';
+import { IMP_EMBLEM, emblemCount } from '../heat.js';
 import { dustEquip, equipGradeMeta, sellEquip, toggleEquipLock } from '../battle/equipment.js';
 import { throwLoadout, throwPool } from '../battle/extras.js';
 import { equipIconHtml, equipStatLine, potionIconHtml } from './pet-detail.js';
@@ -112,6 +114,18 @@ function renderInvItems() {
     const r = rarityOf(m);
     box.appendChild(invBox(iconHtml(m), n, () => showItemDetail(iconHtml(m), m.name, m.desc, '', r), null, r));
   });
+  // Imp's Emblem — the hunter's trophy. It deliberately lives in
+  // G.emblems rather than MATERIALS (see src/heat.js) because it is not
+  // an evolution material and must never be eaten by a recipe.
+  const emblems = emblemCount(G);
+  if (emblems > 0) {
+    any = true;
+    box.appendChild(invBox(iconHtml(IMP_EMBLEM), emblems, () => showItemDetail(
+      iconHtml(IMP_EMBLEM), IMP_EMBLEM.name,
+      'หลักฐานการประหาร Marshal Imp — เก็บสะสมไว้เพื่อแลกไอเทมพิเศษในอนาคต',
+      `<div class="muted" style="text-align:center">มีอยู่ <b>${emblems}</b> ชิ้น</div>`,
+      IMP_EMBLEM.rarityId), null, IMP_EMBLEM.rarityId));
+  }
   const ing = G.ingredients || {};
   [['veg', INGREDIENTS[0]], ['bun', INGREDIENTS[1]], ['meat', MEAT_ITEM]].forEach(([key, def]) => {
     const n = ing[key] || 0;
@@ -205,9 +219,13 @@ export function renderEquipBag() {
     const g = equipGradeMeta(item);
     const slot = EQUIP_SLOTS[item.slotId];
     const markup = equipIconHtml(item, slot.icon);
+    // Habit cards all sit at lvlReq 1 now, so showing the level badge
+    // would print "1" on every single card. Show the tier icon instead,
+    // which is the only thing that actually differs between them.
+    const badge = isHabitCard(item) ? cardTierMeta(item).icon : item.lvlReq;
     // Gear grades map 1:1 onto the rarity ladder, so equipment glows on
     // the same scale as everything else instead of its own quiet frame.
-    const itemBox = invBox(markup, item.lvlReq, () => showEquipDetail(item), g.color, rarityOfGrade(item.grade));
+    const itemBox = invBox(markup, badge, () => showEquipDetail(item), g.color, rarityOfGrade(item.grade));
     if (item.locked) itemBox.appendChild(el('div', 'inv-box-lock', '🔒'));
     box.appendChild(itemBox);
   });
@@ -237,6 +255,19 @@ function showEquipDetail(item) {
   }
   const habitHtml = item.slotId === 'habit' ? `<div class="eqd-effect">${equipStatLine(item)}</div>` : '';
 
+  // Habit cards show tier + power where gear shows its level
+  // requirement, since every card is lvlReq 1 by design now.
+  const card = isHabitCard(item);
+  const tier = card ? cardTierMeta(item) : null;
+  const subLine = card
+    ? `${slot.name} · ${tier.icon} ${tier.name} · ×${cardPowerOf(item).toFixed(2)}`
+    : `${slot.name} · Lv.${item.lvlReq}`;
+  const fuseNote = card
+    ? (isMaxTier(item)
+        ? `<div class="muted" style="text-align:center;margin-top:6px">${tier.icon} ระดับสูงสุดแล้ว</div>`
+        : `<div class="muted" style="text-align:center;margin-top:6px">หลอมกับการ์ด ${tier.icon} อีกใบเพื่ออัปเกรด (แท็บคราฟต์)</div>`)
+    : '';
+
   const renderBody = () => {
     const body = $('modal-body');
     if (!body) return;
@@ -247,14 +278,14 @@ function showEquipDetail(item) {
         <div class="eqd-icon-box">${markup}</div>
         <div class="eqd-headinfo">
           <div class="eqd-name">${item.name}</div>
-          <div class="eqd-slot">${slot.name} · Lv.${item.lvlReq}</div>
+          <div class="eqd-slot">${subLine}</div>
           <div class="eqd-grade" style="color:${g.color}">${g.thai}</div>
         </div>
         <button class="eqd-lock${item.locked ? ' on' : ''}" id="eqd-lock-btn">${item.locked ? '🔒' : '🔓'}</button>
       </div>
       ${power ? `<div class="eqd-power">พลังรวม <b>${power}</b></div>` : ''}
       ${statRows ? `<div class="eqd-stats">${statRows}</div>` : ''}
-      ${effectHtml}${habitHtml}
+      ${effectHtml}${habitHtml}${fuseNote}
       <div class="eq-card-btns">
         <button class="btn small" data-act="sell">💰 ${sellValueOf(item)}</button>
         <button class="btn small" data-act="dust">🧬 ${dustValueOf(item)}</button>
@@ -269,6 +300,137 @@ function showEquipDetail(item) {
   renderBody();
 }
 
+// ═══════════════ HABIT CARD FUSION ═══════════════
+// Two cards of the SAME tier fuse into one of the next tier up, with a
+// random 20-30% power gain stamped on at fusion time. Grouping is by
+// tier + color + type, so a bulk "fuse all" can never quietly destroy a
+// combination the player was deliberately collecting.
+//
+// Only bag cards are ever eligible — findFusablePairs() reads G.equipBag
+// and nothing else, so a card currently equipped on a pet cannot be
+// consumed out from under it.
+function cardSpriteImg(item, size) {
+  return `<img src="${cardSpriteSrc(item)}" style="width:${size}px;height:${size}px;object-fit:contain;image-rendering:pixelated" alt="">`;
+}
+
+// Removes the two ingredients and banks the result. Returns the new
+// card, or null if the pair turned out to be invalid.
+function commitFusion(a, b) {
+  const chk = canFuse(a, b);
+  if (!chk.ok) { toast(chk.why); return null; }
+  const res = fuseCards(a, b);
+  if (!res) { toast('หลอมไม่สำเร็จ'); return null; }
+  const uids = new Set([a.uid, b.uid]);
+  G.equipBag = (G.equipBag || []).filter(x => !uids.has(x.uid));
+  G.equipBag.push(res);
+  save();
+  return res;
+}
+
+function showFusionResult(res) {
+  const tier = cardTierMeta(res);
+  const gainPct = Math.round(((res.fusionGain || 1) - 1) * 100);
+  const statRows = Object.keys(res.stats || {})
+    .map(k => `<div class="eqd-stat-row"><span>${iconHtml(STAT_META[k])} ${STAT_META[k].name}</span><b>+${res.stats[k]}</b></div>`)
+    .join('');
+  modal('✨ หลอมสำเร็จ', body => {
+    body.innerHTML = `
+      <div style="text-align:center;margin-bottom:8px">${cardSpriteImg(res, 72)}</div>
+      <div style="text-align:center;font-weight:700;margin-bottom:2px">${res.name}</div>
+      <div style="text-align:center;color:${tier.color};margin-bottom:8px">${tier.icon} ${tier.name} · ${tier.thai}</div>
+      <div class="eqd-power" style="text-align:center">พลังการ์ด <b>×${cardPowerOf(res).toFixed(2)}</b> <span class="muted">(+${gainPct}% จากการหลอมครั้งนี้)</span></div>
+      <div class="muted" style="text-align:center;margin:6px 0">สืบทอด: ${res.inheritedFrom.color} · ${res.inheritedFrom.type}</div>
+      ${statRows ? `<div class="eqd-stats">${statRows}</div>` : ''}`;
+  });
+}
+
+function openFusionModal() {
+  const render = () => {
+    const body = $('modal-body');
+    if (!body) return;
+    const bag = G.equipBag || [];
+    const cards = bag.filter(isHabitCard);
+
+    // Bucket by tier+color+type. Locked and max-tier cards are shown
+    // but never offered, so it's obvious WHY they aren't fusable rather
+    // than them just silently vanishing from the list.
+    const buckets = {};
+    cards.forEach(c => {
+      const key = `${cardTierOf(c)}|${c.color}|${c.type}`;
+      (buckets[key] = buckets[key] || []).push(c);
+    });
+
+    const pairs = findFusablePairs(bag);
+    let html = `<div class="muted" style="margin-bottom:8px">การ์ดระดับเดียวกัน 2 ใบ → ระดับสูงขื้น 1 ขั้น (พลัง +20–30% สุ่ม)<br>การ์ดที่ใส่อยู่กับ VIRUZ จะไม่ถูกนำมาหลอม</div>`;
+
+    if (!cards.length) {
+      html += `<div class="inv-empty-msg">ยังไม่มีการ์ดนิสัยในกระเป๋า</div>`;
+      body.innerHTML = html;
+      return;
+    }
+
+    if (pairs.length > 1) {
+      html += `<button class="btn wide primary" id="fuse-all-btn" style="margin-bottom:10px">✨ หลอมทั้งหมด (${pairs.length} คู่)</button>`;
+    }
+
+    Object.keys(buckets).sort((ka, kb) => {
+      const a = buckets[ka][0], b = buckets[kb][0];
+      return (cardTierIndex(b) - cardTierIndex(a)) || buckets[kb].length - buckets[ka].length;
+    }).forEach(key => {
+      const list = buckets[key];
+      const sample = list[0];
+      const tier = cardTierMeta(sample);
+      const free = list.filter(c => !c.locked);
+      const maxed = isMaxTier(sample);
+      const canGo = !maxed && free.length >= 2;
+      const colorName = (HABIT_COLORS[sample.color] || {}).name || sample.color;
+      const typeName = (HABIT_TYPES[sample.type] || {}).name || sample.type;
+      let note = '';
+      if (maxed) note = 'ระดับสูงสุด';
+      else if (free.length < 2) note = list.length >= 2 ? 'ติดล็อกอยู่' : 'ต้องมี 2 ใบ';
+      html += `
+        <div class="eqd" style="--grade:${tier.color};display:flex;align-items:center;gap:10px;padding:8px;margin-bottom:8px">
+          <div>${cardSpriteImg(sample, 38)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sample.name}</div>
+            <div class="muted" style="font-size:11px">${tier.icon} ${tier.name} · ${colorName} · ${typeName} · ×${list.length}</div>
+          </div>
+          ${canGo
+            ? `<button class="btn small primary" data-fuse="${key}">หลอม</button>`
+            : `<span class="muted" style="font-size:11px">${note}</span>`}
+        </div>`;
+    });
+
+    body.innerHTML = html;
+
+    const allBtn = $('fuse-all-btn');
+    if (allBtn) allBtn.onclick = () => {
+      // Re-derive the pairs at click time rather than trusting the list
+      // built during render, in case anything changed in between.
+      const list = findFusablePairs(G.equipBag || []);
+      if (!list.length) { render(); return; }
+      let n = 0;
+      list.forEach(([a, b]) => { if (commitFusion(a, b)) n++; });
+      toast(`✨ หลอมการ์ด ${n} ใบ`);
+      renderEquipBag();
+      render();
+    };
+
+    body.querySelectorAll('[data-fuse]').forEach(btn => {
+      btn.onclick = () => {
+        const list = (buckets[btn.dataset.fuse] || []).filter(c => !c.locked);
+        if (list.length < 2) { render(); return; }
+        const res = commitFusion(list[0], list[1]);
+        renderEquipBag();
+        if (res) showFusionResult(res);
+        else render();
+      };
+    });
+  };
+  modal('🔮 หลอมการ์ดนิสัย', () => {});
+  render();
+}
+
 // Spend Dust on one of a few fixed recipes to self-craft a random
 // piece of gear — better recipes skew toward higher grades but never
 // guarantee one; slot/stats/level/affix still roll randomly.
@@ -277,12 +439,20 @@ function renderCraft() {
   const box = $('inv-grid-craft');
   if (!box) return;
   box.innerHTML = '';
+
+  // Card fusion sits at the head of the craft grid rather than in its
+  // own tab — it is a crafting action, and reusing this grid means no
+  // new markup is needed in index.html.
+  const fusable = findFusablePairs(G.equipBag || []).length;
+  const fuseBox = invBox('🔮', fusable || null, openFusionModal, '#ce93d8', 'legendary');
+  box.appendChild(fuseBox);
+
   const maxLevel = Math.max(1, ...G.roster.map(p => p.level || 1));
   CRAFT_RECIPES.forEach(r => {
     const rar = rarityOf(r);
     box.appendChild(invBox(iconHtml(r), r.dust, () => {
       const afford = (G.dust || 0) >= r.dust;
-      showItemDetail(iconHtml(r), r.name, `โอกาสได้เกรดสูงขึ้นตามด่าน · 🧬 ${r.dust} Dust`, `
+      showItemDetail(iconHtml(r), r.name, `โอกาสได้เกรดสูงขื้นตามด่าน · 🧬 ${r.dust} Dust`, `
         <button class="btn wide${afford ? ' primary' : ''}" id="craft-go-btn">${afford ? 'คราฟต์' : 'Dust ไม่พอ'}</button>`, rar);
       const btn = $('craft-go-btn');
       if (!afford) { btn.disabled = true; return; }
@@ -327,4 +497,3 @@ export function wireInventoryTabs() {
     }, {passive:true});
   }
 }
-

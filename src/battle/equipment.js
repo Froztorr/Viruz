@@ -2,15 +2,16 @@
 // codebase reorganization pass -- see git history for prior structure.
 
 import { AILMENTS, ANTIVIRUZ, BOSS_TUNING, CODE_PART_IDS, EQUIP_DROP_CHANCE, EQUIP_GRADES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, HABIT_CARD_DROP_CHANCE, MATERIALS, MEAT_DROP_CHANCE, MEAT_ITEM, PAYLOAD_EFFECTS, SPECIES, codePartDropChance, craftEquipment, dustValueOf, rollEquipment, sellValueOf } from '../data.js';
-import { addAilment, habitOf, maxMP, restoreMP, statsOf, uid } from '../engine.js';
+import { addAilment, grantExp, habitOf, maxMP, restoreMP, statsOf, uid } from '../engine.js';
 import { showDropBanner } from '../drop-banner.js';
 import { rarityOf, rarityOfGrade } from '../item-rarity.js';
 import { BASE_CARD_TIER, cardTierMeta, normalizeHabitCard } from '../habit-fusion.js';
+import { HEAT_TUNING, IMP_EMBLEM, emblemCount, grantImpEmblem, rollEliteGuaranteedDrop } from '../heat.js';
 import { healPop } from './combat.js';
 import { startArena, startBossFight, startRaidFight, startZone } from './encounters.js';
 import { checkBattleEnd } from './turn-loop.js';
 import { renderEquipBag } from '../screens/inventory.js';
-import { $, G, battle, save } from '../state.js';
+import { $, G, activeTeam, battle, save } from '../state.js';
 import { blog, toast } from '../ui-shell.js';
 
 // ═══════════════ EQUIPMENT: battle procs ═══════════════
@@ -118,6 +119,55 @@ export function applyPayloadOnHit(attacker, target, res, side) {
   }
 }
 
+// ═══════════════ HEAT: elite & hunter kill bonuses ═══════════════
+// Paid out when a starred elite (or the hunter) dies. Lives here, and
+// is called from rollEquipDrop() below, because that function already
+// runs exactly once per newly-credited kill — piggybacking on it beats
+// threading a new hook through all ~44KB of turn-loop.js.
+//
+// The turn loop credits the NORMAL per-kill exp/bitz on its own, so
+// what this adds is only the premium on top, which is how the total
+// lands on the x5 the spec asks for.
+function applyHeatKillBonus(enemy) {
+  if (!enemy || !enemy.isElite) return;
+  const lvl = Math.max(1, enemy.level || 1);
+  const mult = enemy.rewardMult || HEAT_TUNING.eliteRewardMult;
+  const extra = Math.max(0, mult - 1);
+
+  const bonusBitz = Math.floor(lvl * 11 * extra);
+  const alive = activeTeam().filter(p => p && p.hp > 0);
+  const bonusExpEach = Math.floor((lvl * 8 * extra) / Math.max(1, alive.length));
+  G.bitz += bonusBitz;
+  alive.forEach(p => grantExp(p, bonusExpEach));
+  blog(`⭐ โบนัสตัวให้ญ่: +${bonusBitz} Bitz · +${bonusExpEach} EXP ต่อตัว`, 'win');
+
+  // Confirmed epic-or-better. Deliberately NOT gated behind
+  // EQUIP_DROP_CHANCE — "guaranteed" has to mean guaranteed.
+  const item = rollEliteGuaranteedDrop(lvl);
+  if (item) {
+    G.equipBag = G.equipBag || [];
+    G.equipBag.push(item);
+    const slot = EQUIP_SLOTS[item.slotId] || EQUIP_SLOTS.payload;
+    showDropBanner({
+      entry: item, fallback: slot.icon, name: item.name,
+      rarityId: rarityOfGrade(item.grade), sub: `${slot.name} · ดรอปการันตี`,
+    });
+    blog(`⭐ ดรอปการันตี: ${item.name}`, 'win');
+  }
+
+  // The hunter's whole point. One emblem per kill, banked in G.emblems
+  // for a future exchange shop.
+  if (enemy.isHunter) {
+    grantImpEmblem(G);
+    showDropBanner({
+      entry: IMP_EMBLEM, fallback: IMP_EMBLEM.icon, name: IMP_EMBLEM.name,
+      rarityId: IMP_EMBLEM.rarityId, sub: 'สังหารนักล่าสำเร็จ',
+    });
+    blog(`🎖️ ได้รับ ${IMP_EMBLEM.name}! (รวม ${emblemCount(G)} ชิ้น)`, 'win');
+  }
+  save();
+}
+
 // ═══════════════ EQUIPMENT: drops, sell, dust, craft ═══════════════
 // Every drop below announces itself with showDropBanner() rather than
 // toast(): a toast sets textContent, so it could never show the item's
@@ -128,7 +178,11 @@ export function applyPayloadOnHit(attacker, target, res, side) {
 // Rolled once per newly-credited enemy kill (see checkBattleEnd).
 // Capped at the dropping enemy's own level, per spec.
 export function rollEquipDrop(enemy) {
-  if (!enemy || Math.random() >= EQUIP_DROP_CHANCE) return;
+  if (!enemy) return;
+  // Heat premiums first: they are guaranteed, so they must not sit
+  // behind the drop-chance gate on the next line.
+  applyHeatKillBonus(enemy);
+  if (Math.random() >= EQUIP_DROP_CHANCE) return;
   // Bosses roll one grade tier above what their level alone would
   // give — reuses the Deep Craft weighting as a stand-in "better loot"
   // table rather than inventing a new one.

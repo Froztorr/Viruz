@@ -1,9 +1,9 @@
-// ═══════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 // VIRUZ PET — ENGINE
 // Stat math, team synergy, support effects, combat resolution.
 // No DOM access. Pure functions where possible so this stays
 // testable and reusable server-side later.
-// ═══════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 
 import {
   ATTR, ATTR_KEYS, WHITE_TRAIT_ROLL, SUPPORT, SYNERGY,
@@ -200,6 +200,10 @@ export function startIncubation(pet) {
 // exploit/rootkit — same pattern as treeBonuses(), just a different
 // source. `int` is deliberately left out; equipment boosts combat
 // power, not MP pool.
+//
+// NOTE: this also covers the `habit` slot, which is how a fused habit
+// card's scaled stat block (see normalizeHabitCard in habit-fusion.js)
+// reaches the stat sheet without any change here.
 export function equipmentBonuses(pet) {
   const out = { atk:0, def:0, spd:0, crit:0, eva:0, vit:0 };
   const equip = pet && pet.equip;
@@ -394,6 +398,24 @@ export function habitOf(unit) {
   return null;
 }
 
+// How strongly this unit's habit passive should apply. A fused card
+// carries a cardPower above 1 (green 1.00, blue ~1.20-1.30, purple
+// ~1.44-1.69 — see habit-fusion.js), which is what makes fusion improve
+// the card's EFFECT and not just its flat stats.
+//
+// Read inline rather than importing habitPassiveScale() from
+// habit-fusion.js on purpose: that module already imports `uid` from
+// here, and importing back would close the loop into a true circular
+// dependency for the sake of a one-line lookup.
+//
+// Wild enemies get their habit from their ANTIVIRUZ entry and have no
+// equip object at all, so they always score a flat 1.
+function habitCardPower(unit) {
+  const card = unit && unit.equip && unit.equip.habit;
+  const p = card && card.cardPower;
+  return (typeof p === 'number' && p > 0) ? p : 1;
+}
+
 // Stat-shaped Type passives (the rest — Insect/Goblin/Demon/Vampire/
 // Undead/Plants/Fungi/Machine/Conjuration/Fey — are event procs/hooks
 // applied at specific combat-resolution points in game.js instead, since
@@ -437,6 +459,19 @@ export function habitStatMods(unit, opponent) {
       else m.spd *= 1.15;
       break;
     }
+  }
+
+  // ── FUSION SCALING ──
+  // A fused card amplifies the passive above by its cardPower. Only
+  // multipliers ABOVE 1 are scaled: Dragon drops to 0.85 below half HP
+  // and Aberration pays 0.90 DEF, and scaling those by cardPower would
+  // make a purple card's DRAWBACK worse than a green card's — the
+  // opposite of an upgrade. So bonuses grow and penalties stay put.
+  const scale = habitCardPower(unit);
+  if (scale > 1) {
+    Object.keys(m).forEach(k => {
+      if (m[k] > 1) m[k] = 1 + (m[k] - 1) * scale;
+    });
   }
   return m;
 }

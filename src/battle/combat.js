@@ -3,6 +3,7 @@
 
 import { AILMENTS, ART2_SPECIES, GUARD_TIERS, POTIONS, RAID_LOSS_BITZ, buildLootMenu, chanceToEnemyMult, guardTierForLevel } from '../data.js';
 import { buildHackPuzzle, checkHackGuess, computeDamage, grantExp, hasAilment, statsOf, teamAlive, teamPower, uid } from '../engine.js';
+import { ELITE_NAME_COLOR, eliteDisplayName } from '../heat.js';
 import { NET } from '../net.js';
 import { creatureMarkupFor } from '../sprites.js';
 import { startRaidFight } from './encounters.js';
@@ -658,9 +659,16 @@ export function renderBattleSide(pet, elId, isEnemy) {
          </div>`
       : `<div class="np-hp">${vitalHtml('heart', hpPct, Math.max(0, pet.hp))}</div>
          ${!isEnemy ? `<div class="np-mp">${vitalHtml('circle', mpPct, Math.max(0, pet.mp || 0))}</div>` : ''}`;
+    // Heat-spawned units get the star prefix + red name. The ELITE/
+    // HUNTER tag reuses .np-boss-tag's styling but is suppressed for a
+    // real boss so the slot never renders two competing tags.
+    const eliteTag = (pet.isElite && !pet.isBoss)
+      ? `<div class="np-boss-tag" style="color:${ELITE_NAME_COLOR}">${pet.isHunter ? '🚨 HUNTER' : '⭐ ELITE'}</div>`
+      : '';
     plate.innerHTML = `
       ${pet.isBoss ? `<div class="np-boss-tag">⚠ BOSS${pet.bossPhase===2?' · RAGE':''}</div>` : ''}
-      <div class="np-name">${pet.name}</div>
+      ${eliteTag}
+      <div class="np-name"${pet.isElite ? ` style="color:${ELITE_NAME_COLOR}"` : ''}>${eliteDisplayName(pet)}</div>
       <div class="np-lv">Lv.${pet.level}</div>
       <div class="np-buffs">${statBuffChips(pet)}</div>
       ${vitalsHtml}

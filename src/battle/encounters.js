@@ -3,6 +3,7 @@
 
 import { ATTR, GUARD_TIERS, MAPS, POTIONS, SPECIES_KEYS, THROW_UTILITY_POTIONS, ZONES, guardTierForLevel, randomBossZone, zoneById } from '../data.js';
 import { buildHackRun, clamp, createPet, petState, reviveDownPet, spawnAntiviruz, spawnBoss, statsOf, supportOf, synergyOf, teamAlive, teamPower, uid } from '../engine.js';
+import { eliteChanceAt, heatMeterPct, makeElite, registerNodeFight, spawnHunter } from '../heat.js';
 import { refreshBattleUnits, renderBattle, renderBattleSide } from './combat.js';
 import { applyBattleStartEquip } from './equipment.js';
 import { startSkillCooldownTicker, throwItemAvailable, wait } from './extras.js';
@@ -171,7 +172,7 @@ export function startBossFight(mapId) {
   });
   showScreen('battle');
   setText('battle-title', `${boss.name} · BOSS`);
-  setText('battle-wave', 'บอสประจำภูมิภาค');
+  setText('battle-wave', 'บอสประจำภูมิพาค');
   clearBattleLog();
   blog(`⚠️ บอส ${boss.name} ปรากฏตัว! (Lv.${boss.level})`, 'sys');
   const syn = synergyOf(team);
@@ -190,7 +191,36 @@ export function startZone(target) {
   if (!team.length) { toast('ยังไม่ได้จัดทีม'); return; }
   if (!teamAlive(team)) { toast('ทีมหมด HP — ไปรักษาที่ Clinic'); return; }
 
+  // ── HEAT / TRACE ──
+  // Counted per fight STARTED at this node, and counted BEFORE the
+  // waves are built so the roll can upgrade what actually spawns.
+  // Grinding one node past 5 fights grows an elite chance and fills a
+  // Trace meter; at 100% the hunter comes instead. See src/heat.js.
+  const heat = registerNodeFight(G, target.id);
   const run = buildHackRun(target);
+  let heatKind = null;
+  let heatUnit = null;
+  if (heat.hunter) {
+    // The hunter REPLACES the whole encounter — it is scaled off the
+    // player's own lead pet rather than the zone, so it stays a real
+    // threat wherever the meter happened to fill up.
+    const hunter = spawnHunter(team[0].level);
+    if (hunter) {
+      run.waves = [[hunter]];
+      run.waveCount = 1;
+      heatKind = 'hunter';
+      heatUnit = hunter;
+    }
+  } else if (heat.elite) {
+    // Upgrade one enemy in the FINAL wave, so the payoff sits at the
+    // end of the run instead of ambushing on wave 1.
+    const lastWave = run.waves[run.waves.length - 1];
+    if (lastWave && lastWave.length) {
+      heatUnit = makeElite(lastWave[Math.floor(Math.random() * lastWave.length)]);
+      heatKind = 'elite';
+    }
+  }
+
   setBattle({
     mode: 'hack',
     run,
@@ -205,12 +235,29 @@ export function startZone(target) {
     over: false,
     totalExp: 0,
     totalBitz: 0,
+    heatKind,
   });
   showScreen('battle');
-  setText('battle-title', target.name);
-  setText('battle-wave', `คลื่น 1 / ${run.waveCount}`);
+  setText('battle-title', heatKind === 'hunter' ? `🚨 ${heatUnit.name} · HUNTER` : target.name);
+  setText('battle-wave', heatKind === 'hunter' ? 'นักล่าตามรอย' : `คลื่น 1 / ${run.waveCount}`);
   clearBattleLog();
-  blog(`เริ่มเจาะ ${target.name}`, 'sys');
+  if (heatKind === 'hunter') {
+    blog(`🚨 Trace เต็ม 100% — ${heatUnit.name} ตามรอยคุณมา! (Lv.${heatUnit.level})`, 'sys');
+    blog('ชนะมันเพื่อชิง Imp\'s Emblem', 'buff');
+  } else {
+    blog(`เริ่มเจาะ ${target.name}`, 'sys');
+    if (heatKind === 'elite') {
+      blog(`⭐ ${heatUnit.name} ตัวให้ญ่โผล่ออกมา! (Lv.${heatUnit.level} · สเตตัส ×2 · รางวัล ×5)`, 'sys');
+    } else {
+      // Quiet warning so the player can feel the meter climbing before
+      // it actually bites.
+      const pct = heatMeterPct(G, target.id);
+      if (pct > 0) {
+        const ec = Math.round(eliteChanceAt(G, target.id) * 100);
+        blog(`🔥 Trace ที่นี่: ${pct}% · โอกาสเจอตัวให้ญ่ ${ec}%`, 'sys');
+      }
+    }
+  }
   const syn = synergyOf(team);
   if (syn.label) blog(`${ATTR[syn.attr].icon} ${syn.label} — สเตตัส ×${syn.mult}`, 'buff');
   const sup = supportOf(team);
@@ -220,6 +267,7 @@ export function startZone(target) {
   startRegen();
   startSkillCooldownTicker();
   scheduleTurn(1200);
+  save();
 }
 
 // ── TRAIN-RIDE MIMIC AMBUSH ──
@@ -469,4 +517,3 @@ export async function playFoeDeathTransition(deadPet, nextPet) {
   const newEl = wrap.querySelector('.bunit');
   if (newEl) await playFoeEntrance(newEl);
 }
-

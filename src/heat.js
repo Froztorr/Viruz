@@ -1,4 +1,4 @@
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 // HEAT / TRACE METER
 //
 // Farming the same node over and over is no longer free. Past a grace
@@ -17,9 +17,9 @@
 // rewards rotating nodes rather than parking on one.
 //
 // Pure logic + data. No DOM.
-// ══════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 
-import { EQUIP_GRADES, rollEquipment } from './data.js';
+import { rollEquipment } from './data.js';
 import { spawnAntiviruz, statsOf } from './engine.js';
 
 export const HEAT_TUNING = {
