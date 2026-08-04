@@ -3,6 +3,7 @@
 
 import { CRAFT_RECIPES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, FOODS, INGREDIENTS, MATERIALS, MEAT_ITEM, PAYLOAD_EFFECTS, POTIONS, RECIPES, REVIVE_POTION, STAT_META, TOYS, craftEquipment, dustValueOf, sellValueOf } from '../data.js';
 import { petState, reviveDownPet } from '../engine.js';
+import { iconHtml } from '../icons.js';
 import { dustEquip, equipGradeMeta, sellEquip, toggleEquipLock } from '../battle/equipment.js';
 import { throwLoadout, throwPool } from '../battle/extras.js';
 import { equipIconHtml, equipStatLine, potionIconHtml } from './pet-detail.js';
@@ -13,18 +14,18 @@ import { closeModal, log, modal, petCard, renderHUD, toast } from '../ui-shell.j
 // from the drawer's Inventory tab. Each box shows only an icon + a
 // single number badge (owned count for stackables, level for gear);
 // tapping one opens the full description in the shared modal.
-function invBox(iconHtml, num, onClick, gradeColor) {
+function invBox(iconMarkup, num, onClick, gradeColor) {
   const box = el('div', 'inv-box');
   if (gradeColor) box.style.setProperty('--grade', gradeColor);
-  box.innerHTML = `<div class="inv-box-icon">${iconHtml}</div>` +
+  box.innerHTML = `<div class="inv-box-icon">${iconMarkup}</div>` +
     (num != null ? `<div class="inv-box-num">${num}</div>` : '');
   if (onClick) box.onclick = onClick;
   return box;
 }
-function showItemDetail(iconHtml, name, desc, extraHtml) {
+function showItemDetail(iconMarkup, name, desc, extraHtml) {
   modal(name, body => {
     body.innerHTML = `
-      <div style="text-align:center;font-size:40px;margin-bottom:8px">${iconHtml}</div>
+      <div style="text-align:center;font-size:40px;margin-bottom:8px">${iconMarkup}</div>
       <div class="muted" style="text-align:center;margin-bottom:10px">${desc}</div>
       ${extraHtml || ''}`;
   });
@@ -88,13 +89,13 @@ function renderInvItems() {
     const n = ownedFoods[f.id] || 0;
     if (!n) return;
     any = true;
-    box.appendChild(invBox(f.icon, n, () => showItemDetail(f.icon, f.name, f.desc)));
+    box.appendChild(invBox(iconHtml(f), n, () => showItemDetail(iconHtml(f), f.name, f.desc)));
   });
   (G.toys || []).forEach(id => {
     const t = TOYS.find(x => x.id === id);
     if (!t) return;
     any = true;
-    box.appendChild(invBox(t.icon, null, () => showItemDetail(t.icon, t.name, t.desc)));
+    box.appendChild(invBox(iconHtml(t), null, () => showItemDetail(iconHtml(t), t.name, t.desc)));
   });
   const ownedMats = G.materials || {};
   Object.keys(MATERIALS).forEach(id => {
@@ -102,14 +103,14 @@ function renderInvItems() {
     if (!n) return;
     any = true;
     const m = MATERIALS[id];
-    box.appendChild(invBox(m.icon, n, () => showItemDetail(m.icon, m.name, m.desc)));
+    box.appendChild(invBox(iconHtml(m), n, () => showItemDetail(iconHtml(m), m.name, m.desc)));
   });
   const ing = G.ingredients || {};
   [['veg', INGREDIENTS[0]], ['bun', INGREDIENTS[1]], ['meat', MEAT_ITEM]].forEach(([key, def]) => {
     const n = ing[key] || 0;
     if (!n || !def) return;
     any = true;
-    box.appendChild(invBox(def.icon, n, () => showItemDetail(def.icon, def.name, def.desc)));
+    box.appendChild(invBox(iconHtml(def), n, () => showItemDetail(iconHtml(def), def.name, def.desc)));
   });
   if (!any) box.innerHTML = `<div class="inv-empty-msg">ยังไม่มีไอเทม</div>`;
 }
@@ -129,8 +130,8 @@ function renderInvPotions() {
   const reviveN = owned[REVIVE_POTION.id] || 0;
   if (reviveN) {
     any = true;
-    box.appendChild(invBox(REVIVE_POTION.icon, reviveN, () => {
-      showItemDetail(REVIVE_POTION.icon, REVIVE_POTION.name, REVIVE_POTION.desc,
+    box.appendChild(invBox(iconHtml(REVIVE_POTION), reviveN, () => {
+      showItemDetail(iconHtml(REVIVE_POTION), REVIVE_POTION.name, REVIVE_POTION.desc,
         `<button class="btn wide primary" id="revive-use-btn">✨ ใช้</button>`);
       $('revive-use-btn').onclick = () => { closeModal(); useRevivePotion(); };
     }));
@@ -193,8 +194,8 @@ export function renderEquipBag() {
   sorted.forEach(item => {
     const g = equipGradeMeta(item);
     const slot = EQUIP_SLOTS[item.slotId];
-    const iconHtml = equipIconHtml(item, slot.icon);
-    const itemBox = invBox(iconHtml, item.lvlReq, () => showEquipDetail(item), g.color);
+    const markup = equipIconHtml(item, slot.icon);
+    const itemBox = invBox(markup, item.lvlReq, () => showEquipDetail(item), g.color);
     if (item.locked) itemBox.appendChild(el('div', 'inv-box-lock', '🔒'));
     box.appendChild(itemBox);
   });
@@ -207,11 +208,11 @@ export function renderEquipBag() {
 function showEquipDetail(item) {
   const g = equipGradeMeta(item);
   const slot = EQUIP_SLOTS[item.slotId];
-  const iconHtml = equipIconHtml(item, slot.icon);
+  const markup = equipIconHtml(item, slot.icon);
   const power = Object.values(item.stats || {}).reduce((s, v) => s + v, 0);
 
   const statRows = Object.keys(item.stats || {})
-    .map(k => `<div class="eqd-stat-row"><span>${STAT_META[k].icon} ${STAT_META[k].name}</span><b>+${item.stats[k]}</b></div>`)
+    .map(k => `<div class="eqd-stat-row"><span>${iconHtml(STAT_META[k])} ${STAT_META[k].name}</span><b>+${item.stats[k]}</b></div>`)
     .join('');
 
   let effectHtml = '';
@@ -220,7 +221,7 @@ function showEquipDetail(item) {
     const gi = EQUIP_GRADE_KEYS.indexOf(item.grade);
     const mag = (eff.mag || [])[gi] || 0;
     const pct = mag > 0 ? ` (${Math.round(mag * 100)}%)` : '';
-    effectHtml = `<div class="eqd-effect">${eff.icon} <b>${eff.name}${pct}</b><br><span class="muted">${eff.desc}</span></div>`;
+    effectHtml = `<div class="eqd-effect">${iconHtml(eff)} <b>${eff.name}${pct}</b><br><span class="muted">${eff.desc}</span></div>`;
   }
   const habitHtml = item.slotId === 'habit' ? `<div class="eqd-effect">${equipStatLine(item)}</div>` : '';
 
@@ -231,7 +232,7 @@ function showEquipDetail(item) {
     box.style.setProperty('--grade', g.color);
     box.innerHTML = `
       <div class="eqd-head">
-        <div class="eqd-icon-box">${iconHtml}</div>
+        <div class="eqd-icon-box">${markup}</div>
         <div class="eqd-headinfo">
           <div class="eqd-name">${item.name}</div>
           <div class="eqd-slot">${slot.name} · Lv.${item.lvlReq}</div>
@@ -266,9 +267,9 @@ function renderCraft() {
   box.innerHTML = '';
   const maxLevel = Math.max(1, ...G.roster.map(p => p.level || 1));
   CRAFT_RECIPES.forEach(r => {
-    box.appendChild(invBox(r.icon, r.dust, () => {
+    box.appendChild(invBox(iconHtml(r), r.dust, () => {
       const afford = (G.dust || 0) >= r.dust;
-      showItemDetail(r.icon, r.name, `โอกาสได้เกรดสูงขึ้นตามด่าน · 🧬 ${r.dust} Dust`, `
+      showItemDetail(iconHtml(r), r.name, `โอกาสได้เกรดสูงขึ้นตามด่าน · 🧬 ${r.dust} Dust`, `
         <button class="btn wide${afford ? ' primary' : ''}" id="craft-go-btn">${afford ? 'คราฟต์' : 'Dust ไม่พอ'}</button>`);
       const btn = $('craft-go-btn');
       if (!afford) { btn.disabled = true; return; }
