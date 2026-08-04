@@ -9,11 +9,19 @@
 // apt = mythic), so equipment slots into the same visual scale for
 // free -- see GRADE_RARITY below.
 //
-// Besides the inventory grid this also tints the shop cards, the care
-// screen's ring buttons, and the homemade-cooking rows. Those screens
-// are tagged from the DOM rather than by editing each renderer: the
-// care buttons already carry data-act="<item id>", and every shop card
-// prints the item's unique name, which is enough to look the tier up.
+// RULES THIS FILE MUST OBEY (learned the hard way):
+//   1. NEVER use an inset shadow. An inset shadow paints on top of the
+//      element's own background, which wiped out the artwork behind the
+//      care buttons and the equip rows.
+//   2. NEVER use !important on border or box-shadow. Habit cards and
+//      graded equipment set their own colour as an INLINE style, and an
+//      !important stylesheet rule overrides inline -- which flattened
+//      all four habit colours into one rarity colour. Without
+//      !important the inline colour wins, so hand-authored colours
+//      always beat this file.
+//   3. Never recolour existing text. Only add an outline/glow.
+// In short: rarity is additive decoration only. Anything that already
+// has its own colour keeps it.
 
 import {
   CRAFT_RECIPES, EGGS, FOODS, INGREDIENTS, ITEMS, MATERIALS, MEAT_ITEM,
@@ -128,8 +136,8 @@ set('egg_r', 'rare');
 set('egg_e', 'epic');
 setAll(EGGS.filter(e => !BY_ID[e.id]), 'normal');
 
-// Name index for the shop/cooking screens. Code Part cards print their
-// name with the "Code Part: " prefix stripped, so both spellings are
+// Name index for the shop screens. Code Part cards print their name
+// with the "Code Part: " prefix stripped, so both spellings are
 // registered.
 [...FOODS, ...RECIPES, ...TOYS, ...INGREDIENTS, MEAT_ITEM, ...POTIONS,
   REVIVE_POTION, ...THROW_POISONS, ...THROW_UTILITY_POTIONS, ...ITEMS,
@@ -178,13 +186,17 @@ export function rarityChipHtml(rarityId) {
   return `<div class="rarity-chip-wrap"><span class="rarity-chip" style="color:${meta.color};border-color:${meta.color};box-shadow:0 0 8px ${meta.glow}">${meta.name}</span></div>`;
 }
 
-// ── DOM TAGGING FOR THE OTHER SCREENS ──
+// ── DOM TAGGING FOR THE SHOP SCREENS ──
 // Shop cards (food shop, item shop, poisons, revive, clinic eggs, the
 // Code Part picker) all share .shop-card with the item's name in
-// .sc-name. Care ring buttons already expose the id in data-act. The
-// homemade-cooking modal uses .eq-slot-row with .eq-slot-name.
-// Anything that isn't a known item -- pets, guards, defense bots,
-// rolled equipment -- simply doesn't match and is left alone.
+// .sc-name. Anything that isn't a known item -- pets, guards, defense
+// bots, rolled equipment -- doesn't match and is left alone.
+//
+// The care ring buttons are deliberately NOT tagged. Each one carries
+// its own artwork and its own state colours (need-buy / ready /
+// cooling), and a rarity frame both covered the art and competed with
+// those states. The cooking rows are tagged, but only with a thin bar
+// down the left edge, never a fill.
 function tagByName(root, sel, nameSel) {
   root.querySelectorAll(`${sel}:not([data-rarity])`).forEach(node => {
     const nameEl = node.querySelector(nameSel);
@@ -198,15 +210,10 @@ export function tagRarityIn(root) {
   const scope = root && root.querySelectorAll ? root : document;
   tagByName(scope, '.shop-card', '.sc-name');
   tagByName(scope, '.eq-slot-row', '.eq-slot-name');
-  scope.querySelectorAll('.care-ring-btn:not([data-rarity])').forEach(btn => {
-    const id = btn.dataset.act;
-    if (id && hasRarity(id)) applyItemRarity(btn, rarityOf(id));
-  });
 }
 
-// These screens re-render constantly (renderCare alone runs on a timer
-// and on every interaction), so tagging is driven by a debounced
-// observer instead of being hooked into each render path.
+// These screens re-render constantly, so tagging is driven by a
+// debounced observer instead of being hooked into each render path.
 let queued = false;
 function queueTag() {
   if (queued) return;
@@ -223,56 +230,40 @@ export function injectRarityCss() {
   if (document.getElementById('item-rarity-css')) return;
   const style = document.createElement('style');
   style.id = 'item-rarity-css';
+  // No !important and no inset anywhere below -- see the rules at the
+  // top of this file. Outer glow only, so artwork and inline grade or
+  // habit colours always show through.
   style.textContent = `
 .inv-box[data-rarity]{
-  border:2px solid var(--rarity-color,#9aa4b8) !important;
-  box-shadow:0 0 7px var(--rarity-glow,transparent),
-             inset 0 0 8px var(--rarity-glow,transparent) !important;
+  border:2px solid var(--rarity-color,#9aa4b8);
+  box-shadow:0 0 7px var(--rarity-glow,transparent);
 }
-.inv-box[data-rarity="mythic"]{ border-width:2.5px !important; }
+.inv-box[data-rarity="mythic"]{ border-width:2.5px; }
 .inv-box[data-rarity="legendary"],
 .inv-box[data-rarity="mythic"]{ animation:rarity-pulse 2.4s ease-in-out infinite; }
 @keyframes rarity-pulse{
-  0%,100%{ box-shadow:0 0 6px var(--rarity-glow,transparent),
-                     inset 0 0 6px var(--rarity-glow,transparent); }
-  50%    { box-shadow:0 0 15px var(--rarity-glow,transparent),
-                     inset 0 0 11px var(--rarity-glow,transparent); }
+  0%,100%{ box-shadow:0 0 6px var(--rarity-glow,transparent); }
+  50%    { box-shadow:0 0 15px var(--rarity-glow,transparent); }
 }
 
 /* Shop cards -- same ladder, so a dish costs what it looks like. */
 .shop-card[data-rarity]{
-  border:2px solid var(--rarity-color,#9aa4b8) !important;
-  box-shadow:0 0 9px var(--rarity-glow,transparent),
-             inset 0 0 10px var(--rarity-glow,transparent) !important;
-}
-.shop-card[data-rarity] .sc-name{ color:var(--rarity-color,#f2f0ff) !important; }
-
-/* Care screen ring buttons sit on a busy background, so they lean on
-   the glow more than the border. */
-.care-ring-btn[data-rarity]{
-  border:2px solid var(--rarity-color,#9aa4b8) !important;
-  box-shadow:0 0 10px var(--rarity-glow,transparent),
-             inset 0 0 8px var(--rarity-glow,transparent) !important;
+  border:2px solid var(--rarity-color,#9aa4b8);
+  box-shadow:0 0 9px var(--rarity-glow,transparent);
 }
 
-/* Homemade cooking rows: a colour bar reads better than a full frame
-   in a list. */
+/* Cooking rows: a thin bar down the left edge only, so the row's own
+   background art stays visible. */
 .eq-slot-row[data-rarity]{
-  border-left:3px solid var(--rarity-color,#9aa4b8) !important;
-  box-shadow:inset 0 0 12px var(--rarity-glow,transparent) !important;
+  border-left:3px solid var(--rarity-color,#9aa4b8);
 }
-.eq-slot-row[data-rarity] .eq-slot-name{ color:var(--rarity-color,#f2f0ff) !important; }
 
 .shop-card[data-rarity="legendary"],
-.shop-card[data-rarity="mythic"],
-.care-ring-btn[data-rarity="legendary"],
-.care-ring-btn[data-rarity="mythic"]{
+.shop-card[data-rarity="mythic"]{
   animation:rarity-pulse 2.4s ease-in-out infinite;
 }
 @media (prefers-reduced-motion:reduce){
-  .inv-box[data-rarity], .shop-card[data-rarity], .care-ring-btn[data-rarity]{
-    animation:none !important;
-  }
+  .inv-box[data-rarity], .shop-card[data-rarity]{ animation:none; }
 }
 .rarity-chip-wrap{ text-align:center; margin-bottom:8px; }
 .rarity-chip{
