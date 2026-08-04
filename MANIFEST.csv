@@ -1,0 +1,166 @@
+source,dest_path,data_js_key,emoji,confidence,note
+sheet04_01,assets/potions/tp_crit.png,tp_crit,💥,certain,"Labelled ""Crit Elixir"""
+sheet04_02,assets/potions/tp_cleanse.png,tp_cleanse,✨,certain,"Labelled ""Cleanse Tonic"""
+sheet04_03,assets/potions/tx_freeze.png,tx_freeze,❄️,certain,"Labelled ""Freeze Curse"""
+sheet04_04,assets/potions/tx_stone.png,tx_stone,🗿,certain,"Labelled ""Stone Curse"""
+sheet04_05,assets/potions/tx_charm.png,tx_charm,💗,certain,"Labelled ""Charm Curse"""
+sheet04_06,assets/potions/revive.png,REVIVE_POTION,✨,certain,"Labelled ""Revive Potion"""
+sheet04_07,assets/icons/food_basic.png,food_basic,🍪,certain,"Labelled ""Food: Data Crumbs"""
+sheet04_08,assets/icons/food_good.png,food_good,🍔,certain,"Labelled ""Food: Byte Burger"""
+sheet04_09,assets/icons/food_premium.png,food_premium,🍰,certain,"Labelled ""Food: Golden Cache"""
+sheet11_01,assets/icons/def.png,ATTR.yellow,🛡️,certain,"Labelled ""Attribute: Yellow"""
+sheet11_02,assets/icons/healer.png,ATTR.white,➕,certain,"Labelled ""Attribute: White"""
+sheet11_03,assets/icons/egg_n.png,egg_n,🥚,certain,"Labelled ""Egg: Normal"""
+sheet11_04,assets/icons/egg_r.png,egg_r,🔵,certain,"Labelled ""Egg: Rare"""
+sheet11_05,assets/icons/egg_e.png,egg_e,🟣,certain,"Labelled ""Egg: Epic"""
+sheet11_06,assets/icons/habit_green.png,HABIT_COLORS.green,,certain,"Labelled ""Habit Color: Green"""
+sheet11_07,assets/icons/habit_red.png,HABIT_COLORS.red,,certain,"Labelled ""Habit Color: Red"""
+sheet11_08,assets/icons/habit_yellow.png,HABIT_COLORS.yellow,,certain,"Labelled ""Habit Color: Yellow"""
+sheet11_09,assets/icons/habit_blue.png,HABIT_COLORS.blue,,certain,"Labelled ""Habit Color: Blue"""
+sheet12_01,assets/icons/habit_white.png,HABIT_COLORS.white,,certain,"Labelled ""Habit Color: White"""
+sheet12_02,assets/icons/habit_dark.png,HABIT_COLORS.dark,,certain,"Labelled ""Habit Color: Dark"""
+sheet12_03,assets/icons/habit_beast.png,HABIT_TYPES.beast,,certain,"Labelled ""Type: Beast"""
+sheet12_04,assets/icons/habit_magicalbeast.png,HABIT_TYPES.magicalbeast,,certain,"Labelled ""Type: Magical Beast"""
+sheet12_05,assets/icons/habit_insect.png,HABIT_TYPES.insect,,certain,"Labelled ""Type: Insect"""
+sheet12_06,assets/icons/habit_fish.png,HABIT_TYPES.fish,,certain,"Labelled ""Type: Fish"""
+sheet12_07,assets/icons/habit_myth.png,HABIT_TYPES.myth,,certain,"Labelled ""Type: Myth"""
+sheet12_08,assets/icons/habit_goblin.png,HABIT_TYPES.goblin,,certain,"Labelled ""Type: Goblin"""
+sheet12_09,assets/icons/habit_demon.png,HABIT_TYPES.demon,,certain,"Labelled ""Type: Demon"""
+sheet13_01,assets/icons/habit_vampire.png,HABIT_TYPES.vampire,,high,Blood drop
+sheet13_02,assets/icons/habit_elemental.png,HABIT_TYPES.elemental,,high,Purple crystal
+sheet13_03,assets/icons/habit_humanoid.png,HABIT_TYPES.humanoid,,high,Human figure
+sheet13_04,assets/icons/habit_undead.png,HABIT_TYPES.undead,,high,Cracked skull
+sheet13_05,assets/icons/habit_plants.png,HABIT_TYPES.plants,,high,Sprout
+sheet13_06,assets/icons/habit_fungi.png,HABIT_TYPES.fungi,,high,Mushroom
+sheet13_07,assets/icons/habit_machine.png,HABIT_TYPES.machine,,high,Gear and bolt
+sheet13_08,assets/icons/habit_conjuration.png,HABIT_TYPES.conjuration,,high,Hooded figure
+sheet13_09,assets/icons/habit_aberration.png,HABIT_TYPES.aberration,,high,Eye
+sheet14_01,assets/icons/habit_dragon.png,HABIT_TYPES.dragon,,high,Dragon head
+sheet14_02,assets/icons/habit_fey.png,HABIT_TYPES.fey,,high,Fairy wings
+sheet14_03,assets/icons/habit_card.png,habit_card,🎴,high,Card back
+sheet14_04,assets/icons/habit_passive.png,habit_passive,,medium,Orbiting node
+sheet14_05,assets/icons/trait_aura.png,WHITE_TRAITS.aura,✨,medium,White sparkle ring
+sheet14_06,assets/icons/trait_regen.png,WHITE_TRAITS.regen,💗,medium,Green heart with orbit
+sheet14_07,assets/icons/trait_both.png,WHITE_TRAITS.both,🌟,medium,White star
+sheet14_08,assets/icons/loyalty_stranger.png,LOYALTY_TIERS[0],🤍,high,Plain dark heart
+sheet14_09,assets/icons/loyalty_friendly.png,LOYALTY_TIERS[1],💛,high,Gold heart
+sheet15_01,assets/icons/loyalty_trusted.png,LOYALTY_TIERS[2],🧡,high,Orange heart
+sheet15_02,assets/icons/loyalty_loyal.png,LOYALTY_TIERS[3],❤️,high,Red heart
+sheet15_03,assets/fx/ailment_poison.png,AILMENTS.poison,☠️,certain,Dripping skull
+sheet15_04,assets/fx/ailment_freeze.png,AILMENTS.freeze,❄️,certain,"Labelled ""Ailment: Freeze"""
+sheet15_05,assets/fx/ailment_frenzy.png,AILMENTS.frenzy,🔥,certain,"Labelled ""Ailment: Frenzy"""
+sheet15_06,assets/fx/ailment_charm.png,AILMENTS.charm,💗,certain,"Labelled ""Ailment: Charmed"""
+sheet15_07,assets/fx/ailment_corrupt.png,AILMENTS.corrupt,🦠,certain,"Labelled ""Ailment: Corrupted"""
+sheet15_08,assets/fx/ailment_stoned.png,AILMENTS.stoned,🗿,certain,"Labelled ""Ailment: Stoned"" - replaces stoned.gif placeholder"
+sheet15_09,assets/fx/ailment_laststand.png,AILMENTS.lastStand,🛟,certain,"Labelled ""Ailment: Last Stand"""
+sheet16_01,assets/icons/stat_atk.png,STAT_META.atk,⚔️,high,Fist
+sheet16_02,assets/icons/stat_def.png,STAT_META.def,🛡️,high,Shield
+sheet16_03,assets/icons/stat_spd.png,STAT_META.spd,⚡,high,Lightning
+sheet16_04,assets/icons/stat_crit.png,STAT_META.crit,💥,high,Crosshair
+sheet16_05,assets/icons/stat_eva.png,STAT_META.eva,💨,high,Figure dissolving into mist
+sheet16_06,assets/icons/stat_int.png,STAT_META.int,🔮,high,Brain with circuitry
+sheet16_07,assets/icons/stat_vit.png,STAT_META.vit,❤️,high,Circuit heart
+sheet16_08,assets/icons/atk.png,ATTR.red,⚔️,high,Flame sword = ATTR Red
+sheet16_09,assets/icons/spd.png,ATTR.green,🌪️,high,Leaf tornado = ATTR Green
+sheet01_01,assets/icons/exp_b.png,exp_b,⚡,low,Rocket - EXP Booster is the only launch-like entry
+sheet01_02,assets/icons/slot_exploit.png,EQUIP_SLOTS.exploit,🧬,high,DNA helix
+sheet01_03,assets/icons/slot_rootkit.png,EQUIP_SLOTS.rootkit,🗝️,high,Key and chip
+sheet01_04,assets/icons/craft_quick.png,CRAFT_RECIPES.quick,🔧,high,Speed wrench
+sheet01_05,assets/icons/craft_standard.png,CRAFT_RECIPES.standard,⚙️,high,Gear
+sheet01_06,assets/icons/craft_deep.png,CRAFT_RECIPES.deep,🛠️,high,"Wrench, driver and gear"
+sheet01_07,assets/icons/payload_leech.png,PAYLOAD_EFFECTS.leech,🩸,high,Binary blood drop
+sheet01_08,assets/icons/payload_manaregen.png,PAYLOAD_EFFECTS.manaregen,🔌,high,Power cycle
+sheet01_09,assets/icons/payload_overclock.png,PAYLOAD_EFFECTS.overclock,⚔️,high,Gear and lightning
+sheet02_01,assets/icons/payload_adaptive.png,PAYLOAD_EFFECTS.adaptive,🌪️,high,Green cyclone
+sheet02_02,assets/icons/hp_l.png,hp_l,💉,high,Syringe = HP Core
+sheet02_03,assets/ui/lock_locked.png,(UI chrome),,low,Padlock - no data.js entry; likely #45 equip lock
+sheet02_04,assets/ui/lock_locked_alt.png,(UI chrome),,low,Padlock variant
+sheet02_05,assets/ui/lock_unlocked.png,(UI chrome),,low,Open padlock
+sheet02_06,assets/ui/lock_unlocked_alt.png,(UI chrome),,low,Open padlock variant
+sheet02_07,assets/icons/malware_core.png,malware_core,🧿,high,Red cracked crystal
+sheet02_08,assets/icons/malware_core_alt.png,malware_core,🧿,high,Second red crystal variant
+sheet02_09,assets/icons/code_part_overclock.png,code_part_overclock,🔷,high,Blue shard
+sheet02_10,assets/icons/code_part_bulwark.png,code_part_bulwark,🟫,high,Brown shard
+sheet02_11,assets/icons/code_part_bulwark_alt.png,code_part_bulwark,🟫,medium,Second brown shard
+sheet02_12,assets/icons/code_part_phantom.png,code_part_phantom,🟣,high,Purple shard
+sheet02_13,assets/icons/code_part_corrupted.png,code_part_corrupted,🟢,high,Green shard
+sheet03_01,assets/ui/bitz.png,(currency),,high,Gold coin = Bitz
+sheet03_02,assets/potions/pot_s.png,pot_s,🧪,high,Small green vial
+sheet03_03,assets/potions/pot_m.png,pot_m,⚗️,high,Blue round flask
+sheet03_04,assets/potions/pot_f.png,pot_f,🍶,high,Blue bottle
+sheet03_05,assets/icons/hp_s.png,hp_s,💊,high,Bandage with cross
+sheet03_06,assets/icons/hp_s_alt.png,hp_s,💊,medium,Crossed bandages variant
+sheet03_07,assets/icons/hp_all.png,hp_all,🧬,high,Glowing bandage = Team Repair
+sheet03_08,assets/icons/craft_deep_alt.png,CRAFT_RECIPES.deep,🛠️,medium,Crossed wrenches variant
+sheet03_09,assets/icons/evo_s.png,evo_s,💎,high,Purple diamond
+sheet03_10,assets/potions/tp_crit_alt.png,tp_crit,💥,medium,Pink flask variant
+sheet03_11,assets/icons/evo_s_alt.png,evo_s,💎,medium,Purple gem variant
+sheet03_12,assets/potions/tp_mp.png,tp_mp,💧,high,Cyan round flask
+sheet03_13,assets/potions/tp_spd.png,tp_spd,🥤,high,Lightning vial
+sheet03_14,assets/potions/tp_cleanse_alt.png,tp_cleanse,✨,medium,Cyan vial variant
+sheet05_01,assets/icons/food_feast.png,food_feast,🍱,high,Bento box
+sheet05_02,assets/icons/ing_veg.png,ing_veg,🥬,high,Leafy greens
+sheet05_03,assets/icons/ing_bun.png,ing_bun,🍞,high,Bao bun
+sheet05_04,assets/icons/ing_meat.png,ing_meat,🥩,high,Raw meat on plate
+sheet05_05,assets/icons/ing_meat_alt.png,ing_meat,🥩,medium,Raw meat variant
+sheet05_06,assets/icons/recipe_taco.png,recipe_taco,🌮,high,Taco
+sheet05_07,assets/icons/recipe_sandwich.png,recipe_sandwich,🥪,high,Club sandwich
+sheet05_08,assets/icons/recipe_stew.png,recipe_stew,🍲,medium,Meatballs on plate
+sheet05_09,assets/icons/recipe_friedrice.png,recipe_friedrice,🍛,high,Grain bowl
+sheet05_10,assets/icons/recipe_spaghetti.png,recipe_spaghetti,🍝,high,Meatballs in red sauce
+sheet05_11,assets/icons/recipe_burger.png,recipe_burger,🍔,low,No burger art in set; nearest substitute
+sheet05_12,assets/icons/recipe_stew_pot.png,recipe_stew,🍲,high,Cooking pot
+sheet06_01,assets/ui/cook_pan.png,(UI chrome),,medium,Cooking pan - kitchen/craft screen
+sheet06_02,assets/ui/chef_hat.png,(UI chrome),,medium,Chef hat - recipe screen
+sheet06_03,assets/icons/toy_ball.png,toy_ball,⚽,high,Soccer ball
+sheet06_04,assets/icons/toy_ball_alt.png,toy_ball,⚽,low,Purple circuit disc
+sheet06_05,assets/icons/toy_laser.png,toy_laser,🔦,high,Laser pointer
+sheet06_06,assets/icons/toy_puzzle.png,toy_puzzle,🧩,high,Puzzle cube
+sheet06_07,assets/icons/toy_arcade.png,toy_arcade,🕹️,high,Arcade cabinet
+sheet06_08,assets/icons/toy_arcade_alt.png,toy_arcade,🕹️,medium,Red arcade variant
+sheet06_09,assets/icons/care_clean.png,CARE_CLEAN,🧼,high,Brush with sparkles
+sheet06_10,assets/icons/bot_turret.png,DEFENSE_BOTS[0],🤖,high,Turret bot
+sheet06_11,assets/icons/bot_guard.png,DEFENSE_BOTS[1],🛡️,high,Armoured bot with shield
+sheet06_12,assets/icons/bot_guard_alt.png,DEFENSE_BOTS[1],🛡️,medium,Second armoured bot
+sheet07_01,assets/icons/bot_fortress.png,DEFENSE_BOTS[2],🏰,certain,"Labelled ""Bot: Fortress"""
+sheet07_02,assets/ui/nav_inventory.png,(UI chrome),,certain,"Labelled ""Nav: Inventory"""
+sheet07_03,assets/ui/nav_city.png,MAP_NODES,,certain,"Labelled ""Nav: City/Map"""
+sheet07_04,assets/ui/nav_home.png,MAP_NODES.apartment,,certain,"Labelled ""Nav: Home Base"""
+sheet07_05,assets/ui/nav_world.png,(UI chrome),,certain,"Labelled ""Nav: World/Adventure"""
+sheet07_06,assets/ui/nav_shop.png,MAP_NODES.tech_shop,,certain,"Labelled ""Nav: Shop"""
+sheet07_07,assets/ui/nav_clinic.png,MAP_NODES.clinic,,certain,"Labelled ""Nav: Clinic"""
+sheet07_08,assets/ui/nav_raid.png,MAP_NODES.hacking,,certain,"Labelled ""Nav: Raid other players"""
+sheet07_09,assets/ui/hud_player.png,(UI chrome),,certain,"Labelled ""HUD: Player chip"""
+sheet08_01,assets/ui/menu.png,(UI chrome),,high,Hamburger menu
+sheet08_02,assets/ui/skilltree.png,(UI chrome),,high,Node tree = skill tree
+sheet08_03,assets/ui/close.png,(UI chrome),,high,Close X
+sheet08_04,assets/ui/star.png,(UI chrome),,high,Four-point star
+sheet08_05,assets/ui/warp.png,MAP_NODES.warp_gate,,medium,Purple spiral = warp gate
+sheet08_06,assets/ui/warning.png,(UI chrome),,high,Warning triangle
+sheet08_07,assets/ui/reward.png,(UI chrome),,high,Gift box
+sheet08_08,assets/ui/flee.png,(UI chrome),,medium,Running figure = flee/escape
+sheet08_09,assets/ui/chevron_right.png,(UI chrome),,high,Chevron right
+sheet09_01,assets/ui/rank_up.png,(UI chrome),,high,Double chevron up
+sheet09_02,assets/ui/level_up.png,(UI chrome),,high,Burst arrow up
+sheet09_03,assets/ui/rank_down.png,(UI chrome),,medium,Chevron down in ring
+sheet09_04,assets/ui/success.png,(UI chrome),,high,Green check in ring
+sheet09_05,assets/ui/failure.png,(UI chrome),,high,Red X in ring
+sheet09_06,assets/ui/check.png,(UI chrome),,high,Plain green check
+sheet09_07,assets/ui/miss.png,(UI chrome),,medium,Red starburst = miss
+sheet09_08,assets/ui/hit.png,(UI chrome),,medium,Impact burst = hit
+sheet09_09,assets/ui/heart.png,(UI chrome),,high,Circuit heart = HP
+sheet10_01,assets/ui/play.png,(UI chrome),,high,Play triangle
+sheet10_02,assets/ui/chevron_left.png,(UI chrome),,high,Chevron left
+sheet10_03,assets/ui/close_light.png,(UI chrome),,high,Light circuit X
+sheet10_04,assets/ui/sync.png,(UI chrome),,medium,Circular hands = Synchronize (#44)
+sheet10_05,assets/ui/capsule.png,(UI chrome),,medium,Capsule/pod
+sheet10_06,assets/ui/refresh.png,(UI chrome),,high,Purple refresh arrows
+sheet10_07,assets/ui/capsule_alt.png,(UI chrome),,medium,Tilted capsule
+sheet10_08,assets/ui/add.png,(UI chrome),,high,Plus in ring
+sheet10_09,assets/ui/remove.png,(UI chrome),,high,Minus in ring
+sheet10_10,assets/ui/hourglass.png,(UI chrome),,high,Hourglass = cooldown
+sheet10_11,assets/ui/remove_alt.png,(UI chrome),,medium,Minus in ring variant
+sheet10_12,assets/ui/trash.png,(UI chrome),,high,Trash = sell/discard
+sheet10_13,assets/ui/trash_alt.png,(UI chrome),,medium,Trash variant
+sheet10_14,assets/ui/hourglass_alt.png,(UI chrome),,medium,Hourglass variant
+sheet10_15,assets/ui/hourglass_alt2.png,(UI chrome),,medium,Hourglass variant
