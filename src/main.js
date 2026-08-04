@@ -7,6 +7,10 @@
 // the emoji for any file that is missing.
 import './icons.js';
 
+// Side-effect import: injects the .data-icon rule that iconHtml()
+// relies on for sizing (see src/icon-style.js).
+import './icon-style.js';
+
 import { hackState } from './battle/combat.js';
 import { startArena } from './battle/encounters.js';
 import { boot } from './state.js';
