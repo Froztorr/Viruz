@@ -1,6 +1,12 @@
 // Auto-split from the original monolithic game.js as part of a
 // codebase reorganization pass -- see git history for prior structure.
 
+// Side-effect import: stamps img/iconImg onto the data.js tables (see
+// src/icons.js). Must run before boot() so the first render already
+// sees the paths. Safe with no art present -- iconHtml() falls back to
+// the emoji for any file that is missing.
+import './icons.js';
+
 import { hackState } from './battle/combat.js';
 import { startArena } from './battle/encounters.js';
 import { boot } from './state.js';
