@@ -4,6 +4,7 @@
 import { CRAFT_RECIPES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, FOODS, INGREDIENTS, MATERIALS, MEAT_ITEM, PAYLOAD_EFFECTS, POTIONS, RECIPES, REVIVE_POTION, STAT_META, TOYS, craftEquipment, dustValueOf, sellValueOf } from '../data.js';
 import { petState, reviveDownPet } from '../engine.js';
 import { iconHtml } from '../icons.js';
+import { applyItemRarity, rarityChipHtml, rarityOf, rarityOfGrade } from '../item-rarity.js';
 import { dustEquip, equipGradeMeta, sellEquip, toggleEquipLock } from '../battle/equipment.js';
 import { throwLoadout, throwPool } from '../battle/extras.js';
 import { equipIconHtml, equipStatLine, potionIconHtml } from './pet-detail.js';
@@ -14,18 +15,21 @@ import { closeModal, log, modal, petCard, renderHUD, toast } from '../ui-shell.j
 // from the drawer's Inventory tab. Each box shows only an icon + a
 // single number badge (owned count for stackables, level for gear);
 // tapping one opens the full description in the shared modal.
-function invBox(iconMarkup, num, onClick, gradeColor) {
+// `rarityId` outlines the box in its rarity colour (see item-rarity.js).
+function invBox(iconMarkup, num, onClick, gradeColor, rarityId) {
   const box = el('div', 'inv-box');
   if (gradeColor) box.style.setProperty('--grade', gradeColor);
+  if (rarityId) applyItemRarity(box, rarityId);
   box.innerHTML = `<div class="inv-box-icon">${iconMarkup}</div>` +
     (num != null ? `<div class="inv-box-num">${num}</div>` : '');
   if (onClick) box.onclick = onClick;
   return box;
 }
-function showItemDetail(iconMarkup, name, desc, extraHtml) {
+function showItemDetail(iconMarkup, name, desc, extraHtml, rarityId) {
   modal(name, body => {
     body.innerHTML = `
       <div style="text-align:center;font-size:40px;margin-bottom:8px">${iconMarkup}</div>
+      ${rarityChipHtml(rarityId)}
       <div class="muted" style="text-align:center;margin-bottom:10px">${desc}</div>
       ${extraHtml || ''}`;
   });
@@ -89,13 +93,15 @@ function renderInvItems() {
     const n = ownedFoods[f.id] || 0;
     if (!n) return;
     any = true;
-    box.appendChild(invBox(iconHtml(f), n, () => showItemDetail(iconHtml(f), f.name, f.desc)));
+    const r = rarityOf(f);
+    box.appendChild(invBox(iconHtml(f), n, () => showItemDetail(iconHtml(f), f.name, f.desc, '', r), null, r));
   });
   (G.toys || []).forEach(id => {
     const t = TOYS.find(x => x.id === id);
     if (!t) return;
     any = true;
-    box.appendChild(invBox(iconHtml(t), null, () => showItemDetail(iconHtml(t), t.name, t.desc)));
+    const r = rarityOf(t);
+    box.appendChild(invBox(iconHtml(t), null, () => showItemDetail(iconHtml(t), t.name, t.desc, '', r), null, r));
   });
   const ownedMats = G.materials || {};
   Object.keys(MATERIALS).forEach(id => {
@@ -103,14 +109,16 @@ function renderInvItems() {
     if (!n) return;
     any = true;
     const m = MATERIALS[id];
-    box.appendChild(invBox(iconHtml(m), n, () => showItemDetail(iconHtml(m), m.name, m.desc)));
+    const r = rarityOf(m);
+    box.appendChild(invBox(iconHtml(m), n, () => showItemDetail(iconHtml(m), m.name, m.desc, '', r), null, r));
   });
   const ing = G.ingredients || {};
   [['veg', INGREDIENTS[0]], ['bun', INGREDIENTS[1]], ['meat', MEAT_ITEM]].forEach(([key, def]) => {
     const n = ing[key] || 0;
     if (!n || !def) return;
     any = true;
-    box.appendChild(invBox(iconHtml(def), n, () => showItemDetail(iconHtml(def), def.name, def.desc)));
+    const r = rarityOf(def);
+    box.appendChild(invBox(iconHtml(def), n, () => showItemDetail(iconHtml(def), def.name, def.desc, '', r), null, r));
   });
   if (!any) box.innerHTML = `<div class="inv-empty-msg">ยังไม่มีไอเทม</div>`;
 }
@@ -125,16 +133,18 @@ function renderInvPotions() {
     const n = owned[p.id] || 0;
     if (!n) return;
     any = true;
-    box.appendChild(invBox(potionIconHtml(p), n, () => showItemDetail(potionIconHtml(p), p.name, p.desc)));
+    const r = rarityOf(p);
+    box.appendChild(invBox(potionIconHtml(p), n, () => showItemDetail(potionIconHtml(p), p.name, p.desc, '', r), null, r));
   });
   const reviveN = owned[REVIVE_POTION.id] || 0;
   if (reviveN) {
     any = true;
+    const r = rarityOf(REVIVE_POTION);
     box.appendChild(invBox(iconHtml(REVIVE_POTION), reviveN, () => {
       showItemDetail(iconHtml(REVIVE_POTION), REVIVE_POTION.name, REVIVE_POTION.desc,
-        `<button class="btn wide primary" id="revive-use-btn">✨ ใช้</button>`);
+        `<button class="btn wide primary" id="revive-use-btn">✨ ใช้</button>`, r);
       $('revive-use-btn').onclick = () => { closeModal(); useRevivePotion(); };
-    }));
+    }, null, r));
   }
   if (!any) box.innerHTML = `<div class="inv-empty-msg">ยังไม่มียา</div>`;
 }
@@ -195,7 +205,9 @@ export function renderEquipBag() {
     const g = equipGradeMeta(item);
     const slot = EQUIP_SLOTS[item.slotId];
     const markup = equipIconHtml(item, slot.icon);
-    const itemBox = invBox(markup, item.lvlReq, () => showEquipDetail(item), g.color);
+    // Gear grades map 1:1 onto the rarity ladder, so equipment glows on
+    // the same scale as everything else instead of its own quiet frame.
+    const itemBox = invBox(markup, item.lvlReq, () => showEquipDetail(item), g.color, rarityOfGrade(item.grade));
     if (item.locked) itemBox.appendChild(el('div', 'inv-box-lock', '🔒'));
     box.appendChild(itemBox);
   });
@@ -267,10 +279,11 @@ function renderCraft() {
   box.innerHTML = '';
   const maxLevel = Math.max(1, ...G.roster.map(p => p.level || 1));
   CRAFT_RECIPES.forEach(r => {
+    const rar = rarityOf(r);
     box.appendChild(invBox(iconHtml(r), r.dust, () => {
       const afford = (G.dust || 0) >= r.dust;
       showItemDetail(iconHtml(r), r.name, `โอกาสได้เกรดสูงขึ้นตามด่าน · 🧬 ${r.dust} Dust`, `
-        <button class="btn wide${afford ? ' primary' : ''}" id="craft-go-btn">${afford ? 'คราฟต์' : 'Dust ไม่พอ'}</button>`);
+        <button class="btn wide${afford ? ' primary' : ''}" id="craft-go-btn">${afford ? 'คราฟต์' : 'Dust ไม่พอ'}</button>`, rar);
       const btn = $('craft-go-btn');
       if (!afford) { btn.disabled = true; return; }
       btn.onclick = () => {
@@ -284,7 +297,7 @@ function renderCraft() {
         closeModal();
         renderCraft(); renderEquipBag();
       };
-    }));
+    }, null, rar));
   });
 }
 
