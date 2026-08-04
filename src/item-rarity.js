@@ -8,6 +8,12 @@
 // normal, trojan = rare, polymorphic = epic, zeroday = legendary,
 // apt = mythic), so equipment slots into the same visual scale for
 // free -- see GRADE_RARITY below.
+//
+// Besides the inventory grid this also tints the shop cards, the care
+// screen's ring buttons, and the homemade-cooking rows. Those screens
+// are tagged from the DOM rather than by editing each renderer: the
+// care buttons already carry data-act="<item id>", and every shop card
+// prints the item's unique name, which is enough to look the tier up.
 
 import {
   CRAFT_RECIPES, EGGS, FOODS, INGREDIENTS, ITEMS, MATERIALS, MEAT_ITEM,
@@ -61,8 +67,11 @@ export function bandOf(score) {
   return 'mythic';
 }
 
-// ── THE LOOKUP TABLE ──
+// ── THE LOOKUP TABLES ──
+// BY_ID is the real answer; BY_NAME exists only so the shop screens
+// (whose cards carry no item id) can be tagged from the DOM.
 const BY_ID = {};
+const BY_NAME = {};
 function set(id, rarity) { if (id) BY_ID[id] = rarity; }
 function setAll(list, rarity) { (list || []).forEach(x => set(x.id, rarity)); }
 
@@ -119,6 +128,20 @@ set('egg_r', 'rare');
 set('egg_e', 'epic');
 setAll(EGGS.filter(e => !BY_ID[e.id]), 'normal');
 
+// Name index for the shop/cooking screens. Code Part cards print their
+// name with the "Code Part: " prefix stripped, so both spellings are
+// registered.
+[...FOODS, ...RECIPES, ...TOYS, ...INGREDIENTS, MEAT_ITEM, ...POTIONS,
+  REVIVE_POTION, ...THROW_POISONS, ...THROW_UTILITY_POTIONS, ...ITEMS,
+  ...CRAFT_RECIPES, ...EGGS, ...Object.values(MATERIALS),
+].forEach(entry => {
+  if (!entry || !entry.name) return;
+  const r = BY_ID[entry.id];
+  if (!r) return;
+  BY_NAME[entry.name] = r;
+  BY_NAME[entry.name.replace('Code Part: ', '')] = r;
+});
+
 // Accepts an item object or a bare id. Unknown things read as normal
 // rather than throwing, so a new item never breaks the grid.
 export function rarityOf(entry) {
@@ -126,6 +149,8 @@ export function rarityOf(entry) {
   const id = typeof entry === 'string' ? entry : entry.id;
   return BY_ID[id] || 'normal';
 }
+export function hasRarity(id) { return !!BY_ID[id]; }
+export function rarityOfName(name) { return name ? BY_NAME[name.trim()] || null : null; }
 export function rarityOfGrade(gradeId) {
   return GRADE_RARITY[gradeId] || 'normal';
 }
@@ -133,8 +158,8 @@ export function rarityMeta(rarityId) {
   return RARITY[rarityId] || RARITY.normal;
 }
 
-// Stamps the tier onto a box element. Kept as a helper so callers
-// never have to know the CSS variable names.
+// Stamps the tier onto an element. Kept as a helper so callers never
+// have to know the CSS variable names.
 export function applyItemRarity(box, rarityId) {
   if (!box || !rarityId) return box;
   const meta = rarityMeta(rarityId);
@@ -151,6 +176,47 @@ export function rarityChipHtml(rarityId) {
   if (!rarityId) return '';
   const meta = rarityMeta(rarityId);
   return `<div class="rarity-chip-wrap"><span class="rarity-chip" style="color:${meta.color};border-color:${meta.color};box-shadow:0 0 8px ${meta.glow}">${meta.name}</span></div>`;
+}
+
+// ── DOM TAGGING FOR THE OTHER SCREENS ──
+// Shop cards (food shop, item shop, poisons, revive, clinic eggs, the
+// Code Part picker) all share .shop-card with the item's name in
+// .sc-name. Care ring buttons already expose the id in data-act. The
+// homemade-cooking modal uses .eq-slot-row with .eq-slot-name.
+// Anything that isn't a known item -- pets, guards, defense bots,
+// rolled equipment -- simply doesn't match and is left alone.
+function tagByName(root, sel, nameSel) {
+  root.querySelectorAll(`${sel}:not([data-rarity])`).forEach(node => {
+    const nameEl = node.querySelector(nameSel);
+    if (!nameEl) return;
+    const r = rarityOfName(nameEl.textContent);
+    if (r) applyItemRarity(node, r);
+  });
+}
+
+export function tagRarityIn(root) {
+  const scope = root && root.querySelectorAll ? root : document;
+  tagByName(scope, '.shop-card', '.sc-name');
+  tagByName(scope, '.eq-slot-row', '.eq-slot-name');
+  scope.querySelectorAll('.care-ring-btn:not([data-rarity])').forEach(btn => {
+    const id = btn.dataset.act;
+    if (id && hasRarity(id)) applyItemRarity(btn, rarityOf(id));
+  });
+}
+
+// These screens re-render constantly (renderCare alone runs on a timer
+// and on every interaction), so tagging is driven by a debounced
+// observer instead of being hooked into each render path.
+let queued = false;
+function queueTag() {
+  if (queued) return;
+  queued = true;
+  requestAnimationFrame(() => { queued = false; tagRarityIn(document); });
+}
+function observe() {
+  if (!document.body) return;
+  new MutationObserver(queueTag).observe(document.body, { childList: true, subtree: true });
+  queueTag();
 }
 
 export function injectRarityCss() {
@@ -172,8 +238,41 @@ export function injectRarityCss() {
   50%    { box-shadow:0 0 15px var(--rarity-glow,transparent),
                      inset 0 0 11px var(--rarity-glow,transparent); }
 }
+
+/* Shop cards -- same ladder, so a dish costs what it looks like. */
+.shop-card[data-rarity]{
+  border:2px solid var(--rarity-color,#9aa4b8) !important;
+  box-shadow:0 0 9px var(--rarity-glow,transparent),
+             inset 0 0 10px var(--rarity-glow,transparent) !important;
+}
+.shop-card[data-rarity] .sc-name{ color:var(--rarity-color,#f2f0ff) !important; }
+
+/* Care screen ring buttons sit on a busy background, so they lean on
+   the glow more than the border. */
+.care-ring-btn[data-rarity]{
+  border:2px solid var(--rarity-color,#9aa4b8) !important;
+  box-shadow:0 0 10px var(--rarity-glow,transparent),
+             inset 0 0 8px var(--rarity-glow,transparent) !important;
+}
+
+/* Homemade cooking rows: a colour bar reads better than a full frame
+   in a list. */
+.eq-slot-row[data-rarity]{
+  border-left:3px solid var(--rarity-color,#9aa4b8) !important;
+  box-shadow:inset 0 0 12px var(--rarity-glow,transparent) !important;
+}
+.eq-slot-row[data-rarity] .eq-slot-name{ color:var(--rarity-color,#f2f0ff) !important; }
+
+.shop-card[data-rarity="legendary"],
+.shop-card[data-rarity="mythic"],
+.care-ring-btn[data-rarity="legendary"],
+.care-ring-btn[data-rarity="mythic"]{
+  animation:rarity-pulse 2.4s ease-in-out infinite;
+}
 @media (prefers-reduced-motion:reduce){
-  .inv-box[data-rarity]{ animation:none !important; }
+  .inv-box[data-rarity], .shop-card[data-rarity], .care-ring-btn[data-rarity]{
+    animation:none !important;
+  }
 }
 .rarity-chip-wrap{ text-align:center; margin-bottom:8px; }
 .rarity-chip{
@@ -186,3 +285,5 @@ export function injectRarityCss() {
 }
 
 injectRarityCss();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observe);
+else observe();

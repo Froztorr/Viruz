@@ -3,6 +3,8 @@
 
 import { AILMENTS, ANTIVIRUZ, BOSS_TUNING, CODE_PART_IDS, EQUIP_DROP_CHANCE, EQUIP_GRADES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, HABIT_CARD_DROP_CHANCE, MATERIALS, MEAT_DROP_CHANCE, MEAT_ITEM, PAYLOAD_EFFECTS, SPECIES, codePartDropChance, craftEquipment, dustValueOf, rollEquipment, sellValueOf } from '../data.js';
 import { addAilment, habitOf, maxMP, restoreMP, statsOf, uid } from '../engine.js';
+import { showDropBanner } from '../drop-banner.js';
+import { rarityOf, rarityOfGrade } from '../item-rarity.js';
 import { healPop } from './combat.js';
 import { startArena, startBossFight, startRaidFight, startZone } from './encounters.js';
 import { checkBattleEnd } from './turn-loop.js';
@@ -116,6 +118,12 @@ export function applyPayloadOnHit(attacker, target, res, side) {
 }
 
 // ═══════════════ EQUIPMENT: drops, sell, dust, craft ═══════════════
+// Every drop below announces itself with showDropBanner() rather than
+// toast(): a toast sets textContent, so it could never show the item's
+// real icon art, and had no way to carry a rarity colour. The banner
+// shows the icon, the name, and a frame in the item's own tier colour —
+// the same ladder the inventory grid uses. The battle log line still
+// goes through blog() as before, so the written history is unchanged.
 // Rolled once per newly-credited enemy kill (see checkBattleEnd).
 // Capped at the dropping enemy's own level, per spec.
 export function rollEquipDrop(enemy) {
@@ -129,7 +137,12 @@ export function rollEquipDrop(enemy) {
   G.equipBag = G.equipBag || [];
   G.equipBag.push(item);
   const slot = EQUIP_SLOTS[item.slotId];
-  toast(`🎁 ${item.name} (Lv.${item.lvlReq})`);
+  // Gear grades map 1:1 onto the rarity ladder, so a dropped zeroday
+  // flashes the same gold an inventory zeroday box glows.
+  showDropBanner({
+    entry: item, fallback: slot.icon, name: item.name,
+    rarityId: rarityOfGrade(item.grade), sub: `${slot.name} · Lv.${item.lvlReq}`,
+  });
   blog(`${slot.icon} ดรอปอุปกรณ์: ${item.name}`, 'win');
 }
 
@@ -147,13 +160,16 @@ export function rollMaterialDrop(enemy) {
     const matId = CODE_PART_IDS[Math.floor(Math.random() * CODE_PART_IDS.length)];
     addMaterial(matId);
     const m = MATERIALS[matId];
-    toast(`${m.icon} ${m.name}`);
+    showDropBanner({ entry: m, fallback: m.icon, name: m.name, rarityId: rarityOf(matId) });
     blog(`${m.icon} ดรอป: ${m.name}`, 'win');
   }
   if (enemy.isBoss && Math.random() < BOSS_TUNING.malwareCoreChance) {
     addMaterial('malware_core');
     const m = MATERIALS.malware_core;
-    toast(`${m.icon} ${m.name}!`);
+    showDropBanner({
+      entry: m, fallback: m.icon, name: m.name,
+      rarityId: rarityOf('malware_core'), sub: 'บอสดรอป',
+    });
     blog(`${m.icon} บอสดรอป: ${m.name}!`, 'win');
   }
 }
@@ -175,7 +191,10 @@ export function rollHabitCard(enemy) {
   };
   G.equipBag = G.equipBag || [];
   G.equipBag.push(item);
-  toast(`🎴 ${item.name}`);
+  showDropBanner({
+    entry: item, fallback: '🎴', name: item.name,
+    rarityId: rarityOfGrade(item.grade), sub: EQUIP_SLOTS.habit.name,
+  });
   blog(`🎴 ดรอปการ์ด: ${item.name}`, 'win');
 }
 
@@ -185,7 +204,10 @@ export function rollMeatDrop(enemy) {
   if (!enemy || Math.random() >= MEAT_DROP_CHANCE) return;
   G.ingredients = G.ingredients || { veg:0, bun:0, meat:0 };
   G.ingredients.meat = (G.ingredients.meat || 0) + 1;
-  toast(`${MEAT_ITEM.icon} ได้ ${MEAT_ITEM.name}`);
+  showDropBanner({
+    entry: MEAT_ITEM, fallback: MEAT_ITEM.icon, name: MEAT_ITEM.name,
+    rarityId: rarityOf(MEAT_ITEM), sub: 'วัตถุดิบ',
+  });
   blog(`${MEAT_ITEM.icon} ดรอปวัตถุดิบ: ${MEAT_ITEM.name}`, 'win');
 }
 
@@ -288,4 +310,3 @@ export function wireEquipControls() {
   if (btn) btn.onclick = sellAllEquip;
   updateSellAllBtnLabel();
 }
-
