@@ -26,30 +26,27 @@ jobs:
           set -euo pipefail
           shopt -s globstar nullglob
 
-          count=0
+          decoded=()
           for f in tools/icon-b64/**/*.b64; do
             rel="${f#tools/icon-b64/}"
             dest="assets/${rel%.b64}"
             mkdir -p "$(dirname "$dest")"
             base64 -d "$f" > "$dest"
-
-            # Refuse to commit anything that is not genuinely a PNG, so a
-            # truncated or corrupted payload fails loudly here instead of
-            # silently shipping a broken image.
-            if ! file "$dest" | grep -q 'PNG image data'; then
-              echo "::error::$dest is not a PNG after decoding"
-              exit 1
-            fi
-
             printf '  %-40s %s bytes\n' "$dest" "$(stat -c%s "$dest")"
-            count=$((count + 1))
+            decoded+=("$dest")
           done
 
-          if [ "$count" -eq 0 ]; then
+          if [ "${#decoded[@]}" -eq 0 ]; then
             echo '::error::no .b64 payloads found under tools/icon-b64/'
             exit 1
           fi
-          echo "decoded $count file(s)"
+
+          # Signature plus a CRC check on every chunk, so a payload that
+          # was mangled in transit fails here rather than shipping as a
+          # broken image.
+          python3 tools/verify_png.py "${decoded[@]}"
+
+          echo "decoded ${#decoded[@]} file(s)"
 
           # The payloads have served their purpose; only the PNGs remain.
           rm -rf tools/icon-b64
