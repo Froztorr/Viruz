@@ -11,11 +11,7 @@ import { $, G, activeTeam, attrIcon, creatureMarkup, el, habitIcon, petById, sav
 import { closeModal, currentMainId, modal } from '../ui-shell.js';
 
 // ── PET DETAIL WINDOW (Stats / Equipment / Skill Tree) ──
-// Opened by tapping a pet card on ฐานของคุณ. Three horizontally
-// swipeable pages sharing one pet for the whole session — no in-modal
-// pet switcher, since the card tap already picked which pet. Replaces
-// the old separate status modal, equip modal, and tree screen.
-let PD = null; // { pet } while open, else null
+let PD = null;
 let pdPage = 0;
 
 export function openPetDetail(pet, startPage) {
@@ -46,10 +42,6 @@ function goPdPage(i, instant) {
   track.style.transform = `translateX(-${pdPage * 100}%)`;
   if (instant) { void track.offsetWidth; track.style.transition = ''; }
   document.querySelectorAll('.pd-tab').forEach((t, idx) => t.classList.toggle('on', idx === pdPage));
-  // Each page was only ever rendered once, at modal-open time — so
-  // equipping gear on the Equip tab then swiping to Stats (or vice
-  // versa) showed stale numbers until the whole modal was closed and
-  // reopened. Re-render whichever page is now visible instead.
   const render = PD_PAGE_RENDER[pdPage];
   if (render) render();
 }
@@ -81,7 +73,7 @@ export function wirePetDetail() {
   if (cookBtn) cookBtn.onclick = openCookingMenu;
 }
 
-// ── Page 1: Stats — full readout + specials + the team toggle ──
+// ── Page 1: Stats ──
 function renderPdStats() {
   const pet = PD.pet;
   const a = ATTR[pet.attr];
@@ -235,7 +227,7 @@ export function refreshPdTeamBtn() {
   }
 }
 
-// ── Page 2: Equipment — same 3 slots as before, now embedded ──
+// ── Page 2: Equipment ──
 const RADIANT_GRADES = ['zeroday', 'apt'];
 export function equipIconHtml(item, fallbackEmoji) {
   if (!item || !item.icon) return fallbackEmoji;
@@ -265,14 +257,12 @@ export function equipStatLine(item) {
   return Object.keys(item.stats || {}).map(k => `${STAT_META[k].icon}+${item.stats[k]}`).join(' ');
 }
 
-// ── Habit card sprite ──
-// Uses item.lvlReq to pick the rarity sprite so EVERY habit card always
-// shows a card image. item.color belongs to HABIT_COLORS (yellow/green/
-// red/etc.) and has nothing to do with the green/blue/purple rarity tier.
-//
-//   lvlReq  1–5  → green  (common)    assets/ui/habit_card_green.png
-//   lvlReq  6–12 → blue   (rare)      assets/ui/habit_card_blue.png
-//   lvlReq 13+   → purple (most rare) assets/ui/habit_card_purple.png
+// ── Habit card sprite — used ONLY in the picker modal rows ──
+// The circuit board socket still shows habitIcon (the creature type icon).
+// The picker (both equipped row + options list) shows the card PNG sprite.
+//   lvlReq  1–5  → green  (common)
+//   lvlReq  6–12 → blue   (rare)
+//   lvlReq 13+   → purple (most rare)
 function habitCardSpriteHtml(item, size) {
   const lvl = item.lvlReq || 1;
   const src = lvl <= 5  ? 'assets/ui/habit_card_green.png'
@@ -281,8 +271,6 @@ function habitCardSpriteHtml(item, size) {
   return `<img src="${src}" class="eq-habit-card-sprite" style="width:${size}px;height:${size}px;object-fit:contain" alt="">`;
 }
 
-// Board layout — positions measured directly off the generated circuit
-// board art (assets/ui/equip_circuit_bg.jpg).
 const EQ_SOCKET_LAYOUT = {
   payload:  { left: 27.5, top: 20.3, size: 17.5, round: false },
   exploit:  { left: 72.4, top: 20.3, size: 17.5, round: false },
@@ -306,10 +294,10 @@ function renderPdEquip() {
     socket.style.width = pos.size + '%';
     let inner;
     if (item) {
-      // Habit socket → show rarity card sprite (green/blue/purple by lvlReq).
-      // Habit type icon stays in the circuit background area.
+      // Circuit board: habit socket always shows the habit TYPE icon (goblin, bug, etc.).
+      // Card sprites only appear inside the picker modal.
       inner = slotId === 'habit'
-        ? habitCardSpriteHtml(item, 44)
+        ? habitIcon(HABIT_TYPES[item.type], 44)
         : equipIconHtml(item, slot.icon);
     } else {
       inner = `<span class="eq-socket-plus">+</span>`;
@@ -330,7 +318,7 @@ function openEquipPicker(pet, slotId) {
       const g = equipGradeMeta(current);
       const row = el('div', 'eq-slot-row');
       row.style.setProperty('--grade', g.color);
-      // Habit → card sprite; others → equipment icon.
+      // Picker: habit shows card sprite (green/blue/purple by lvlReq).
       const iconHtml = slotId === 'habit'
         ? habitCardSpriteHtml(current, 26)
         : equipIconHtml(current, EQUIP_SLOTS[slotId].icon);
@@ -358,7 +346,7 @@ function openEquipPicker(pet, slotId) {
         const g = equipGradeMeta(item);
         const row = el('div', 'eq-slot-row');
         row.style.setProperty('--grade', g.color);
-        // Habit → card sprite; others → equipment icon.
+        // Picker: habit shows card sprite (green/blue/purple by lvlReq).
         const itemIconHtml = slotId === 'habit'
           ? habitCardSpriteHtml(item, 26)
           : equipIconHtml(item, EQUIP_SLOTS[item.slotId].icon);
