@@ -6,7 +6,7 @@
 // collect) and keeping it in a modal means index.html and ui-shell.js
 // need no new markup or nav entry.
 //
-// All rules//math live in src/botnet.js — this file only renders them
+// All rules/math live in src/botnet.js — this file only renders them
 // and banks the results.
 // ════════════════════════════════════════════════════════
 
@@ -20,8 +20,37 @@ import {
 import { zoneById } from '../data.js';
 import { petState, statsOf } from '../engine.js';
 import { equipIconHtml } from './pet-detail.js';
-import { $, G, creatureMarkup, el, petById, save } from '../state.js';
-import { closeModal, log, modal, renderHUD, toast } from '../ui-shell.js';
+import { $, G, petById, save } from '../state.js';
+import { log, modal, renderHUD, toast } from '../ui-shell.js';
+
+// ── STYLES ──
+// Injected once from JS rather than added to styles.css: that file is
+// ~143KB and rewriting it wholesale to append a dozen rules is a much
+// bigger risk than it is worth. Mirrors what src/icon-style.js does.
+let stylesInjected = false;
+function ensureBotnetStyles() {
+  if (stylesInjected || document.getElementById('botnet-styles')) return;
+  stylesInjected = true;
+  const s = document.createElement('style');
+  s.id = 'botnet-styles';
+  s.textContent = `
+    .bn-label{font-weight:700;margin:10px 0 6px;font-size:13px}
+    .bn-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px}
+    .bn-list{max-height:230px;overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+    .bn-row{display:flex;align-items:center;gap:8px;padding:7px 9px;
+      border:1px solid rgba(255,255,255,.12);border-radius:9px;
+      background:rgba(255,255,255,.03);cursor:pointer}
+    .bn-row.on{border-color:#3ddc84;background:rgba(61,220,132,.12)}
+    .bn-row-main{flex:1;min-width:0}
+    .bn-row-check{font-size:16px}
+    .bn-progress{height:12px;border-radius:99px;background:rgba(255,255,255,.10);overflow:hidden}
+    .bn-progress-fill{height:100%;transition:width .4s;
+      background:linear-gradient(90deg,#3ddc84,#4fc3f7)}
+    .bn-choice{line-height:1.35}
+    .bn-choice.locked{opacity:.45}
+  `;
+  document.head.appendChild(s);
+}
 
 // ── draft state for the setup view (not persisted — only the launched
 // run is, on G.botnet) ──
@@ -58,6 +87,7 @@ function runPets(run) {
 
 // ═══════════════ ENTRY ═══════════════
 export function openBotnetModal() {
+  ensureBotnetStyles();
   stopTick();
   modal('🤖 Botnet', () => {});
   render();
@@ -241,9 +271,9 @@ function renderStatus(body) {
   if (collect) collect.onclick = () => onCollect(run);
   const abort = $('bn-abort');
   if (abort) abort.onclick = () => {
-    // Recalling early still applies the damage taken so far would be
-    // punishing twice over; the run is simply abandoned with no payout
-    // and no damage, which is the least surprising outcome.
+    // Recalling early and ALSO applying the damage taken so far would
+    // punish the player twice, so the run is simply abandoned with no
+    // payout and no damage — the least surprising outcome.
     G.botnet = null;
     save();
     toast('เรียกทีมกลับแล้ว');
@@ -345,7 +375,7 @@ function finishRun(run, rewardMult, rescueOutcome) {
       <div class="eqd-stat-row"><span>✨ EXP (รวม)</span><b>+${res.exp}</b></div>
       ${gearRows}
     </div>
-    ${downed.length ? `<div class="muted" style="text-align:center;margin-top:8px;color:#ff4d4d">
+    ${downed.length ? `<div style="text-align:center;margin-top:8px;color:#ff4d4d">
       ⚠ หมดสติ ${downed.length} ตัว: ${downed.map(p => p.name).join(', ')}
     </div>` : ''}
     <button class="btn wide primary" id="bn-again" style="margin-top:10px">🤖 ส่งรอบใหม่</button>`;
