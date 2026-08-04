@@ -1,0 +1,36 @@
+name: Decode habit card sprites
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/decode-habit-sprites.yml']
+  workflow_dispatch:
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode base64 text files to binary PNG
+        run: |
+          python3 - << 'PYEOF'
+          import base64
+          for color in ['green', 'blue', 'purple']:
+              path = f'assets/ui/habit_card_{color}.png'
+              with open(path, 'r') as f:
+                  raw = f.read().strip()
+              try:
+                  decoded = base64.b64decode(raw)
+                  assert decoded[:4] == b'\x89PNG', f'{color}: not a PNG after decode'
+                  with open(path, 'wb') as f:
+                      f.write(decoded)
+                  print(f'OK {path} ({len(decoded)} bytes)')
+              except Exception as e:
+                  print(f'SKIP {path}: {e}')
+          PYEOF
+      - name: Commit decoded PNGs
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Actions"
+          git add assets/ui/habit_card_green.png assets/ui/habit_card_blue.png assets/ui/habit_card_purple.png
+          git diff --staged --quiet && echo 'nothing to commit' || (git commit -m "fix: decode habit card sprites to binary PNG" && git push)
