@@ -11,6 +11,12 @@ import './icons.js';
 // relies on for sizing (see src/icon-style.js).
 import './icon-style.js';
 
+// Side-effect import: swaps the hardcoded emoji in the app shell and
+// the pet detail panel for the real PNGs (see src/menu-icons.js).
+// Those places write their glyph into markup as literal text and never
+// call iconHtml(), so art alone does not reach them.
+import './menu-icons.js';
+
 import { hackState } from './battle/combat.js';
 import { startArena } from './battle/encounters.js';
 import { boot } from './state.js';
