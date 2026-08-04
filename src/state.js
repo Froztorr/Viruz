@@ -3,6 +3,8 @@
 
 import { AILMENTS, ALL_EQUIP_SLOT_KEYS, ANTIVIRUZ, ART2_SPECIES, ATTR, ATTR_KEYS, BOSS_TUNING, CARE_CLEAN, CARE_COOLDOWN_MS, CODE_PART_IDS, CRAFT_RECIPES, DEFENSE_BOTS, EGGS, EQUIP_DROP_CHANCE, EQUIP_GRADES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, EQUIP_SLOT_KEYS, FOODS, GUARD_TIERS, HABIT_CARD_DROP_CHANCE, HABIT_CARD_ICON, HABIT_COLORS, HABIT_COLOR_KEYS, HABIT_PASSIVE_ICON, HABIT_TYPES, HABIT_TYPE_KEYS, INGREDIENTS, ITEMS, LOYALTY_PER_WIN, LOYALTY_TIERS, MAPS, MAP_NODES, MATERIALS, MEAT_DROP_CHANCE, MEAT_ITEM, MUTATIONS, MUTATION_KEYS, PAYLOAD_EFFECTS, PAYLOAD_EFFECT_KEYS, POTIONS, RAID_LOSS_BITZ, RARITY, RARITY_KEYS, RECIPES, REVIVE_POTION, SIGNATURE_SKILLS, SKILL_TREES, SPECIALS, SPECIES, SPECIES_KEYS, STAT_KEYS, STAT_META, SYNERGY, THROW_POISONS, THROW_UTILITY_POTIONS, TOYS, TUNING, WHITE_TRAITS, ZONES, backfillEquipIcon, bossPoolForMap, buildLootMenu, chanceToEnemyMult, codePartDropChance, craftEquipment, dustValueOf, guardTierForLevel, loyaltyProgress, loyaltyTier, mutationWeightsFromParts, randomBossZone, rollEquipment, sellValueOf, treeFor, treeForMutation, zoneById, zonesOfMap } from './data.js';
 import { DOWN_MS, INCUBATE_MS, addAilment, advanceSpeedCounter, availableSkills, buildHackPuzzle, buildHackRun, canCast, canEvolve, canTakeNode, checkHackGuess, clamp, clearAilments, combatStats, computeDamage, createPet, enterBossRage, equipmentBonuses, evolve, grantExp, habitOf, hasAilment, healTeam, loyaltyBuffs, markDown, maxMP, petState, powerOf, resolveRaid, restoreMP, reviveDownPet, rollEgg, signatureSkillOf, spawnAntiviruz, spawnBoss, spendMP, startIncubation, statsOf, supportOf, synergyOf, takeNode, teamAlive, teamPower, tickAilments, treeBonuses, turnOrder, uid, unlockedSpecials } from './engine.js';
+import { normalizeHabitCard } from './habit-fusion.js';
+import { ensureHeatState } from './heat.js';
 import { NET } from './net.js';
 import { creatureMarkupFor, gifURL } from './sprites.js';
 import { wireEquipControls } from './battle/equipment.js';
@@ -13,10 +15,10 @@ import { wireInventoryTabs } from './screens/inventory.js';
 import { wirePetDetail } from './screens/pet-detail.js';
 import { feed, log, renderAll, showScreen, startDownStateTicker, startTopBarClock, toast, wireClickRipple, wireDayNightTheme, wireDoubleTapGuard, wireDrawer, wireGlobalUI, wireMainWindow } from './ui-shell.js';
 
-// ═══════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 // VIRUZ PET — GAME
 // State, screens, battle loop, DOM rendering.
-// ═══════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
 
 
 // Creatures come from either real GIF art or procedural SVG —
@@ -60,6 +62,9 @@ export let G = {
   ingredients: { veg:0, bun:0, meat:0 }, // veg/bun bought at Food Shop, meat hunt-only
   materials: {},    // { malware_core: n, code_part_overclock: n, ... } — Tech Lab evolution
   bossState: {},    // { mapId: { alive, zoneId, defId, level, uid } } — wandering region bosses
+  botnet: null,     // active idle expedition — see src/botnet.js
+  heat: {},         // { zoneId: { fights, meter } } — see src/heat.js
+  emblems: {},      // { imp_emblem: n } — hunter collectibles, see src/heat.js
 };
 
 export let battle = null;   // active battle state
@@ -172,6 +177,11 @@ export async function boot() {
       p.equip = p.equip || { payload:null, exploit:null, rootkit:null, habit:null };
       if (!('habit' in p.equip)) p.equip.habit = null;   // pre-Habit-System saves
       ALL_EQUIP_SLOT_KEYS.forEach(sk => { if (p.equip[sk]) backfillEquipIcon(p.equip[sk]); });
+      // Card fusion migration — a card saved before the tier system
+      // existed has no cardTier/cardPower and carries a stale lvlReq
+      // that used to double as its rarity. normalizeHabitCard is
+      // idempotent, so running it on every boot is safe.
+      if (p.equip.habit) normalizeHabitCard(p.equip.habit);
       p.shape = sp.shape || null;
       p.gif   = sp.gif   || null;
       p.scale = sp.scale || 1;
@@ -203,10 +213,23 @@ export async function boot() {
     G.feed    = G.feed    || [];
     G.equipBag = G.equipBag || [];
     G.equipBag.forEach(backfillEquipIcon);
+    // Same fusion migration for unequipped cards sitting in the bag.
+    G.equipBag.forEach(it => { if (it && it.slotId === 'habit') normalizeHabitCard(it); });
     G.dust     = G.dust     || 0;
     G.ingredients = G.ingredients || { veg:0, bun:0, meat:0 };
     G.materials = G.materials || {};
     G.bossState = G.bossState || {};
+    // ── Botnet / Heat / Emblems ──
+    // A run saved by an older build simply doesn't exist; null means
+    // "no expedition out". Heat is per-zone and starts cold.
+    if (G.botnet === undefined) G.botnet = null;
+    // Discard a malformed run rather than letting the botnet screen
+    // choke on it — a run with no pets or no end time is unrecoverable.
+    if (G.botnet && (!Array.isArray(G.botnet.petIds) || !G.botnet.petIds.length || !G.botnet.endsAt)) {
+      G.botnet = null;
+    }
+    ensureHeatState(G);
+    G.emblems = G.emblems || {};
     G.teamIds    = (G.teamIds || []).filter(id => ids.has(id));
     G.defenseIds = (G.defenseIds || []).filter(id => ids.has(id));
     if (!G.teamIds.length && G.roster.length) G.teamIds = [G.roster[0].uid];
@@ -214,7 +237,7 @@ export async function boot() {
     // time — must not overlap the active team itself.
     G.benchIds = (G.benchIds || []).filter(id => ids.has(id) && !G.teamIds.includes(id)).slice(0, 2);
     // Resume where the player actually left off, not always the city.
-    const resumeScreen = G.lastScreen && ['map','world','safe','home','clinic','shop','foodshop','care','raid'].includes(G.lastScreen)
+    const resumeScreen = G.lastScreen && ['map','world','safe','home','clinic','shop','foodshop','care','raid','botnet'].includes(G.lastScreen)
       ? G.lastScreen : 'map';
     showScreen(resumeScreen);
     renderAll();
@@ -284,4 +307,3 @@ export async function claimStarter() {
   toast(`ได้รับ ${pet.name}\nธาตุ ${a.icon} ${a.name}`);
   log(`เริ่มต้นด้วย ${pet.name} [${a.name}] · ${TUNING.startBitz} Bitz`, 'win');
 }
-
