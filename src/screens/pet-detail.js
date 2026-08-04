@@ -286,6 +286,21 @@ export function equipStatLine(item) {
   }
   return Object.keys(item.stats || {}).map(k => `${STAT_META[k].icon}+${item.stats[k]}`).join(' ');
 }
+// ── Habit card sprite — picks green/blue/purple sprite by item.color ──
+// Rarity tier: green = common (low-level enemy drops),
+//              blue  = rare   (mid-level enemy drops),
+//              purple = most rare (high-level enemy drops).
+// Falls back to habitIcon() if color key has no sprite (e.g. legacy cards).
+function habitCardSpriteHtml(item, size) {
+  const sprites = {
+    green:  'assets/ui/habit_card_green.png',
+    blue:   'assets/ui/habit_card_blue.png',
+    purple: 'assets/ui/habit_card_purple.png',
+  };
+  const src = sprites[item.color];
+  if (!src) return habitIcon(HABIT_TYPES[item.type], size);
+  return `<img src="${src}" class="eq-habit-card-sprite" alt="">`;
+}
 // Board layout — positions measured directly off the generated circuit
 // board art (assets/ui/equip_circuit_bg.jpg): 3 square sockets (payload
 // top-left, exploit top-right, rootkit centered below them) plus one
@@ -316,8 +331,10 @@ function renderPdEquip() {
     socket.style.width = pos.size + '%';
     let inner;
     if (item) {
+      // Habit socket: show card sprite (green/blue/purple) based on item.color.
+      // The habit TYPE icon (bug, leaf, etc.) stays in the circuit background area.
       inner = slotId === 'habit'
-        ? habitIcon(HABIT_TYPES[item.type], 44)
+        ? habitCardSpriteHtml(item, 44)
         : equipIconHtml(item, slot.icon);
     } else {
       inner = `<span class="eq-socket-plus">+</span>`;
@@ -338,11 +355,13 @@ function openEquipPicker(pet, slotId) {
       const g = equipGradeMeta(current);
       const row = el('div', 'eq-slot-row');
       row.style.setProperty('--grade', g.color);
-      const iconHtml = slotId === 'habit' ? habitIcon(HABIT_TYPES[current.type], 26) : equipIconHtml(current, EQUIP_SLOTS[slotId].icon);
+      // Bug fix: use card sprite for habit; was showing habitIcon (the type icon).
+      const iconHtml = slotId === 'habit' ? habitCardSpriteHtml(current, 26) : equipIconHtml(current, EQUIP_SLOTS[slotId].icon);
       row.innerHTML = `
         <div class="eq-slot-icon">${iconHtml}</div>
         <div class="eq-slot-info">
-          <div class="eq-slot-name" style="color:${g.color}">${current.name} <span class="muted" style="font-size:13px">(สวมอยู่)</span></div>
+          <div class="eq-slot-name" style="color:${g.color}">${current.name}</div>
+          <div class="eq-slot-sub">Lv.${current.lvlReq || 1} <span class="muted">(สวมอยู่)</span></div>
           <div class="eq-slot-stats">${equipStatLine(current)}</div>
         </div>
         <button class="btn small">ถอด</button>`;
@@ -362,8 +381,12 @@ function openEquipPicker(pet, slotId) {
         const g = equipGradeMeta(item);
         const row = el('div', 'eq-slot-row');
         row.style.setProperty('--grade', g.color);
+        // Bug fix: habit options were showing slot emoji fallback; now shows card sprite.
+        const itemIconHtml = slotId === 'habit'
+          ? habitCardSpriteHtml(item, 26)
+          : equipIconHtml(item, EQUIP_SLOTS[item.slotId].icon);
         row.innerHTML = `
-          <div class="eq-slot-icon">${equipIconHtml(item, EQUIP_SLOTS[item.slotId].icon)}</div>
+          <div class="eq-slot-icon">${itemIconHtml}</div>
           <div class="eq-slot-info">
             <div class="eq-slot-name" style="color:${g.color}">${item.name}</div>
             <div class="eq-slot-sub">Lv.${item.lvlReq}</div>
@@ -381,4 +404,3 @@ function openEquipPicker(pet, slotId) {
     body.appendChild(back);
   });
 }
-
