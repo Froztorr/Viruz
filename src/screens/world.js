@@ -4,8 +4,10 @@
 import { ANTIVIRUZ, BOSS_TUNING, MAPS, rollEquipment, zoneById, zonesOfMap } from '../data.js';
 import { grantExp } from '../engine.js';
 import { creatureMarkupFor } from '../sprites.js';
+import { eliteChanceAt, heatBadge, heatMeterPct } from '../heat.js';
 import { ensureBossSpawned, startBossFight, startMimicAmbush, startZone } from '../battle/encounters.js';
 import { wait } from '../battle/extras.js';
+import { openBotnetModal } from './botnet.js';
 import { $, G, activeTeam, battle, creatureMarkup, el, save, setText } from '../state.js';
 import { closeModal, modal, renderHUD, showScreen, toast } from '../ui-shell.js';
 
@@ -57,6 +59,18 @@ function wireArmedPinTap(pin, id, action) {
   };
 }
 
+// Trace/heat readout for a battle node. Farming one node builds heat
+// toward an elite and eventually the hunter (see src/heat.js) — that
+// was previously invisible, so the player had no way to know an
+// ambush was building. Returns '' below the first warning threshold so
+// a freshly-visited node stays uncluttered.
+function heatLineFor(zoneId) {
+  const pct = heatMeterPct(G, zoneId);
+  const badge = heatBadge(pct);
+  if (!badge) return '';
+  return `<em style="color:${badge.color}">${badge.icon} ${badge.label}</em>`;
+}
+
 export function renderWorld() {
   currentMapId = G.currentMapId || currentMapId;
   const map = MAPS.find(m => m.id === currentMapId) || MAPS[0];
@@ -104,7 +118,7 @@ export function renderWorld() {
         <span class="pin-dot"></span>
         <span class="pin-card">
           <b>${z.name}</b>
-          <span class="pin-extra"><i>${z.thai}</i><em>Lv ${z.lv[0]}–${z.lv[1]}</em></span>
+          <span class="pin-extra"><i>${z.thai}</i><em>Lv ${z.lv[0]}–${z.lv[1]}</em>${heatLineFor(z.id)}</span>
         </span>`;
       wireArmedPinTap(pin, z.id, () => { if (isAtWorldNode(z.id)) openZone(z); else travelTo(z.id, () => openZone(z)); });
     }
@@ -226,6 +240,11 @@ function openWarpInMenu(map) {
       };
       box.appendChild(back);
     }
+    // Botnet is also reachable from here so an idle expedition can be
+    // checked on without first walking to a battle node.
+    const bn = el('button', 'btn wide', G.botnet ? '🤖 Botnet (กำลังทำงาน)' : '🤖 Botnet');
+    bn.onclick = () => { closeModal(); openBotnetModal(); };
+    box.appendChild(bn);
     const home = el('button', 'btn primary wide', '🏠 กลับสู่โลกจริง');
     home.onclick = () => { closeModal(); showScreen('map'); };
     box.appendChild(home);
@@ -363,8 +382,8 @@ function openBossBrief(mapId, bossSt, zone) {
   modal(`⚠ Region Boss · ${zone.name}`, wrap => {
     const box = el('div', 'zone-brief');
     box.innerHTML = `
-      <div class="zb-desc">บอสประจำภูมิภาค — สุ่มจาก 3 มอนสเตอร์ที่แข็งแกร่งที่สุดในพื้นที่นี้
-        ขนาดใหญ่กว่าปกติ 1.5 เท่า มี HP 2 ชั้น — เมื่อแถบแรกหมด จะเข้าสู่สภาวะคลั่ง (ATK +50%)</div>
+      <div class="zb-desc">บอสประจำธูมิบาค — สุ่มจาก 3 มอนสเตอร์ที่แข็งแกร่งที่สุดในพื้นที่นี้
+        ขนาดใหม่กว่าปกติ 1.5 เท่า มี HP 2 ชั้น — เมื่อแถบแรกหมด จะเข้าสู่สพาวะคลั่ง (ATK +50%)</div>
       <div class="zb-meta">
         <span>ระดับ <b>ประมาณ Lv ${bossSt.level}</b></span>
         <span>รางวัล <b>Bitz ×${BOSS_TUNING.moneyMult}</b></span>
@@ -383,6 +402,8 @@ function openZone(z) {
   modal(`${z.name} · ${z.thai}`, wrap => {
     const teamLv = Math.max(1, ...activeTeam().map(p => p.level));
     const gap = z.lv[0] - teamLv;
+    const pct = heatMeterPct(G, z.id);
+    const eliteChance = Math.round(eliteChanceAt(G, z.id) * 100);
     const box = el('div','zone-brief');
     box.innerHTML = `
       <div class="zb-desc">${z.desc}</div>
@@ -398,10 +419,20 @@ function openZone(z) {
         }).join('')}
       </div>
       ${gap > 8 ? `<div class="zb-warn">⚠ ศัตรูสูงกว่าทีมคุณมาก (ทีม Lv ${teamLv})</div>` : ''}
+      ${pct > 0 ? `<div class="zb-meta">
+        <span>🔥 Trace <b>${pct}%</b></span>
+        <span>โอกาสเจอตัวใหน่ <b>${eliteChance}%</b></span>
+      </div>` : ''}
+      ${pct >= 60 ? `<div class="zb-warn">🚨 Trace สูง — ถ้าเต็ม 100% นักล่า (Marshal Imp) จะโผล่ออกมา</div>` : ''}
     `;
     const go = el('button','btn primary wide','⚔ เข้าสู้');
     go.onclick = () => { closeModal(); startZone(z); };
     box.appendChild(go);
+    // Send an idle squad here instead of fighting in person. Placed as
+    // the secondary action so the primary tap target stays the fight.
+    const bn = el('button','btn wide', G.botnet ? '🤖 Botnet (กำลังทำงาน)' : '🤖 ส่ง Botnet มาที่นี่');
+    bn.onclick = () => { closeModal(); openBotnetModal(); };
+    box.appendChild(bn);
     wrap.appendChild(box);
   });
 }
