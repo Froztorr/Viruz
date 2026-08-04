@@ -120,8 +120,10 @@ export const ICON_BY_ID = {
   bot_max:  `${ICONS}/bot_fortress.png`,
 
   // Raid loot menu (HACK_LOOT_KINDS)
+  // The small and large bitz drops finally look different from each
+  // other: bitz_l gets the fuller pile.
   bitz_s:    `${UI}/bitz.png`,
-  bitz_l:    `${UI}/bitz.png`,
+  bitz_l:    `${UI}/bitz_large.png`,
   pot_hp:    `${POTIONS_DIR}/pot_m.png`,
   pot_full:  `${POTIONS_DIR}/pot_f.png`,
   exp_boost: `${ICONS}/exp_b.png`,
@@ -158,9 +160,10 @@ export const STAT_ICONS = {
 };
 
 // ── EQUIP SLOTS ──
-// payload has no art yet. habit already resolves through
-// HABIT_CARD_ICON in data.js, so it is not repeated here.
+// habit already resolves through HABIT_CARD_ICON in data.js, so it is
+// not repeated here.
 export const SLOT_ICONS = {
+  payload: `${ICONS}/slot_payload.png`,
   exploit: `${ICONS}/slot_exploit.png`,
   rootkit: `${ICONS}/slot_rootkit.png`,
 };
@@ -168,23 +171,25 @@ export const SLOT_ICONS = {
 // ── PAYLOAD EFFECTS ──
 // These are the effect badges shown next to a Payload item's own
 // generated equipment art (EQUIP_ICONS in data.js), not a replacement
-// for it. `toxin` has no art yet and keeps its emoji.
+// for it.
 export const PAYLOAD_ICONS = {
   leech:     `${ICONS}/payload_leech.png`,
   manaregen: `${ICONS}/payload_manaregen.png`,
   overclock: `${ICONS}/payload_overclock.png`,
   adaptive:  `${ICONS}/payload_adaptive.png`,
+  toxin:     `${ICONS}/payload_toxin.png`,
 };
 
 // ── CITY MAP LANDMARKS ──
 // MAP_NODES entries render as labelled hotspots over the city art;
-// these are the little building badges. food_shop has no art yet.
+// these are the little building badges.
 export const MAP_NODE_ICONS = {
   warp_gate: `${UI}/warp.png`,
   clinic:    `${UI}/nav_clinic.png`,
   apartment: `${UI}/nav_home.png`,
   hacking:   `${UI}/nav_raid.png`,
   tech_shop: `${UI}/nav_shop.png`,
+  food_shop: `${UI}/nav_foodshop.png`,
 };
 
 // ── SHARED UI CHROME ──
@@ -192,6 +197,7 @@ export const MAP_NODE_ICONS = {
 // to reference directly instead of hardcoding paths at call sites.
 export const UI_ICONS = {
   bitz:          `${UI}/bitz.png`,
+  bitzLarge:     `${UI}/bitz_large.png`,
   menu:          `${UI}/menu.png`,
   close:         `${UI}/close.png`,
   closeLight:    `${UI}/close_light.png`,
@@ -220,11 +226,13 @@ export const UI_ICONS = {
   capsule:       `${UI}/capsule.png`,
   lockLocked:    `${UI}/lock_locked.png`,
   lockUnlocked:  `${UI}/lock_unlocked.png`,
+  settings:      `${UI}/settings.png`,
   skilltree:     `${UI}/skilltree.png`,
   hudPlayer:     `${UI}/hud_player.png`,
   navCity:       `${UI}/nav_city.png`,
   navWorld:      `${UI}/nav_world.png`,
   navInventory:  `${UI}/nav_inventory.png`,
+  navFoodshop:   `${UI}/nav_foodshop.png`,
 };
 
 // ── APPLY ──
@@ -300,4 +308,34 @@ export function iconHtml(entry, opts = {}) {
 // than markup (CSS background-image, canvas draws, preloading).
 export function iconPath(entry) {
   return (entry && (entry.img || entry.iconImg)) || null;
+}
+
+// ── BITZ COINS ──
+// Two coin pictures exist: a small stack and a fuller pile. Which one
+// is shown depends on the amount being displayed, so a 300 bitz reward
+// reads as pocket change and a 1000 bitz one reads as a haul.
+//
+// The threshold is exported rather than inlined so a balance readout,
+// a loot drop and a shop price can never disagree about where "a lot"
+// starts.
+export const BITZ_LARGE_THRESHOLD = 1000;
+
+// Path only — for background-image, canvas, or an existing <img> whose
+// src you want to swap in place.
+export function bitzIcon(amount) {
+  return Number(amount) >= BITZ_LARGE_THRESHOLD
+    ? UI_ICONS.bitzLarge
+    : UI_ICONS.bitz;
+}
+
+// Ready-made markup, sized like every other .data-icon. Falls back to
+// the money emoji if the art is missing, matching iconHtml().
+//
+//   `${bitzIconHtml(reward)} ${reward}`
+//
+export function bitzIconHtml(amount, opts = {}) {
+  const { cls = '', size = null, alt = 'bitz' } = opts;
+  const style = size ? ` style="width:${size};height:${size}"` : '';
+  return `<img src="${bitzIcon(amount)}" alt="${alt}" class="data-icon ${cls}"${style}`
+    + ` onerror="this.outerHTML='\u{1F4B0}'">`;
 }
