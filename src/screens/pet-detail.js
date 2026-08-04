@@ -3,6 +3,7 @@
 
 import { ALL_EQUIP_SLOT_KEYS, ATTR, EQUIP_GRADES, EQUIP_GRADE_KEYS, EQUIP_SLOTS, HABIT_COLORS, HABIT_TYPES, PAYLOAD_EFFECTS, POTIONS, RARITY, STAT_KEYS, STAT_META, THROW_POISONS, THROW_UTILITY_POTIONS, loyaltyProgress, loyaltyTier, rollEquipment, treeFor, treeForMutation } from '../data.js';
 import { canEvolve, equipmentBonuses, statsOf, treeBonuses, uid, unlockedSpecials } from '../engine.js';
+import { cardPowerOf, cardSpriteSrc, cardTierMeta } from '../habit-fusion.js';
 import { equipGradeMeta, equipItem, unequipItem } from '../battle/equipment.js';
 import { addToBench, addToTeam, dismissPet, removeFromBench, removeFromTeam, wireCharSlotDrag } from './home-character.js';
 import { openCookingMenu } from './shop.js';
@@ -89,6 +90,7 @@ function renderPdStats() {
   const habitCard = pet.equip && pet.equip.habit;
   const habitColor = habitCard && HABIT_COLORS[habitCard.color];
   const habitType = habitCard && HABIT_TYPES[habitCard.type];
+  const cardTier = habitCard && cardTierMeta(habitCard);
   const page = $('pd-page-stats');
   if (!page) return;
 
@@ -98,7 +100,7 @@ function renderPdStats() {
       <div class="ps-headinfo">
         <div class="ps-rar" style="color:${r.color}">${r.name} · ${attrIcon(a, 24)} ${a.name}${evoReady ? ` <span class="pc-evo-ready" title="พร้อมวิวัฒน์ — ไปที่ Tech Lab">▲ พร้อมวิวัฒน์</span>` : ''}</div>
         <div class="ps-habits">Habits: ${habitCard
-          ? `${habitIcon(habitColor, 24)} ${habitColor.name} ${habitIcon(habitType, 24)} ${habitType.name}`
+          ? `${habitIcon(habitColor, 24)} ${habitColor.name} ${habitIcon(habitType, 24)} ${habitType.name} <span style="color:${cardTier.color}">${cardTier.icon} ${cardTier.name}</span>`
           : `<span class="muted">ยังไม่ติดตั้งการ์ดข้อมูล</span>`}</div>
         <div class="ps-lv">Lv.${pet.level}/${pet.maxLv} · EXP ${pet.exp}/${pet.expNeed}</div>
         <div class="ps-loy">${tier.icon} ${tier.name}
@@ -138,7 +140,17 @@ function renderPdStats() {
     const eff = item && item.effectId && PAYLOAD_EFFECTS[item.effectId];
     if (eff) passiveEntries.push({ icon: eff.icon, name: eff.name, desc: eff.desc });
   });
-  if (habitType) passiveEntries.push({ icon: habitIcon(habitType, 21), name: habitType.name, desc: habitType.desc });
+  if (habitType) {
+    // A fused card's passive is genuinely stronger, so surface the
+    // multiplier rather than letting it be invisible.
+    const pow = cardPowerOf(habitCard);
+    const powNote = pow > 1.001 ? ` <span style="color:${cardTier.color}">(×${pow.toFixed(2)})</span>` : '';
+    passiveEntries.push({
+      icon: habitIcon(habitType, 21),
+      name: `${habitType.name}${powNote}`,
+      desc: habitType.desc,
+    });
+  }
   specials.forEach(sp => passiveEntries.push({ icon: '✦', name: sp.name, desc: sp.desc }));
   if (!passiveEntries.length) {
     passiveList.innerHTML = `<div class="muted" style="padding:8px">ยังไม่มีเอฟเฟกต์พาสซีฟ</div>`;
@@ -244,7 +256,9 @@ export function equipStatLine(item) {
   if (item.slotId === 'habit') {
     const c = HABIT_COLORS[item.color], t = HABIT_TYPES[item.type];
     if (!c || !t) return '';
-    return `${habitIcon(c, 14)} ${c.name} · ${habitIcon(t, 14)} ${t.name}<br><span class="muted">${t.desc}</span>`;
+    const stats = Object.keys(item.stats || {}).map(k => `${STAT_META[k].icon}+${item.stats[k]}`).join(' ');
+    const statLine = stats ? `<br>${stats}` : '';
+    return `${habitIcon(c, 14)} ${c.name} · ${habitIcon(t, 14)} ${t.name}${statLine}<br><span class="muted">${t.desc}</span>`;
   }
   if (item.effectId) {
     const eff = PAYLOAD_EFFECTS[item.effectId];
@@ -260,15 +274,23 @@ export function equipStatLine(item) {
 // ── Habit card sprite — used ONLY in the picker modal rows ──
 // The circuit board socket still shows habitIcon (the creature type icon).
 // The picker (both equipped row + options list) shows the card PNG sprite.
-//   lvlReq  1–5  → green  (common)
-//   lvlReq  6–12 → blue   (rare)
-//   lvlReq 13+   → purple (most rare)
+//
+// Which PNG comes from the card's own FUSION TIER, not its level:
+//   green  → as dropped
+//   blue   → fused from 2 greens
+//   purple → fused from 2 blues
+// See src/habit-fusion.js. The previous lvlReq-based mapping is gone;
+// every card now drops at lvlReq 1 so it carried no rarity signal.
 function habitCardSpriteHtml(item, size) {
-  const lvl = item.lvlReq || 1;
-  const src = lvl <= 5  ? 'assets/ui/habit_card_green.png'
-             : lvl <= 12 ? 'assets/ui/habit_card_blue.png'
-             :              'assets/ui/habit_card_purple.png';
-  return `<img src="${src}" class="eq-habit-card-sprite" style="width:${size}px;height:${size}px;object-fit:contain" alt="">`;
+  return `<img src="${cardSpriteSrc(item)}" class="eq-habit-card-sprite" style="width:${size}px;height:${size}px;object-fit:contain" alt="">`;
+}
+
+// Tier + power caption for a card row in the picker.
+function habitCardSubLine(item) {
+  const t = cardTierMeta(item);
+  const pow = cardPowerOf(item);
+  const powNote = pow > 1.001 ? ` · ×${pow.toFixed(2)}` : '';
+  return `<span style="color:${t.color}">${t.icon} ${t.name}${powNote}</span>`;
 }
 
 const EQ_SOCKET_LAYOUT = {
@@ -313,20 +335,22 @@ function renderPdEquip() {
 }
 function openEquipPicker(pet, slotId) {
   modal(`เลือก ${EQUIP_SLOTS[slotId].name}`, body => {
+    const isHabit = slotId === 'habit';
     const current = pet.equip && pet.equip[slotId];
     if (current) {
       const g = equipGradeMeta(current);
       const row = el('div', 'eq-slot-row');
       row.style.setProperty('--grade', g.color);
-      // Picker: habit shows card sprite (green/blue/purple by lvlReq).
-      const iconHtml = slotId === 'habit'
+      // Picker: habit shows the card PNG sprite, keyed off its fusion tier.
+      const iconHtml = isHabit
         ? habitCardSpriteHtml(current, 26)
         : equipIconHtml(current, EQUIP_SLOTS[slotId].icon);
+      const subLine = isHabit ? habitCardSubLine(current) : `Lv.${current.lvlReq || 1}`;
       row.innerHTML = `
         <div class="eq-slot-icon">${iconHtml}</div>
         <div class="eq-slot-info">
           <div class="eq-slot-name" style="color:${g.color}">${current.name}</div>
-          <div class="eq-slot-sub">Lv.${current.lvlReq || 1} <span class="muted">(สวมอยู่)</span></div>
+          <div class="eq-slot-sub">${subLine} <span class="muted">(สวมอยู่)</span></div>
           <div class="eq-slot-stats">${equipStatLine(current)}</div>
         </div>
         <button class="btn small">ถอด</button>`;
@@ -346,15 +370,16 @@ function openEquipPicker(pet, slotId) {
         const g = equipGradeMeta(item);
         const row = el('div', 'eq-slot-row');
         row.style.setProperty('--grade', g.color);
-        // Picker: habit shows card sprite (green/blue/purple by lvlReq).
-        const itemIconHtml = slotId === 'habit'
+        // Picker: habit shows the card PNG sprite, keyed off its fusion tier.
+        const itemIconHtml = isHabit
           ? habitCardSpriteHtml(item, 26)
           : equipIconHtml(item, EQUIP_SLOTS[item.slotId].icon);
+        const subLine = isHabit ? habitCardSubLine(item) : `Lv.${item.lvlReq}`;
         row.innerHTML = `
           <div class="eq-slot-icon">${itemIconHtml}</div>
           <div class="eq-slot-info">
             <div class="eq-slot-name" style="color:${g.color}">${item.name}</div>
-            <div class="eq-slot-sub">Lv.${item.lvlReq}</div>
+            <div class="eq-slot-sub">${subLine}</div>
             <div class="eq-slot-stats">${equipStatLine(item)}</div>
           </div>
           <button class="btn small primary">ใส่</button>`;

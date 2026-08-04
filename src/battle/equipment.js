@@ -5,6 +5,7 @@ import { AILMENTS, ANTIVIRUZ, BOSS_TUNING, CODE_PART_IDS, EQUIP_DROP_CHANCE, EQU
 import { addAilment, habitOf, maxMP, restoreMP, statsOf, uid } from '../engine.js';
 import { showDropBanner } from '../drop-banner.js';
 import { rarityOf, rarityOfGrade } from '../item-rarity.js';
+import { BASE_CARD_TIER, cardTierMeta, normalizeHabitCard } from '../habit-fusion.js';
 import { healPop } from './combat.js';
 import { startArena, startBossFight, startRaidFight, startZone } from './encounters.js';
 import { checkBattleEnd } from './turn-loop.js';
@@ -180,20 +181,30 @@ export function rollMaterialDrop(enemy) {
 // An Arena opponent (built from a player SPECIES, not ANTIVIRUZ) has no
 // such entry and never drops one. Lands in the same G.equipBag as
 // regular gear — same slotId-keyed equip/unequip flow, see equipItem().
+//
+// Every card drops at the BASE tier (green) no matter where it fell.
+// Climbing green → blue → purple is done exclusively through fusion
+// (src/habit-fusion.js). Previously a card's rarity was derived from
+// its lvlReq, which meant a deep-zone kill silently handed out a better
+// card and left fusion with nothing to do.
 export function rollHabitCard(enemy) {
   if (!enemy || Math.random() >= HABIT_CARD_DROP_CHANCE) return;
   const def = ANTIVIRUZ[enemy.speciesId];
   if (!def || !def.habitColor) return;
-  const item = {
+  // normalizeHabitCard fills in grade, the type-themed stat block, and
+  // forces lvlReq to 1 so any card fits any pet.
+  const item = normalizeHabitCard({
     uid: uid(), slotId: 'habit', sourceId: enemy.speciesId,
     name: `${def.name} Card`, color: def.habitColor, type: def.habitType,
-    grade: 'trojan', lvlReq: 1,
-  };
+    cardTier: BASE_CARD_TIER, cardPower: 1,
+  });
   G.equipBag = G.equipBag || [];
   G.equipBag.push(item);
+  const tier = cardTierMeta(item);
   showDropBanner({
     entry: item, fallback: '🎴', name: item.name,
-    rarityId: rarityOfGrade(item.grade), sub: EQUIP_SLOTS.habit.name,
+    rarityId: tier.rarityId,
+    sub: `${EQUIP_SLOTS.habit.name} · ${tier.icon} ${tier.name}`,
   });
   blog(`🎴 ดรอปการ์ด: ${item.name}`, 'win');
 }
@@ -237,7 +248,7 @@ export function unequipItem(pet, slotId) {
 // Locking an item is purely a guard against your OWN future taps —
 // blocks the single sell/dust actions below and gets skipped by
 // Sell All, so gear you actually care about can't be liquidated by an
-// accidental tap or a careless bulk-sell.
+// accidental tap or a careless bulk-sell. Fusion respects it too.
 export function toggleEquipLock(item) {
   item.locked = !item.locked;
   save();
@@ -270,10 +281,15 @@ export function dustEquip(item) {
 // every grade in the bag instead, and always asks to confirm first
 // since that's the one destructive path here. Locked items are always
 // skipped regardless of the grade filter.
+//
+// Habit cards are ALWAYS excluded: they now ride the same grade ladder
+// as gear (trojan/polymorphic/zeroday by tier), so a "sell all grades"
+// sweep would otherwise vaporise a fusion collection in one tap.
 function sellAllEquip() {
   const bag = G.equipBag || [];
   const includeRare = !!G.sellAllIncludeRare;
-  const pool = includeRare ? bag.slice() : bag.filter(x => x.grade === EQUIP_GRADE_KEYS[0]);
+  const sellable = bag.filter(x => x.slotId !== 'habit');
+  const pool = includeRare ? sellable : sellable.filter(x => x.grade === EQUIP_GRADE_KEYS[0]);
   const targets = pool.filter(x => !x.locked);
   const lockedSkipped = pool.length - targets.length;
   if (!targets.length) { toast(lockedSkipped ? '🔒 ไอเทมทั้งหมดถูกล็อกไว้' : 'ไม่มีไอเทมให้ขาย'); return; }
