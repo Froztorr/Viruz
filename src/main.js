@@ -17,6 +17,10 @@ import './icon-style.js';
 // call iconHtml(), so art alone does not reach them.
 import './menu-icons.js';
 
+// Side-effect import: keeps the inventory icon-box grids inside the
+// window and centred (see src/inv-layout.js).
+import './inv-layout.js';
+
 import { hackState } from './battle/combat.js';
 import { startArena } from './battle/encounters.js';
 import { boot } from './state.js';
