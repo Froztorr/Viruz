@@ -1,0 +1,67 @@
+# One-shot recovery job.
+#
+# assets/ui/equip_circuit_bg.jpg existed at commit cc8e80d7 (blob
+# 68988409bca8372b185a26823ff572beb4dca9d7) and is absent on main, so the
+# pet-detail Equipment panel has been loading a broken image.
+#
+# Binary files cannot be pushed through the contents API from the tooling
+# used here, but the original blob is still in this repository's history,
+# so a runner can simply check it back out and commit it. That restores the
+# author's own artwork byte-for-byte rather than substituting new art.
+#
+# The blob hash is asserted before committing, so a wrong or truncated file
+# fails the job instead of landing quietly.
+
+name: Restore equip board art
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/restore-equip-bg.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check the file back out of history and verify it
+        run: |
+          set -euo pipefail
+          SRC=cc8e80d738cf7a7f556aab501fb2465761e15fb3
+          FILE=assets/ui/equip_circuit_bg.jpg
+          WANT=68988409bca8372b185a26823ff572beb4dca9d7
+
+          if [ -f "$FILE" ]; then
+            echo "$FILE already present, nothing to do"
+            exit 0
+          fi
+
+          git checkout "$SRC" -- "$FILE"
+          test -s "$FILE"
+
+          GOT="$(git hash-object "$FILE")"
+          if [ "$GOT" != "$WANT" ]; then
+            echo "::error::restored blob $GOT does not match expected $WANT"
+            exit 1
+          fi
+          echo "restored $FILE ($(stat -c%s "$FILE") bytes, blob $GOT)"
+
+      - name: Commit the restored art
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assets/ui/equip_circuit_bg.jpg
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m 'Restore the equipment circuit board art from history'
+          git push
