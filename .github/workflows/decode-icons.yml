@@ -1,0 +1,65 @@
+# Turns tools/icon-b64/<path>.png.b64 into assets/<path>.png.
+#
+# Runs automatically whenever a payload is pushed, and can be started by
+# hand from the Actions tab. Needs Settings > Actions > General >
+# Workflow permissions set to "Read and write permissions", otherwise
+# the final push is rejected.
+name: Decode icon art
+
+on:
+  push:
+    paths:
+      - 'tools/icon-b64/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  decode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decode every payload into a real PNG
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+
+          decoded=()
+          for f in tools/icon-b64/**/*.b64; do
+            rel="${f#tools/icon-b64/}"
+            dest="assets/${rel%.b64}"
+            mkdir -p "$(dirname "$dest")"
+            base64 -d "$f" > "$dest"
+            printf '  %-40s %s bytes\n' "$dest" "$(stat -c%s "$dest")"
+            decoded+=("$dest")
+          done
+
+          if [ "${#decoded[@]}" -eq 0 ]; then
+            echo '::error::no .b64 payloads found under tools/icon-b64/'
+            exit 1
+          fi
+
+          # Signature plus a CRC check on every chunk, so a payload that
+          # was mangled in transit fails here rather than shipping as a
+          # broken image.
+          python3 tools/verify_png.py "${decoded[@]}"
+
+          echo "decoded ${#decoded[@]} file(s)"
+
+          # The payloads have served their purpose; only the PNGs remain.
+          rm -rf tools/icon-b64
+
+      - name: Commit the decoded art
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo 'nothing to commit'
+            exit 0
+          fi
+          git commit -m 'Decode base64 icon payloads into real PNGs'
+          git push
