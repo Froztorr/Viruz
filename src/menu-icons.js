@@ -44,6 +44,7 @@ const MENU_ART = {
   '⚔': `${ICONS}/stat_atk.png`,
   '☰': `${UI}/menu.png`,
   '🗑': `${UI}/trash.png`,
+  '🧬': `${UI}/dna.png`,
 };
 
 // ── The HUD strip ──
@@ -52,6 +53,7 @@ const MENU_ART = {
 const HUD_ART = {
   '👤': `${UI}/hud_player.png`,
   '💰': `${UI}/bitz.png`,
+  '🧬': `${UI}/dna.png`,
 };
 
 // ── The pet detail panel ──
@@ -74,6 +76,7 @@ const PET_ART = {
   '🧡': `${ICONS}/loyalty_trusted.png`,
   '🌳': `${UI}/skilltree.png`,
   '🗑': `${UI}/trash.png`,
+  '🧬': `${UI}/dna.png`,
 };
 
 // Static shell — converted once, never re-rendered by any screen.
