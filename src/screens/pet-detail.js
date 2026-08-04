@@ -194,11 +194,6 @@ export function refreshPdTeamBtn() {
   const teamBtn = $('pd-team-btn');
   const benchBtn = $('pd-bench-btn');
   if (!teamBtn || !benchBtn || !PD) return;
-  // The Character screen (drawer knob, usable anywhere mid-adventure)
-  // only allows drag-to-swap between its own 5 fixed slots now — no
-  // pulling in or dismissing pets from the wider roster. Only Home Base
-  // still does full team/bench/dismiss management (see wireCharSlotDrag()
-  // and the roster-grid removed from #screen-character in index.html).
   const teamBtns = teamBtn.closest('.pd-team-btns');
   const dismissBtn = $('pd-dismiss-btn');
   if (currentMainId === 'character') {
@@ -228,7 +223,6 @@ export function refreshPdTeamBtn() {
     else addToBench(uid);
     closePetDetail();
   };
-
   if (dismissBtn) {
     const canDismiss = !inTeam && !inBench && G.roster.length > 1;
     dismissBtn.disabled = !canDismiss;
@@ -242,14 +236,6 @@ export function refreshPdTeamBtn() {
 }
 
 // ── Page 2: Equipment — same 3 slots as before, now embedded ──
-// Generated pixel art when the item has one (rollEquipment() picks a
-// random variant per roll — see EQUIP_ICONS in data.js), else falls
-// back to the slot's emoji glyph (older saved items, or an empty slot).
-// Grade glow — no new art needed, EQUIP_GRADES already carries a glow
-// color per tier. Script/Trojan/Polymorphic get a static glow scaled
-// to their own alpha; Zero-Day (Epic) and A.P.T. (Legendary) — the
-// top 2 of 5 grades — additionally pulse, so only the genuinely rare
-// drops feel like they're radiating.
 const RADIANT_GRADES = ['zeroday', 'apt'];
 export function equipIconHtml(item, fallbackEmoji) {
   if (!item || !item.icon) return fallbackEmoji;
@@ -257,10 +243,6 @@ export function equipIconHtml(item, fallbackEmoji) {
   const radiant = RADIANT_GRADES.includes(item.grade);
   return `<img src="${item.icon}" class="eq-icon-img${radiant ? ' grade-radiant' : ''}" style="--eq-glow:${g.glow}" alt="">`;
 }
-// Potions/poisons (POTIONS, THROW_UTILITY_POTIONS, THROW_POISONS) carry
-// a real `img` sprite alongside their `icon` emoji fallback — same
-// image-else-emoji convention as equipIconHtml() above, just without
-// the grade-glow styling since these aren't rolled loot.
 export function potionIconHtml(item, cls = '') {
   if (!item) return '';
   if (item.img) return `<img src="${item.img}" class="${cls} pot-icon-img" alt="">`;
@@ -275,10 +257,6 @@ export function equipStatLine(item) {
   if (item.effectId) {
     const eff = PAYLOAD_EFFECTS[item.effectId];
     if (!eff) return '';
-    // mag is per-grade (EQUIP_GRADE_KEYS index) — a Script-Kiddie Data
-    // Leech and an A.P.T. one drain very different %, but the desc
-    // text never showed which, so a look at any leech item's tooltip
-    // just said "restores HP" with no number to size it up against.
     const gi = EQUIP_GRADE_KEYS.indexOf(item.grade);
     const mag = (eff.mag || [])[gi] || 0;
     const pct = mag > 0 ? ` (${Math.round(mag * 100)}%)` : '';
@@ -286,28 +264,25 @@ export function equipStatLine(item) {
   }
   return Object.keys(item.stats || {}).map(k => `${STAT_META[k].icon}+${item.stats[k]}`).join(' ');
 }
-// ── Habit card sprite — picks green/blue/purple sprite by item.color ──
-// Rarity tier: green = common (low-level enemy drops),
-//              blue  = rare   (mid-level enemy drops),
-//              purple = most rare (high-level enemy drops).
-// Falls back to habitIcon() if color key has no sprite (e.g. legacy cards).
+
+// ── Habit card sprite ──
+// Uses item.lvlReq to pick the rarity sprite so EVERY habit card always
+// shows a card image. item.color belongs to HABIT_COLORS (yellow/green/
+// red/etc.) and has nothing to do with the green/blue/purple rarity tier.
+//
+//   lvlReq  1–5  → green  (common)    assets/ui/habit_card_green.png
+//   lvlReq  6–12 → blue   (rare)      assets/ui/habit_card_blue.png
+//   lvlReq 13+   → purple (most rare) assets/ui/habit_card_purple.png
 function habitCardSpriteHtml(item, size) {
-  const sprites = {
-    green:  'assets/ui/habit_card_green.png',
-    blue:   'assets/ui/habit_card_blue.png',
-    purple: 'assets/ui/habit_card_purple.png',
-  };
-  const src = sprites[item.color];
-  if (!src) return habitIcon(HABIT_TYPES[item.type], size);
-  return `<img src="${src}" class="eq-habit-card-sprite" alt="">`;
+  const lvl = item.lvlReq || 1;
+  const src = lvl <= 5  ? 'assets/ui/habit_card_green.png'
+             : lvl <= 12 ? 'assets/ui/habit_card_blue.png'
+             :              'assets/ui/habit_card_purple.png';
+  return `<img src="${src}" class="eq-habit-card-sprite" style="width:${size}px;height:${size}px;object-fit:contain" alt="">`;
 }
+
 // Board layout — positions measured directly off the generated circuit
-// board art (assets/ui/equip_circuit_bg.jpg): 3 square sockets (payload
-// top-left, exploit top-right, rootkit centered below them) plus one
-// larger circular socket (the habit "data card") lower-center. These
-// percentages are pixel-measured from that exact image, not eyeballed —
-// if the background art is ever regenerated at different socket
-// positions, these need updating to match.
+// board art (assets/ui/equip_circuit_bg.jpg).
 const EQ_SOCKET_LAYOUT = {
   payload:  { left: 27.5, top: 20.3, size: 17.5, round: false },
   exploit:  { left: 72.4, top: 20.3, size: 17.5, round: false },
@@ -331,8 +306,8 @@ function renderPdEquip() {
     socket.style.width = pos.size + '%';
     let inner;
     if (item) {
-      // Habit socket: show card sprite (green/blue/purple) based on item.color.
-      // The habit TYPE icon (bug, leaf, etc.) stays in the circuit background area.
+      // Habit socket → show rarity card sprite (green/blue/purple by lvlReq).
+      // Habit type icon stays in the circuit background area.
       inner = slotId === 'habit'
         ? habitCardSpriteHtml(item, 44)
         : equipIconHtml(item, slot.icon);
@@ -355,8 +330,10 @@ function openEquipPicker(pet, slotId) {
       const g = equipGradeMeta(current);
       const row = el('div', 'eq-slot-row');
       row.style.setProperty('--grade', g.color);
-      // Bug fix: use card sprite for habit; was showing habitIcon (the type icon).
-      const iconHtml = slotId === 'habit' ? habitCardSpriteHtml(current, 26) : equipIconHtml(current, EQUIP_SLOTS[slotId].icon);
+      // Habit → card sprite; others → equipment icon.
+      const iconHtml = slotId === 'habit'
+        ? habitCardSpriteHtml(current, 26)
+        : equipIconHtml(current, EQUIP_SLOTS[slotId].icon);
       row.innerHTML = `
         <div class="eq-slot-icon">${iconHtml}</div>
         <div class="eq-slot-info">
@@ -381,7 +358,7 @@ function openEquipPicker(pet, slotId) {
         const g = equipGradeMeta(item);
         const row = el('div', 'eq-slot-row');
         row.style.setProperty('--grade', g.color);
-        // Bug fix: habit options were showing slot emoji fallback; now shows card sprite.
+        // Habit → card sprite; others → equipment icon.
         const itemIconHtml = slotId === 'habit'
           ? habitCardSpriteHtml(item, 26)
           : equipIconHtml(item, EQUIP_SLOTS[item.slotId].icon);
