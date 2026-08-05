@@ -364,7 +364,11 @@ export function creatureMarkupFor(species, attr, cls = '', anim = 'still', stage
   if (speciesId && ART2_SPECIES.includes(speciesId)) {
     const attrId = (attr && attr.id) || 'red';
     const useMutation = stage >= 2 ? mutation : null;
-    const path = spriteV2Path(speciesId, attrId, useMutation);
+    // v3 art ships as animated idle GIFs sitting alongside the stills in
+    // the same folders under the same names. Swap the extension here so
+    // data.js keeps returning canonical .png paths; reverting to stills
+    // is just deleting this .replace() call.
+    const path = spriteV2Path(speciesId, attrId, useMutation).replace(/\.png$/, '.gif');
     return `<img class="${cls} is-art2" src="${path}" alt="${species.name || ''}">`;
   }
   if (species && species.gif) {
