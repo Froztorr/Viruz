@@ -285,6 +285,39 @@ const GUARD_SHAPES = {
 export const SHAPE_KEYS = Object.keys(SHAPES);
 export const GUARD_KEYS = Object.keys(GUARD_SHAPES);
 
+// Every monster now ships a re-cleaned animated idle at
+// assets/sprites/<folder>/still.gif. This maps species id -> art folder
+// so the renderer no longer depends on data.js declaring a `gif` field:
+// it covers ids whose folder name differs (butler_vamp -> butler) and
+// ids that had no `gif` entry at all (stone_imp, fang_stalker).
+const MONSTER_GIF_FOLDERS = {
+  greenworm:     'greenworm',
+  beetle:        'beetle',
+  stone_imp:     'stone_imp',
+  kappa:         'kappa',
+  fang_stalker:  'fang_stalker',
+  sand_worm:     'sand_worm',
+  sand_turtle:   'sand_turtle',
+  oasis_otter:   'oasis_otter',
+  rainbow_frog:  'rainbow_frog',
+  flying_fish:   'flying_fish',
+  island_monkey: 'island_monkey',
+  goblin_grunt:  'goblin',
+  goblin_miner:  'miner_goblin',
+  black_beast:   'black_beast',
+  rock_golem:    'rock_golem',
+  hobgoblin:     'hobgoblin',
+  fire_golem:    'fire_golem',
+  butler_vamp:   'butler',
+  vampire_lady:  'vampire_lady',
+  vampire_lord:  'vampire_lord',
+  mimic:         'mimic',
+  guard_imp:     'guard_imp',
+  gunner_imp:    'gunner_imp',
+  tank_imp:      'tank_imp',
+  marshal_imp:   'marshal_imp',
+};
+
 // Build the full SVG for a creature.
 // Art folders may hold .gif (animated) or .png (still art). A species
 // declares its extension via `ext`; default stays .gif so existing
@@ -364,12 +397,20 @@ export function creatureMarkupFor(species, attr, cls = '', anim = 'still', stage
   if (speciesId && ART2_SPECIES.includes(speciesId)) {
     const attrId = (attr && attr.id) || 'red';
     const useMutation = stage >= 2 ? mutation : null;
-    const path = spriteV2Path(speciesId, attrId, useMutation);
+    // v3 art ships as animated idle GIFs sitting alongside the stills in
+    // the same folders under the same names. Swap the extension here so
+    // data.js keeps returning canonical .png paths; reverting to stills
+    // is just deleting this .replace() call.
+    const path = spriteV2Path(speciesId, attrId, useMutation).replace(/\.png$/, '.gif');
     return `<img class="${cls} is-art2" src="${path}" alt="${species.name || ''}">`;
   }
-  if (species && species.gif) {
-    const ext = species.ext || 'gif';
-    return `<img class="${cls} is-gif" src="${gifURL(species.gif, anim, ext)}" alt="${species.name || ''}">`;
+  const gifFolder = MONSTER_GIF_FOLDERS[speciesId] || (species && species.gif);
+  if (gifFolder) {
+    // The idle pose is an animated GIF for every monster now, so ignore a
+    // species' `ext: 'png'` override there. Other animations keep whatever
+    // extension data.js declares for them.
+    const ext = anim === 'still' ? 'gif' : ((species && species.ext) || 'gif');
+    return `<img class="${cls} is-gif" src="${gifURL(gifFolder, anim, ext)}" alt="${(species && species.name) || ''}">`;
   }
   return creatureSVG(
     (species && species.shape) || 'royalslime',
