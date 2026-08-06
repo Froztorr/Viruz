@@ -1,0 +1,107 @@
+# One-shot patch job.
+#
+# Commit 84523f7 ("Ship pet + monster animated idle GIFs") rewrote every
+# creature image path to .gif, but the .gif art was never committed:
+# assets/sprites and assets/sprites_v2 still contain only .png. The result
+# is that all 14 pet species and all 25 monsters render as broken images.
+#
+# The correct fix is to point the code back at the .png files that DO
+# exist. Editing src/sprites.js in place from the tooling used here means
+# resending the whole 27KB file, which is a needless corruption risk for
+# four small edits -- so, following the restore-equip-bg.yml precedent, a
+# runner applies exact string replacements and commits the result.
+#
+# Every target string is asserted before writing, so a missed or already
+# changed line fails the job instead of landing a half-applied patch.
+#
+# When the real animated GIFs are finally committed to assets/, revert
+# this patch (or re-apply 84523f7's two lines) to switch back.
+
+name: Point creature art at PNG
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/sprites-use-png.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rewrite sprite paths to .png
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sys
+
+          path = 'src/sprites.js'
+          with open(path, encoding='utf-8') as fh:
+              src = fh.read()
+
+          # (old, new, required)
+          edits = [
+              # v2 pets: data.js already returns canonical .png paths
+              (r"const path = spriteV2Path(speciesId, attrId, useMutation).replace(/\.png$/, '.gif');",
+               "const path = spriteV2Path(speciesId, attrId, useMutation);",
+               True),
+              # monsters: stop forcing an animated idle that does not exist
+              ("const ext = anim === 'still' ? 'gif' : ((species && species.ext) || 'gif');",
+               "const ext = (species && species.ext) || 'png';",
+               True),
+              ("export function gifURL(gif, anim, ext = 'gif') {",
+               "export function gifURL(gif, anim, ext = 'png') {",
+               True),
+              # neither species has an art folder at all -> procedural SVG
+              ("  stone_imp:     'stone_imp',\n", "", False),
+              ("  fang_stalker:  'fang_stalker',\n", "", False),
+          ]
+
+          missing = []
+          for old, new, required in edits:
+              if old in src:
+                  src = src.replace(old, new)
+                  print('applied: ' + old.strip()[:70])
+              elif new and new in src:
+                  print('already applied: ' + new.strip()[:70])
+              elif required:
+                  missing.append(old.strip())
+              else:
+                  print('already absent: ' + old.strip()[:70])
+
+          if missing:
+              for m in missing:
+                  print('::error::target string not found: ' + m[:120])
+              sys.exit(1)
+
+          with open(path, 'w', encoding='utf-8') as fh:
+              fh.write(src)
+          print('patched ' + path)
+          PY
+
+      - name: Sanity check - no .gif references remain
+        run: |
+          set -euo pipefail
+          if grep -n "\.gif" src/sprites.js; then
+            echo "::error::src/sprites.js still references .gif"
+            exit 1
+          fi
+          echo "no .gif references left in src/sprites.js"
+
+      - name: Commit the patch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/sprites.js
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m 'fix: render creature art from the .png files that exist'
+          git push
