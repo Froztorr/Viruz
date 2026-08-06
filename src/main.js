@@ -1,5 +1,6 @@
 // Auto-split from the original monolithic game.js as part of a
 // codebase reorganization pass -- see git history for prior structure.
+import './img-fallback.js';  // retries failed .gif creature art as .png
 import './icons.js';        // stamps img/iconImg onto data.js tables
 import './icon-style.js';   // injects .data-icon sizing rule
 import './menu-icons.js';   // swaps hardcoded shell/pet-detail emoji for PNGs
