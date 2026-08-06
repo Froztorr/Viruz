@@ -8,14 +8,19 @@
 # The correct fix is to point the code back at the .png files that DO
 # exist. Editing src/sprites.js in place from the tooling used here means
 # resending the whole 27KB file, which is a needless corruption risk for
-# four small edits -- so, following the restore-equip-bg.yml precedent, a
-# runner applies exact string replacements and commits the result.
+# a handful of small edits -- so, following the restore-equip-bg.yml
+# precedent, a runner applies exact string replacements and commits.
 #
 # Every target string is asserted before writing, so a missed or already
 # changed line fails the job instead of landing a half-applied patch.
 #
+# NOTE: the guard step deliberately checks for specific CODE patterns
+# rather than the substring '.gif'. The first attempt banned '.gif'
+# outright, which the file's own comments trip over -- the patch applied
+# but the job failed before committing, leaving main untouched.
+#
 # When the real animated GIFs are finally committed to assets/, revert
-# this patch (or re-apply 84523f7's two lines) to switch back.
+# this patch to switch back.
 
 name: Point creature art at PNG
 
@@ -60,19 +65,26 @@ jobs:
               # neither species has an art folder at all -> procedural SVG
               ("  stone_imp:     'stone_imp',\n", "", False),
               ("  fang_stalker:  'fang_stalker',\n", "", False),
+              # stale comments that claim the art is animated
+              ("// v3 art ships as animated idle GIFs sitting alongside the stills in\n    // the same folders under the same names. Swap the extension here so\n    // data.js keeps returning canonical .png paths; reverting to stills\n    // is just deleting this .replace() call.\n    ",
+               "// The animated .gif art referenced here previously was never\n    // committed to assets/sprites_v2, so every pet rendered broken. Use\n    // the canonical .png paths data.js returns.\n    ",
+               False),
+              ("// The idle pose is an animated GIF for every monster now, so ignore a\n    // species' `ext: 'png'` override there. Other animations keep whatever\n    // extension data.js declares for them.\n    ",
+               "// Honour the species' declared extension and default to .png,\n    // which is what actually ships in assets/sprites.\n    ",
+               False),
           ]
 
           missing = []
           for old, new, required in edits:
               if old in src:
                   src = src.replace(old, new)
-                  print('applied: ' + old.strip()[:70])
+                  print('applied: ' + ' '.join(old.split())[:70])
               elif new and new in src:
-                  print('already applied: ' + new.strip()[:70])
+                  print('already applied: ' + ' '.join(new.split())[:70])
               elif required:
-                  missing.append(old.strip())
+                  missing.append(' '.join(old.split()))
               else:
-                  print('already absent: ' + old.strip()[:70])
+                  print('already absent: ' + ' '.join(old.split())[:70])
 
           if missing:
               for m in missing:
@@ -84,14 +96,29 @@ jobs:
           print('patched ' + path)
           PY
 
-      - name: Sanity check - no .gif references remain
+      - name: Guard - no .gif code paths remain
         run: |
           set -euo pipefail
-          if grep -n "\.gif" src/sprites.js; then
-            echo "::error::src/sprites.js still references .gif"
-            exit 1
-          fi
-          echo "no .gif references left in src/sprites.js"
+          python3 - <<'PY'
+          import sys
+
+          with open('src/sprites.js', encoding='utf-8') as fh:
+              src = fh.read()
+
+          bad = [
+              r".replace(/\.png$/, '.gif')",
+              "anim === 'still' ? 'gif'",
+              "ext = 'gif'",
+              "'stone_imp'",
+              "'fang_stalker'",
+          ]
+          found = [b for b in bad if b in src]
+          for b in found:
+              print('::error::still present in src/sprites.js: ' + b)
+          if found:
+              sys.exit(1)
+          print('clean: no .gif code paths left')
+          PY
 
       - name: Commit the patch
         run: |
