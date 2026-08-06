@@ -5,6 +5,7 @@ import './icons.js';        // stamps img/iconImg onto data.js tables
 import './icon-style.js';   // injects .data-icon sizing rule
 import './menu-icons.js';   // swaps hardcoded shell/pet-detail emoji for PNGs
 import './inv-layout.js';   // fits + centres the inventory grids
+import './galaxy.js';       // Galaxy hub/submaps; final videos can be uploaded later
 
 // NOTE: equip-board-bg.js is deliberately NOT imported. It drew a stand-in
 // circuit board in SVG while assets/ui/equip_circuit_bg.jpg was missing from
