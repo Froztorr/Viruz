@@ -293,9 +293,7 @@ export const GUARD_KEYS = Object.keys(GUARD_SHAPES);
 const MONSTER_GIF_FOLDERS = {
   greenworm:     'greenworm',
   beetle:        'beetle',
-  stone_imp:     'stone_imp',
   kappa:         'kappa',
-  fang_stalker:  'fang_stalker',
   sand_worm:     'sand_worm',
   sand_turtle:   'sand_turtle',
   oasis_otter:   'oasis_otter',
@@ -322,7 +320,7 @@ const MONSTER_GIF_FOLDERS = {
 // Art folders may hold .gif (animated) or .png (still art). A species
 // declares its extension via `ext`; default stays .gif so existing
 // species keep working unchanged.
-export function gifURL(gif, anim, ext = 'gif') {
+export function gifURL(gif, anim, ext = 'png') {
   return `${SPRITE_BASE}/${gif}/${anim}.${ext}`;
 }
 
@@ -397,19 +395,17 @@ export function creatureMarkupFor(species, attr, cls = '', anim = 'still', stage
   if (speciesId && ART2_SPECIES.includes(speciesId)) {
     const attrId = (attr && attr.id) || 'red';
     const useMutation = stage >= 2 ? mutation : null;
-    // v3 art ships as animated idle GIFs sitting alongside the stills in
-    // the same folders under the same names. Swap the extension here so
-    // data.js keeps returning canonical .png paths; reverting to stills
-    // is just deleting this .replace() call.
-    const path = spriteV2Path(speciesId, attrId, useMutation).replace(/\.png$/, '.gif');
+    // The animated .gif art referenced here previously was never
+    // committed to assets/sprites_v2, so every pet rendered broken. Use
+    // the canonical .png paths data.js returns.
+    const path = spriteV2Path(speciesId, attrId, useMutation);
     return `<img class="${cls} is-art2" src="${path}" alt="${species.name || ''}">`;
   }
   const gifFolder = MONSTER_GIF_FOLDERS[speciesId] || (species && species.gif);
   if (gifFolder) {
-    // The idle pose is an animated GIF for every monster now, so ignore a
-    // species' `ext: 'png'` override there. Other animations keep whatever
-    // extension data.js declares for them.
-    const ext = anim === 'still' ? 'gif' : ((species && species.ext) || 'gif');
+    // Honour the species' declared extension and default to .png,
+    // which is what actually ships in assets/sprites.
+    const ext = (species && species.ext) || 'png';
     return `<img class="${cls} is-gif" src="${gifURL(gifFolder, anim, ext)}" alt="${(species && species.name) || ''}">`;
   }
   return creatureSVG(
