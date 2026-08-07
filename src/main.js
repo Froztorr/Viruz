@@ -2,14 +2,14 @@
 // codebase reorganization pass -- see git history for prior structure.
 import './img-fallback.js';  // retries failed .gif creature art as .png
 import './sprites-gif.js';  // switches pets + monsters over to the animated .gif art
-import './facing.js';       // mirrors sprites whose art faces the wrong way
+import './facing.js';       // sprite pose: which way art faces, and what floats
+import './battle-bg.js';    // per-map fight backdrops from assets/battle/
 import './icons.js';        // stamps img/iconImg onto data.js tables
 import './icon-style.js';   // injects .data-icon sizing rule
 import './menu-icons.js';   // swaps hardcoded shell/pet-detail emoji for PNGs
 import './inv-layout.js';   // fits + centres the inventory grids
 import './galaxy.js';       // Galaxy hub/submaps; final videos can be uploaded later
 import './galaxy-monsters.js'; // celestial roster; must load AFTER galaxy.js
-import './ailment-icons.js'; // throbbing GIFs above afflicted battle units
 
 // NOTE: equip-board-bg.js is deliberately NOT imported. It drew a stand-in
 // circuit board in SVG while assets/ui/equip_circuit_bg.jpg was missing from
