@@ -42,7 +42,7 @@
 // transform here would clobber whichever of the two lives on that
 // element. The negative bottom margin cancels the top one, so the
 // HP/MP bars underneath do not move with it.
-const GROUND_DROP = '1cm';
+const GROUND_DROP = '0.5cm';
 
 // ───────────────────────────── FACING ─────────────────────────────
 
