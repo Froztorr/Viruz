@@ -22,13 +22,22 @@
 // layers it replaces are hidden, and that is done only once the video
 // reports loadeddata, so a missing file can never leave a blank stage.
 //
-// ── WHICH MAP ──
-// The current map is not kept in state. G has lastScreen and lastSafe
-// and a bossState keyed by map, but no current-map field — the world
-// screen owns that in a module-local variable. So the map is read
-// straight off the media the world screen is already displaying
-// (assets/maps/<id>.mp4 or .jpg), the same src-path approach
-// sprites-gif.js and facing.js take.
+// ── WHICH MAP (this was broken once — read before changing) ──
+// G.currentMapId is the primary source. renderWorld() keeps it in sync
+// (`currentMapId = G.currentMapId || currentMapId`) and the warp gates
+// assign to it, so it names the map directly.
+//
+// The DOM is the fallback. Do NOT rely on the MutationObserver alone to
+// notice a map change: renderWorld() swaps the map with
+//
+//     vid.setAttribute('src', want)
+//
+// on the #world-video element that already exists in index.html. That
+// is an ATTRIBUTE mutation, and the childList observer below cannot see
+// it — which is exactly why this module silently did nothing at first.
+// So #world-video is re-read on every pass, plus watched with a
+// dedicated attribute observer. That one is loop-safe because this
+// module never writes to #world-video.
 //
 // ── STACKING ──
 // An absolutely positioned video paints ABOVE static siblings, which
@@ -36,15 +45,12 @@
 // children are lifted to z-index 1, and the stage claims
 // position: relative only if it is currently static.
 //
-// Safe before the art exists: a missing mp4 falls back to
+// Safe when art is missing: no mp4 falls back to
 // assets/battle/<map>.png, and if that is missing too the original
 // sky/hills/ground scene is left exactly as it is today.
-//
-// Expected files — seamless loops, 16:9:
-//   assets/battle/forest.mp4        assets/battle/galaxy_rings.mp4
-//   assets/battle/hell.mp4          assets/battle/galaxy_dwarf.mp4
-//   assets/battle/galaxy_red.mp4    assets/battle/galaxy_ship.mp4
 // ════════════════════════════════════════════════════════════
+
+import { G } from './state.js';
 
 const MAP_SRC = /assets\/maps\/([a-z0-9_]+)\.(?:mp4|webm|jpg|jpeg|png)/i;
 const BATTLE_DIR = 'assets/battle/';
@@ -60,19 +66,19 @@ function noteMap(value) {
   if (m) currentMap = m[1];
 }
 
-// The world screen may show the map as a <video>, a <source> inside
-// one, an <img> poster, or an inline background-image — check all four.
-function sniffMap(node) {
-  if (!node || node.nodeType !== 1) return;
-  const check = n => {
-    if (!n.getAttribute) return;
-    noteMap(n.getAttribute('src') || '');
-    noteMap(n.getAttribute('poster') || '');
-    noteMap(n.getAttribute('style') || '');
-  };
-  check(node);
-  if (!node.querySelectorAll) return;
-  node.querySelectorAll('video, source, img, [style*="assets/maps/"]').forEach(check);
+// Re-resolve the map. Cheap enough to run on every pass, and it must
+// run on every pass — see the note above about setAttribute.
+function refreshMap() {
+  const wv = document.getElementById('world-video');
+  if (wv) {
+    noteMap(wv.getAttribute('src') || '');
+    noteMap(wv.getAttribute('poster') || '');
+  }
+  // Authoritative when present; the DOM read above only supplies a
+  // value if the world screen has already painted this map.
+  if (G && typeof G.currentMapId === 'string' && G.currentMapId) {
+    currentMap = G.currentMapId;
+  }
 }
 
 function stageEl() {
@@ -171,6 +177,8 @@ function fallbackToStill(stage, mapId, vid) {
 }
 
 function applyBackdrop() {
+  refreshMap();
+
   const stage = stageEl();
   if (!stage || !currentMap) return;
 
@@ -181,6 +189,8 @@ function applyBackdrop() {
     const vid = ensureLayer(stage);
     vid.style.display = '';
     stage.style.backgroundImage = '';
+    stage.classList.remove('has-battle-bg');
+    setSceneHidden(stage, false); // show the old scene until the new one paints
 
     // Only swap the scenery out once the video can actually paint.
     vid.onloadeddata = () => {
@@ -221,18 +231,20 @@ function syncPlayback(stage, vid) {
 }
 
 function install() {
-  sniffMap(document.body);
   applyBackdrop();
 
-  // childList only — the stage is rebuilt on every fight, and watching
-  // attributes would re-enter this on our own style writes.
-  new MutationObserver(records => {
-    for (const r of records) {
-      if (!r.addedNodes) continue;
-      r.addedNodes.forEach(sniffMap);
-    }
-    applyBackdrop();
-  }).observe(document.body, { childList: true, subtree: true });
+  // childList only on the document — watching attributes globally would
+  // re-enter this on our own style writes.
+  new MutationObserver(() => applyBackdrop())
+    .observe(document.body, { childList: true, subtree: true });
+
+  // The map swap is an attribute write on this one element, which the
+  // observer above cannot see. Loop-safe: we never write to it.
+  const wv = document.getElementById('world-video');
+  if (wv) {
+    new MutationObserver(() => applyBackdrop())
+      .observe(wv, { attributes: true, attributeFilter: ['src', 'poster'] });
+  }
 
   document.addEventListener('visibilitychange', () => {
     const stage = stageEl();
