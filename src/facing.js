@@ -27,12 +27,22 @@
 // `noFloat`, so rock golems, crabs, turtles and beetles all bobbed in
 // mid-air. That default is backwards: most creatures stand on the
 // ground and only a few genuinely fly. So the default is inverted here
-// — planted unless listed as airborne.
+// — planted unless listed as airborne — and planted units are also
+// nudged down by GROUND_DROP so they rest on the floor instead of
+// hanging just above it.
 //
 // Both answers are properties of the ARTWORK, so both are resolved from
 // the sprite's own src path. Pets and monsters flow through one code
 // path and neither depends on data.js declaring anything.
 // ════════════════════════════════════════════════════════════
+
+// How far a planted sprite sits below where the renderer put it.
+// Applied as a margin PAIR, never as a transform: `flip` is a transform
+// and the sprite scale (--cr-scale) is a transform, so an inline
+// transform here would clobber whichever of the two lives on that
+// element. The negative bottom margin cancels the top one, so the
+// HP/MP bars underneath do not move with it.
+const GROUND_DROP = '1cm';
 
 // ───────────────────────────── FACING ─────────────────────────────
 
@@ -159,17 +169,29 @@ function drawnFacingFor(src) {
   return info ? drawnFacing(info) : null;
 }
 
-// Re-decides both classes for one battle unit. These are SET rather
-// than toggled, so this lands on the same answer however many times it
-// runs, and can correct the renderer in either direction.
+// Re-decides facing, floating and ground offset for one battle unit.
+// These are SET rather than toggled, so this lands on the same answer
+// however many times it runs, and can correct the renderer in either
+// direction.
 function applyPose(unitEl) {
   const img = unitEl.querySelector('img.bu-sprite');
   if (!img) return; // procedural SVG unit — not ours to touch
   const info = spriteInfo(img.getAttribute('src'));
   if (!info) return;
+
   const want = unitEl.dataset.side === 'foe' ? 'left' : 'right';
+  const airborne = isAirborne(info);
+
   img.classList.toggle('flip', drawnFacing(info) !== want);
-  img.classList.toggle('float', isAirborne(info));
+  img.classList.toggle('float', airborne);
+
+  // Sit planted sprites down onto the floor. Applied to the wrapper so
+  // the img's own transform (flip / scale) is never overwritten.
+  const wrap = img.closest('.bu-sprite-wrap') || img.parentElement;
+  if (!wrap) return;
+  wrap.classList.toggle('grounded', !airborne);
+  wrap.style.marginTop = airborne ? '' : GROUND_DROP;
+  wrap.style.marginBottom = airborne ? '' : '-' + GROUND_DROP;
 }
 
 function scan(node) {
@@ -181,9 +203,10 @@ function scan(node) {
 
 function install() {
   scan(document.body);
-  // childList ONLY. Watching attributes would mean our own class change
-  // re-entered this observer; renderBattleSide() rebuilds the whole
-  // .bunit element on every paint anyway, so additions are all we need.
+  // childList ONLY. Watching attributes would mean our own class and
+  // style writes re-entered this observer; renderBattleSide() rebuilds
+  // the whole .bunit element on every paint anyway, so additions are
+  // all we need.
   new MutationObserver(records => {
     for (const r of records) {
       if (!r.addedNodes) continue;
@@ -199,6 +222,7 @@ if (document.readyState === 'loading') {
 }
 
 export {
+  GROUND_DROP,
   MONSTER_FACING,
   PET_FACING,
   FLOAT_FORMS,
