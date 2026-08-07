@@ -9,6 +9,7 @@ import './menu-icons.js';   // swaps hardcoded shell/pet-detail emoji for PNGs
 import './inv-layout.js';   // fits + centres the inventory grids
 import './galaxy.js';       // Galaxy hub/submaps; final videos can be uploaded later
 import './galaxy-monsters.js'; // celestial roster; must load AFTER galaxy.js
+import './ailment-icons.js'; // throbbing GIFs above afflicted battle units
 
 // NOTE: equip-board-bg.js is deliberately NOT imported. It drew a stand-in
 // circuit board in SVG while assets/ui/equip_circuit_bg.jpg was missing from
