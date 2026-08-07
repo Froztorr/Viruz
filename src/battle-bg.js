@@ -2,40 +2,56 @@
 // VIRUZ — BATTLE BACKDROPS (looping video)
 //
 // Gives every map its own animated fight-scene background, the same way
-// the world map screens use looping video. An earlier version of this
-// file used a CSS background-image, which can never animate — so the
-// backdrop is a real <video> layer now.
+// the world map screens use looping video.
 //
-// Finding out WHICH map we are on is the awkward part: the current map
-// is not kept in state. G has lastScreen and lastSafe and a bossState
-// keyed by map, but no current-map field — the world screen owns that
-// in a module-local variable. Rather than guess at a private binding,
-// this reads the map straight off the media the world screen is already
-// displaying (assets/maps/<id>.mp4 or .jpg), the same src-path approach
+// ── WHAT IT REPLACES ──
+// #battle-stage is not an empty box. It already draws a scene:
+//
+//   #battle-stage
+//     └ #stage-cam        ← moves with the battle camera
+//         ├ #sky
+//         ├ #hills
+//         ├ #ground
+//         ├ #battle-allies / #battle-enemies
+//         └ #fx-layer
+//     ├ #plate-ally / #plate-foe / #banner-layer / #swap-menu
+//
+// Those three scenery layers sit INSIDE the camera rig, which paints
+// above this backdrop — so simply adding a video does nothing visible,
+// it just loads and hides behind #sky. The backdrop only appears if the
+// layers it replaces are hidden, and that is done only once the video
+// reports loadeddata, so a missing file can never leave a blank stage.
+//
+// ── WHICH MAP ──
+// The current map is not kept in state. G has lastScreen and lastSafe
+// and a bossState keyed by map, but no current-map field — the world
+// screen owns that in a module-local variable. So the map is read
+// straight off the media the world screen is already displaying
+// (assets/maps/<id>.mp4 or .jpg), the same src-path approach
 // sprites-gif.js and facing.js take.
 //
-// STACKING: an absolutely positioned video paints ABOVE static siblings,
-// which would hide the fighters behind the backdrop. So the unit
-// containers get lifted to z-index 1, and the stage is given
-// position: relative only if it is currently static (leaving an
-// existing absolute/relative rule alone).
+// ── STACKING ──
+// An absolutely positioned video paints ABOVE static siblings, which
+// would put the backdrop in front of the fighters. So the stage's other
+// children are lifted to z-index 1, and the stage claims
+// position: relative only if it is currently static.
 //
-// Safe to land before the art exists: a missing mp4 falls back to
-// assets/battle/<map>.png, and if that is missing too the stage is left
-// exactly as it is today.
+// Safe before the art exists: a missing mp4 falls back to
+// assets/battle/<map>.png, and if that is missing too the original
+// sky/hills/ground scene is left exactly as it is today.
 //
-// Expected files — seamless loops, see the prompts that came with this:
-//   assets/battle/forest.mp4
-//   assets/battle/hell.mp4
-//   assets/battle/galaxy_red.mp4
-//   assets/battle/galaxy_rings.mp4
-//   assets/battle/galaxy_dwarf.mp4
-//   assets/battle/galaxy_ship.mp4
+// Expected files — seamless loops, 16:9:
+//   assets/battle/forest.mp4        assets/battle/galaxy_rings.mp4
+//   assets/battle/hell.mp4          assets/battle/galaxy_dwarf.mp4
+//   assets/battle/galaxy_red.mp4    assets/battle/galaxy_ship.mp4
 // ════════════════════════════════════════════════════════════
 
 const MAP_SRC = /assets\/maps\/([a-z0-9_]+)\.(?:mp4|webm|jpg|jpeg|png)/i;
 const BATTLE_DIR = 'assets/battle/';
 const LAYER_ID = 'battle-bg-video';
+
+// The built-in scenery this backdrop stands in for.
+const SCENE_LAYERS = ['sky', 'hills', 'ground'];
 
 let currentMap = null;
 
@@ -63,14 +79,30 @@ function stageEl() {
   return document.getElementById('battle-stage');
 }
 
-// Creates the video layer once and keeps reusing it.
+// Hide or restore the CSS scene. data-bg-hidden records that WE hid it,
+// so restoring can never stomp a display value set by anything else.
+function setSceneHidden(stage, hidden) {
+  for (const id of SCENE_LAYERS) {
+    const el = stage.querySelector('#' + id);
+    if (!el) continue;
+    if (hidden) {
+      if (el.dataset.bgHidden) continue;
+      el.dataset.bgHidden = '1';
+      el.style.display = 'none';
+    } else if (el.dataset.bgHidden) {
+      el.style.display = '';
+      delete el.dataset.bgHidden;
+    }
+  }
+}
+
 function ensureLayer(stage) {
   let vid = stage.querySelector('#' + LAYER_ID);
   if (vid) return vid;
 
   vid = document.createElement('video');
   vid.id = LAYER_ID;
-  // All four are required for autoplay to be allowed on mobile.
+  // All of these are required for autoplay to be allowed on mobile.
   vid.muted = true;
   vid.defaultMuted = true;
   vid.loop = true;
@@ -99,7 +131,7 @@ function ensureLayer(stage) {
 }
 
 // An absolutely positioned element paints above static siblings, so the
-// fighters have to be lifted out of the way or the backdrop covers them.
+// camera rig and the name plates have to be lifted clear of the video.
 function raiseContents(stage, vid) {
   for (const child of Array.from(stage.children)) {
     if (child === vid) continue;
@@ -110,8 +142,8 @@ function raiseContents(stage, vid) {
   }
 }
 
-// No mp4 for this map — try a still, and failing that leave the stage
-// looking exactly as it did before this module existed.
+// No mp4 for this map — try a still, and failing that put the original
+// sky/hills/ground scene back exactly as it was.
 function fallbackToStill(stage, mapId, vid) {
   vid.removeAttribute('src');
   vid.load();
@@ -127,11 +159,13 @@ function fallbackToStill(stage, mapId, vid) {
     stage.style.backgroundRepeat = 'no-repeat';
     stage.style.imageRendering = 'pixelated';
     stage.classList.add('has-battle-bg');
+    setSceneHidden(stage, true);
   };
   probe.onerror = () => {
     if (stage.dataset.bgMap !== mapId) return;
     stage.style.backgroundImage = '';
     stage.classList.remove('has-battle-bg');
+    setSceneHidden(stage, false); // no art for this map — keep the old scene
   };
   probe.src = url;
 }
@@ -147,11 +181,17 @@ function applyBackdrop() {
     const vid = ensureLayer(stage);
     vid.style.display = '';
     stage.style.backgroundImage = '';
-    stage.classList.add('has-battle-bg');
 
+    // Only swap the scenery out once the video can actually paint.
+    vid.onloadeddata = () => {
+      if (stage.dataset.bgMap !== wanted) return;
+      stage.classList.add('has-battle-bg');
+      setSceneHidden(stage, true);
+    };
     vid.onerror = () => {
       if (stage.dataset.bgMap === wanted) fallbackToStill(stage, wanted, vid);
     };
+
     vid.src = BATTLE_DIR + wanted + '.mp4';
     vid.load();
     const p = vid.play();
@@ -161,6 +201,9 @@ function applyBackdrop() {
   const vid = stage.querySelector('#' + LAYER_ID);
   if (vid) {
     raiseContents(stage, vid);
+    // renderBattle() rebuilds the stage contents, which can bring the
+    // scenery back — re-hide it whenever a backdrop is live.
+    if (stage.classList.contains('has-battle-bg')) setSceneHidden(stage, true);
     syncPlayback(stage, vid);
   }
 }
