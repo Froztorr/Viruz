@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════
 // VIRUZ — CELESTIAL MONSTERS (Galaxy realm roster)
 //
 // The four Galaxy child maps originally borrowed their enemies from the
@@ -28,13 +28,71 @@
 //
 // LOAD ORDER: must be imported AFTER galaxy.js in main.js, because the
 // Galaxy zones it retunes are pushed into ZONES by that module.
-// ═══════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════
 
 import * as DATA from './data.js';
 
 // Cloned for its stat block and field set. vampire_lord is the strongest
 // existing monster, the closest starting point for Lv 101-165.
 const TEMPLATE_ID = 'vampire_lord';
+
+// ═════════════════════════════════════════════════════════
+// THE CAPTAIN'S MOVESET
+//
+// Every monster in the game swings the one hardcoded 'Scan Strike'
+// that spawnAntiviruz() writes into `skills`, and nothing else, unless
+// its ANTIVIRUZ record names entries in SPECIALS. Those become the
+// unit's `nativeSpecials`, and autoCast is switched on for them at
+// spawn because there is no player to toggle them (see spawnAntiviruz
+// in engine.js). The template this file clones names none, so the
+// entire celestial pack -- the boss of the realm included -- had
+// exactly one move.
+//
+// MP IS ZERO ON ALL THREE, DELIBERATELY.
+// canCast() is `(pet.mp || 0) >= sp.mp`, and nothing in the game ever
+// gives a spawned monster MP: spawnAntiviruz() sets hp and never mp,
+// and the battle-start code only tops up the player's team. A monster
+// special that costs anything therefore can never be cast, and fails
+// silently -- resolveAction() just filters it out and throws a normal
+// attack instead. Real seconds of cooldown (sp.cd) are what pace these,
+// which is the honest model for a side that has no MP economy at all.
+//
+// SCALE: computeDamage() treats pw <= 5 as a direct multiplier and
+// anything above it as the legacy 0-120 scale, so these read against
+// Scan Strike's pw:40 -- which becomes 0.8 after that conversion --
+// and pick up a further 1.35x for being a special.
+const CAPTAIN_SPECIALS = {
+  gx_void_salvo: {
+    id: 'gx_void_salvo',
+    name: 'Void Salvo',
+    desc: '\u0e23\u0e30\u0e14\u0e21\u0e22\u0e34\u0e07\u0e08\u0e32\u0e01\u0e1b\u0e49\u0e2d\u0e21\u0e1b\u0e37\u0e19\u0e17\u0e35\u0e48\u0e22\u0e31\u0e07\u0e17\u0e33\u0e07\u0e32\u0e19\u0e2d\u0e22\u0e39\u0e48 3 \u0e19\u0e31\u0e14\u0e23\u0e27\u0e14',
+    mp: 0, cd: 5,
+    pw: 0.9, hits: 3,
+    vfx: 'slash',
+  },
+  gx_corrupt_order: {
+    id: 'gx_corrupt_order',
+    name: 'Corrupting Order',
+    desc: '\u0e04\u0e33\u0e2a\u0e31\u0e48\u0e07\u0e17\u0e35\u0e48\u0e40\u0e2a\u0e35\u0e22\u0e2b\u0e32\u0e22 \u0e1a\u0e31\u0e48\u0e19\u0e17\u0e2d\u0e19 ATK \u0e41\u0e25\u0e30 DEF \u0e02\u0e2d\u0e07\u0e28\u0e31\u0e15\u0e23\u0e39',
+    mp: 0, cd: 7,
+    pw: 1.3, hits: 1,
+    vfx: 'pierce',
+    // Same shape the Demon habit passive already builds, so it feeds
+    // straight into ailmentMods() without a special case.
+    ailment: { id: 'corrupt', turns: 3, atk: -0.18, def: -0.18 },
+  },
+  gx_hull_plating: {
+    id: 'gx_hull_plating',
+    name: 'Hull Plating',
+    desc: '\u0e14\u0e36\u0e07\u0e40\u0e01\u0e23\u0e32\u0e30\u0e22\u0e32\u0e19\u0e17\u0e35\u0e48\u0e40\u0e2b\u0e25\u0e37\u0e2d\u0e21\u0e32\u0e04\u0e25\u0e38\u0e21\u0e15\u0e31\u0e27 DEF \u0e40\u0e1e\u0e34\u0e48\u0e21\u0e02\u0e36\u0e49\u0e19',
+    mp: 0, cd: 9,
+    // No pw/hits at all: castSpecial() reads that as a pure self-buff
+    // and skips the approach-and-contact beat entirely.
+    pw: 0, hits: 0,
+    vfx: 'shield',
+    shieldSelf: 0.35,
+  },
+};
 
 // `power` scales the template's base stat line. Ramps 1.00 -> 2.00 across
 // the realm so each child map is a step up, with a spike on each boss.
@@ -61,7 +119,10 @@ const NEW_MONSTERS = [
   { id: 'cable_rat',          name: 'Cable Rat',          thai: '\u0e2b\u0e19\u0e39\u0e2a\u0e32\u0e22\u0e44\u0e1f',              power: 1.60 },
   { id: 'repair_drone',       name: 'Repair Drone',       thai: '\u0e42\u0e14\u0e23\u0e19\u0e0b\u0e48\u0e2d\u0e21\u0e1a\u0e33\u0e23\u0e38\u0e07',       power: 1.68 },
   { id: 'void_mimic',         name: 'Void Mimic',         thai: '\u0e21\u0e34\u0e21\u0e34\u0e01\u0e2a\u0e38\u0e0d\u0e0d\u0e32\u0e01\u0e32\u0e28',        power: 1.78 },
-  { id: 'corrupted_captain',  name: 'Corrupted Captain',  thai: '\u0e01\u0e31\u0e1b\u0e15\u0e31\u0e19\u0e17\u0e35\u0e48\u0e16\u0e39\u0e01\u0e22\u0e36\u0e14\u0e04\u0e23\u0e2d\u0e07', power: 2.00 },
+  // The only monster in the realm with a kit. He is the last thing in
+  // the last room of the last map, and now fights like it.
+  { id: 'corrupted_captain',  name: 'Corrupted Captain',  thai: '\u0e01\u0e31\u0e1b\u0e15\u0e31\u0e19\u0e17\u0e35\u0e48\u0e16\u0e39\u0e01\u0e22\u0e36\u0e14\u0e04\u0e23\u0e2d\u0e07', power: 2.00,
+    specials: ['gx_void_salvo', 'gx_corrupt_order', 'gx_hull_plating'] },
 ];
 
 // Each Galaxy battle zone gets a themed pool. The strongest monster of
@@ -102,10 +163,30 @@ function scaleNumbers(source, mult) {
   return out;
 }
 
+// Adds the captain's skills to the shared SPECIALS table. Same trick as
+// the roster itself: SPECIALS is an id->record object that engine.js
+// resolves at cast time, so writing into it here is enough and data.js
+// stays untouched. Returns the ids that are resolvable afterwards.
+function registerSpecials() {
+  const ready = new Set();
+  const table = DATA.SPECIALS;
+  if (!table || typeof table !== 'object' || Array.isArray(table)) {
+    console.warn('[galaxy-monsters] SPECIALS table not found; captain keeps Scan Strike only');
+    return ready;
+  }
+  for (const [id, sp] of Object.entries(CAPTAIN_SPECIALS)) {
+    // The gx_ prefix should make a clash impossible, but never clobber
+    // a real skill on the strength of that assumption.
+    if (!table[id]) table[id] = { ...sp };
+    ready.add(id);
+  }
+  return ready;
+}
+
 // Registers into the ANTIVIRUZ id->record map. Returns the set of ids that
 // are resolvable afterwards, so the caller can refuse to wire up a pool
 // that references anything missing.
-function registerMonsters() {
+function registerMonsters(specialsReady) {
   const roster = DATA.ANTIVIRUZ;
   if (!roster || typeof roster !== 'object' || Array.isArray(roster)) {
     console.warn('[galaxy-monsters] ANTIVIRUZ map not found; roster unchanged');
@@ -149,6 +230,16 @@ function registerMonsters() {
     const scaled = scaleNumbers(template.base, def.power);
     if (scaled) entry.base = scaled;
 
+    // Granted only if EVERY id landed in SPECIALS. unlockedSpecials()
+    // quietly drops an id it cannot resolve, so a half-registered kit
+    // would leave the captain with a random subset of his moves and no
+    // sign anything went wrong.
+    if (def.specials && def.specials.every(id => specialsReady.has(id))) {
+      entry.specials = def.specials.slice();
+    } else if (def.specials) {
+      console.warn(`[galaxy-monsters] ${def.id} keeps its basic attack; specials unresolved`);
+    }
+
     roster[def.id] = entry;
     ready.add(def.id);
   });
@@ -177,10 +268,11 @@ function retuneZones(ready) {
 }
 
 try {
-  const ready = registerMonsters();
+  const specialsReady = registerSpecials();
+  const ready = registerMonsters(specialsReady);
   if (ready.size) retuneZones(ready);
 } catch (err) {
   console.warn('[galaxy-monsters] registration skipped:', err);
 }
 
-export { NEW_MONSTERS, ZONE_POOLS };
+export { CAPTAIN_SPECIALS, NEW_MONSTERS, ZONE_POOLS };
