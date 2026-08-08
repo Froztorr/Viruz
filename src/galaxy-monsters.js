@@ -86,6 +86,9 @@ const ZONE_POOLS = {
   // Derelict Starship
   gs_navigation: ['cable_rat', 'repair_drone'],
   gs_engine:     ['repair_drone', 'void_mimic'],
+  // Authored in Safe Dev Mode; the captain appears here one room early,
+  // ahead of his own bridge, guarding the drone that keeps repairing him.
+  gs_commander:  ['repair_drone', 'corrupted_captain'],
   gs_command:    ['corrupted_captain', 'void_mimic', 'cable_rat'],
 };
 
