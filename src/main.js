@@ -20,6 +20,7 @@ import './win-chrome.js';   // no traffic-light dots on the world + city map pan
 import './galaxy.js';       // Galaxy hub/submaps; final videos can be uploaded later
 import './galaxy-monsters.js'; // celestial roster; must load AFTER galaxy.js
 import './dnd.js';          // Tabletop Realm + hero-class enemies; gate sits on the Galaxy hub, so must load AFTER galaxy.js
+import './dev-battle-sim.js'; // Safe Dev Mode battle simulator/export scene
 
 // NOTE: equip-board-bg.js is deliberately NOT imported. It drew a stand-in
 // circuit board in SVG while assets/ui/equip_circuit_bg.jpg was missing from
