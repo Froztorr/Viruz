@@ -17,16 +17,30 @@
 // full three, like a real fight, and the chips are clickable to change
 // which pet is standing on stage.
 //
-// HOVER AND FACING ARE NOT PREVIEWS. They are written straight into
-// the live tables exported by facing.js, which is the only authority
-// the renderer consults -- applyPose() re-derives flip and float from
-// those tables on every DOM change and overrides whatever combat.js
-// decided. The keys are read back out of the sprite that is actually
-// on screen, using facing.js's own spriteInfo(), because facing.js
-// resolves everything from the ART PATH rather than from the pet
-// object; deriving the key any other way would tick a box that the
-// renderer then never looks up. Saved poses are replayed at boot, so
-// an edit survives a reload and shows up in real fights too.
+// THREE SCOPES OF EDIT, AND THEY ARE NOT INTERCHANGEABLE:
+//   • a PANEL or GAUGE is one box in the interface, moved by CSS rule;
+//   • a WHOLE SIDE moves every character standing on it at once, which
+//     is what you want for pushing the two fighters apart;
+//   • a CHARACTER is one art set, moved and resized on its own.
+// The third is keyed per art set rather than per battle slot, exactly
+// like hover and facing, because "this creature is drawn too big" is
+// true of the creature wherever it shows up -- so the fix follows it
+// into the arena, a raid and a boss fight without being re-entered.
+// The trade is that the same species in two slots cannot be given two
+// different sizes; that is a property of a scene, not of the art, and
+// this tool edits art.
+//
+// HOVER, FACING AND SIZE ARE NOT PREVIEWS. They are written straight
+// into the live tables exported by facing.js, which is the only
+// authority the renderer consults -- applyPose() re-derives flip,
+// float and the per-character offset from those tables on every DOM
+// change and overrides whatever combat.js decided. The keys are read
+// back out of the sprite that is actually on screen, using facing.js's
+// own spriteInfo(), because facing.js resolves everything from the ART
+// PATH rather than from the pet object; deriving the key any other way
+// would tick a box that the renderer then never looks up. Saved edits
+// are replayed at boot, so they survive a reload and show up in real
+// fights too.
 //
 // THE LAYOUT IS CSS, NOT INLINE STYLE. Individual gauges live inside
 // the name plates, and renderBattleSide() rebuilds plate.innerHTML
@@ -36,12 +50,14 @@
 // never themselves rebuilt.) Writing the layout as real CSS rules in
 // one stylesheet sidesteps the whole problem: the rules re-match the
 // new elements the moment they exist, no re-application needed.
+// Characters are the exception and go through facing.js instead, which
+// re-applies itself on every insertion for the same reason.
 //
 // A TUNED LAYOUT BELONGS IN SOURCE, NOT IN localStorage. Positions
-// that have been settled on are written into SHIPPED below, so every
-// player gets them on every device. localStorage then holds only what
-// a developer is still moving around. See SHIPPED for how the two
-// layer.
+// that have been settled on are written into SHIPPED below (and into
+// facing.js for characters), so every player gets them on every
+// device. localStorage then holds only what a developer is still
+// moving around. See SHIPPED for how the two layer.
 //
 // combat.js is pulled in with a dynamic import rather than a static
 // one. This module is loaded early and combat.js sits in a dense
@@ -51,7 +67,12 @@
 
 import { ANTIVIRUZ, SPECIES, SPECIES_KEYS } from './data.js';
 import { createPet, spawnAntiviruz, statsOf } from './engine.js';
-import { FLOAT_FORMS, FLOAT_MONSTERS, FLOAT_PETS, MONSTER_FACING, PET_FACING, spriteInfo } from './facing.js';
+import {
+  FLOAT_FORMS, FLOAT_MONSTERS, FLOAT_PETS,
+  MONSTER_FACING, MONSTER_TWEAKS,
+  PET_FACING, PET_TWEAKS,
+  refreshPoses, spriteInfo,
+} from './facing.js';
 import { $, battle, setBattle } from './state.js';
 import { showScreen, toast } from './ui-shell.js';
 
@@ -77,9 +98,12 @@ const UI_TARGETS = [
   ['hit',       'HIT button', '#hit-btn-row'],
   ['ctrl',      'Flee / speed row', '#battle-ctrl'],
 ];
+// Whole-side offsets. These move the CONTAINER, so every character
+// standing on that side travels together -- the right tool for pushing
+// the two fighters apart, the wrong one for fixing a single sprite.
 const SIDE_TARGETS = [
-  ['ally', 'My pet (sprite)', '#battle-allies'],
-  ['foe',  'Enemy (sprite)',  '#battle-enemies'],
+  ['ally', 'My whole side (all allies together)', '#battle-allies'],
+  ['foe',  'Enemy whole side (all foes together)', '#battle-enemies'],
 ];
 // The gauges inside the plates, individually, as
 // [key, label, selector, short]. Selectors come straight from
@@ -109,6 +133,10 @@ const BAR_TARGETS = [
 // is dropped at boot (see dropRedundantEdits) so it cannot mask a
 // later change made in this file.
 //
+// Per-character offsets are NOT here -- they live in facing.js's
+// PET_TWEAKS / MONSTER_TWEAKS, next to that character's facing and
+// hover, because they are the same kind of fact.
+//
 // These are absolute pixel offsets, not percentages, measured on one
 // screen. Nearly all of them are small relative to the box they move,
 // which is why they travel well; the one exception is called out
@@ -121,8 +149,8 @@ const SHIPPED = {
   },
   sides: {
     // Both fighters pulled in toward the middle of the stage.
-    ally: { dx: 41,  dy: 0  },
-    foe:  { dx: -29, dy: -2 },
+    ally: { dx: 41,  dy: 0 },
+    foe:  { dx: -21, dy: 2, scale: 1.01 },
   },
   bars: {
     allyMp:   { dx: -29, dy: 0 },
@@ -137,6 +165,16 @@ const SHIPPED = {
     foeSpd:   { dx: 4,  dy: -129, scale: 0.71 },
     foeCrit:  { dx: -2, dy: -129, scale: 0.71 },
   },
+};
+
+// facing.js's per-character tables as they arrive from source, taken
+// BEFORE any saved edit is folded in. Without this snapshot there
+// would be no way back: applying a saved tweak overwrites the table
+// entry, so "Reset this" would have nothing to restore and would leave
+// the character at the edit it was meant to undo.
+const SHIPPED_TWEAKS = {
+  pets: JSON.parse(JSON.stringify(PET_TWEAKS)),
+  monsters: JSON.parse(JSON.stringify(MONSTER_TWEAKS)),
 };
 
 const PET_KEYS = (SPECIES_KEYS && SPECIES_KEYS.length ? SPECIES_KEYS : Object.keys(SPECIES));
@@ -157,6 +195,7 @@ function blank() {
     ui: {},
     sides: {},
     bars: {},
+    chars: { pets: {}, monsters: {} },
     facing: { pets: {}, monsters: {} },
     float: { pets: {}, forms: {}, monsters: {} },
     actors: { team: [], foe: {} },
@@ -170,6 +209,10 @@ function load() {
   Object.assign(cfg.ui, raw.ui || {});
   Object.assign(cfg.sides, raw.sides || {});
   Object.assign(cfg.bars, raw.bars || {});
+  if (raw.chars) {
+    Object.assign(cfg.chars.pets, raw.chars.pets || {});
+    Object.assign(cfg.chars.monsters, raw.chars.monsters || {});
+  }
   // v2 stored facing/float as one flat id->value map with no way to
   // tell a pet id from a form name from a monster folder. Those cannot
   // be replayed safely, so only the box positions carry over.
@@ -199,12 +242,48 @@ function store(cfg) {
   } catch { /* patch export is best-effort only */ }
 }
 
+// ── ONE ADDRESS FOR EVERY EDITABLE THING ──
+// A selection key is either a plain key into cfg.ui / cfg.sides /
+// cfg.bars, or 'char:<pets|monsters>:<art key>' for a character. The
+// art key itself contains colons for pets ('inkarm:stage1'), so it is
+// always rejoined from the tail rather than read as one field.
+function splitChar(selKey) {
+  const parts = String(selKey).split(':');
+  return { scope: parts[1] === 'monsters' ? 'monsters' : 'pets', key: parts.slice(2).join(':') };
+}
+
 // What is actually in force for one box: the shipped position with the
 // developer's saved edit written over the top of it, field by field.
 // Merging per FIELD matters -- a drag saves dx/dy only, and must not
 // silently discard a shipped scale.
 function effective(cfg, group, key) {
+  if (group === 'chars') {
+    const { scope, key: k } = splitChar(key);
+    return Object.assign({}, (SHIPPED_TWEAKS[scope] || {})[k], (cfg.chars[scope] || {})[k]);
+  }
   return Object.assign({}, (SHIPPED[group] || {})[key], (cfg[group] || {})[key]);
+}
+function writeVal(cfg, group, key, patch) {
+  if (group === 'chars') {
+    const { scope, key: k } = splitChar(key);
+    cfg.chars[scope][k] = Object.assign({}, cfg.chars[scope][k], patch);
+    return;
+  }
+  cfg[group][key] = Object.assign({}, cfg[group][key], patch);
+}
+function clearVal(cfg, group, key) {
+  if (group === 'chars') {
+    const { scope, key: k } = splitChar(key);
+    delete cfg.chars[scope][k];
+    return;
+  }
+  delete cfg[group][key];
+}
+// Layout is CSS, characters go through facing.js. Anything that
+// changes a value calls this rather than picking one.
+function applyAll() {
+  applyBattleSimLayout();
+  applyCharTweaks();
 }
 
 // A saved edit that says exactly what SHIPPED already says is dead
@@ -226,8 +305,14 @@ function dropRedundantEdits() {
       if (ship && same(cfg[group][key] || {}, ship)) { delete cfg[group][key]; changed = true; }
     });
   });
+  ['pets', 'monsters'].forEach(scope => {
+    Object.keys(cfg.chars[scope]).forEach(key => {
+      const ship = (SHIPPED_TWEAKS[scope] || {})[key];
+      if (ship && same(cfg.chars[scope][key] || {}, ship)) { delete cfg.chars[scope][key]; changed = true; }
+    });
+  });
   // Must run BEFORE applySavedPose(), which would otherwise write the
-  // saved copy back over the table and make every comparison match.
+  // saved copy back over the tables and make every comparison match.
   Object.keys(cfg.facing.pets).forEach(k => {
     const id = k.split(':')[0];
     const shipped = PET_FACING[k] || PET_FACING[id];
@@ -238,6 +323,18 @@ function dropRedundantEdits() {
       delete cfg.facing.monsters[k]; changed = true;
     }
   });
+  // Hover is a boolean, so unlike facing there is no "unset" value to
+  // test against -- a saved `false` is only redundant once facing.js
+  // itself stops listing that id as airborne. Comparing against the
+  // live Sets catches exactly that case.
+  const floatSame = (map, set) => {
+    Object.keys(map).forEach(id => {
+      if (set.has(id) === !!map[id]) { delete map[id]; changed = true; }
+    });
+  };
+  floatSame(cfg.float.pets, FLOAT_PETS);
+  floatSame(cfg.float.forms, FLOAT_FORMS);
+  floatSame(cfg.float.monsters, FLOAT_MONSTERS);
   if (changed) store(cfg);
 }
 
@@ -289,6 +386,25 @@ export function applyBattleSimLayout() {
   if (st.textContent !== css) st.textContent = css;
 }
 
+// Rebuilds facing.js's per-character tables from scratch every time:
+// shipped values first, saved edits merged over the top. Rebuilding
+// rather than patching is what makes deletion work -- clearing a saved
+// tweak has to be able to put the shipped value BACK, and a table that
+// is only ever written to cannot do that.
+function syncTweakTable(live, shipped, saved) {
+  Object.keys(live).forEach(k => { delete live[k]; });
+  Object.entries(shipped).forEach(([k, v]) => { live[k] = Object.assign({}, v); });
+  Object.entries(saved).forEach(([k, v]) => { live[k] = Object.assign({}, shipped[k], v); });
+}
+export function applyCharTweaks() {
+  const cfg = load();
+  syncTweakTable(PET_TWEAKS, SHIPPED_TWEAKS.pets, cfg.chars.pets);
+  syncTweakTable(MONSTER_TWEAKS, SHIPPED_TWEAKS.monsters, cfg.chars.monsters);
+  // facing.js only re-poses units as they are inserted, so units
+  // already standing on the stage have to be told to look again.
+  refreshPoses();
+}
+
 // The previous battle-UI editor (in dev-mode.js) wrote absolute
 // left/top onto these same elements and saved them under
 // patch.battleLayout. Anything still sitting in that key would fight
@@ -311,7 +427,7 @@ function dropLegacyBattleLayout() {
   });
 }
 
-// ── HOVER + FACING ──
+// ── HOVER + FACING + THE CHARACTERS ON STAGE ──
 // facing.js keys everything off the sprite's own src path, so the key
 // is read from the sprite currently rendered on that side rather than
 // guessed from the pet object (a pet's mutation form and its art
@@ -320,6 +436,35 @@ function liveInfo(isEnemy) {
   const img = document.querySelector(`#battle-${isEnemy ? 'enemies' : 'allies'} .bunit img.bu-sprite`);
   return img ? spriteInfo(img.getAttribute('src')) : null;
 }
+
+// Every character currently drawn from an art file, on either side,
+// with the key facing.js will look it up under. Units rendered as
+// procedural SVG are skipped: facing.js does not manage those, so a
+// handle on one would move nothing.
+//
+// Only the pets actually on stage appear here. To edit a benched one,
+// tap its bench chip to bring it out first -- renderBattleSide() draws
+// the active pet and nothing else, so there is no sprite to grab until
+// then.
+function liveChars() {
+  const out = [];
+  document.querySelectorAll('#battle-allies .bunit, #battle-enemies .bunit').forEach(el => {
+    const img = el.querySelector('img.bu-sprite');
+    if (!img) return;
+    const info = spriteInfo(img.getAttribute('src'));
+    if (!info) return;
+    const scope = info.kind === 'pet' ? 'pets' : 'monsters';
+    const key = info.kind === 'pet' ? `${info.id}:${info.form}` : info.id;
+    const isEnemy = el.dataset.side === 'foe';
+    out.push({
+      el, info, scope, key, isEnemy,
+      sel: `char:${scope}:${key}`,
+      label: `${isEnemy ? 'Enemy' : 'Ally'}: ${key}`,
+    });
+  });
+  return out;
+}
+
 function isFloating(info) {
   if (!info) return false;
   if (info.kind === 'pet') return FLOAT_FORMS.has(info.form) || FLOAT_PETS.has(info.id);
@@ -417,13 +562,14 @@ async function paint() {
   // The layout itself is CSS and re-matches the rebuilt plate on its
   // own, but the drag handles are absolutely positioned from measured
   // rectangles, so those do have to be re-measured after a repaint.
-  setTimeout(() => { applyBattleSimLayout(); wireBench(); installHandles(); }, 30);
+  setTimeout(() => { applyAll(); wireBench(); installHandles(); }, 30);
 }
 
 // Real bench chips, made selectable. renderBench() paints one per
 // battle.team entry and rings whichever matches battle.activeIdx, so
 // pointing activeIdx at another pet is all it takes to swap who is on
-// stage -- same mechanism the live swap menu uses.
+// stage -- same mechanism the live swap menu uses. This is also how
+// you reach a benched pet's own size and position.
 function wireBench() {
   const bench = $('battle-bench');
   if (!bench || !simState) return;
@@ -505,7 +651,9 @@ function closeSim() {
 // ── DRAG HANDLES OVER THE REAL ELEMENTS ──
 let drag = null;
 
-// [group, key, label, selector, short?] for every draggable thing.
+// [group, key, label, selector, short?] for every draggable box. The
+// characters are not in here: they are found by scanning the stage,
+// because which ones exist depends on who is standing on it.
 function targetsAll() {
   return [
     ...SIDE_TARGETS.map(r => ['sides', ...r]),
@@ -514,18 +662,50 @@ function targetsAll() {
   ];
 }
 
+function placeHandle(group, key, label, el, opts) {
+  const r = el.getBoundingClientRect();
+  if (!r.width && !r.height) return null;
+  const on = simState.sel === key;
+  if (on) el.classList.add('dbs-lit');
+  const h = document.createElement('button');
+  h.type = 'button';
+  h.className = 'dbs-handle' + (opts.cls ? ' ' + opts.cls : '') + (on ? ' on' : '');
+  h.dataset.key = key;
+  h.textContent = opts.text;
+  h.title = label;
+  h.style.left = opts.x + 'px';
+  h.style.top = opts.y + 'px';
+  h.onpointerdown = e => beginDrag(e, group, key, h);
+  document.body.appendChild(h);
+  return h;
+}
+
 function installHandles() {
   document.querySelectorAll('.dbs-handle').forEach(h => h.remove());
   document.querySelectorAll('.dbs-lit').forEach(n => n.classList.remove('dbs-lit'));
   if (!simState) return;
   document.body.classList.add('dbs-editing');
+
+  // Characters first, so a sprite handle sits under the panel handles
+  // rather than swallowing their clicks.
+  liveChars().forEach(c => {
+    const r = c.el.getBoundingClientRect();
+    placeHandle('chars', c.sel, c.label, c.el, {
+      cls: 'char',
+      text: '✥ ' + c.key,
+      x: r.left + r.width / 2,
+      // Pinned near the top of the sprite: the middle of a large
+      // creature is usually behind its own name plate.
+      y: r.top + Math.min(18, r.height / 2),
+    });
+  });
+
   const placed = [];
   targetsAll().forEach(([group, key, label, sel, short]) => {
     const t = document.querySelector(sel);
     if (!t) return;                       // e.g. the foe plate has no .np-mp
     const r = t.getBoundingClientRect();
     if (!r.width && !r.height) return;
-    if (simState.sel === key) t.classList.add('dbs-lit');
     const isBar = group === 'bars';
     let x = r.left + r.width / 2;
     let y = r.top + r.height / 2;
@@ -537,16 +717,11 @@ function installHandles() {
       while (placed.some(p => Math.abs(p.x - x) < 34 && Math.abs(p.y - y) < 17) && guard++ < 8) y += 18;
       placed.push({ x, y });
     }
-    const h = document.createElement('button');
-    h.type = 'button';
-    h.className = 'dbs-handle' + (isBar ? ' mini' : '') + (simState.sel === key ? ' on' : '');
-    h.dataset.key = key;
-    h.textContent = isBar ? (short || label) : ('✥ ' + label);
-    h.title = label;
-    h.style.left = x + 'px';
-    h.style.top = y + 'px';
-    h.onpointerdown = e => beginDrag(e, group, key, h);
-    document.body.appendChild(h);
+    placeHandle(group, key, label, t, {
+      cls: isBar ? 'mini' : '',
+      text: isBar ? (short || label) : ('✥ ' + label),
+      x, y,
+    });
   });
 }
 function beginDrag(e, group, key, handle) {
@@ -566,11 +741,12 @@ function beginDrag(e, group, key, handle) {
 function onDrag(e) {
   if (!drag) return;
   const cfg = load();
-  const v = (cfg[drag.group][drag.key] ||= {});
-  v.dx = Math.round(drag.dx0 + (e.clientX - drag.x0));
-  v.dy = Math.round(drag.dy0 + (e.clientY - drag.y0));
+  writeVal(cfg, drag.group, drag.key, {
+    dx: Math.round(drag.dx0 + (e.clientX - drag.x0)),
+    dy: Math.round(drag.dy0 + (e.clientY - drag.y0)),
+  });
   store(cfg);
-  applyBattleSimLayout();
+  applyAll();
   drag.handle.style.left = (drag.hx + (e.clientX - drag.x0)) + 'px';
   drag.handle.style.top = (drag.hy + (e.clientY - drag.y0)) + 'px';
 }
@@ -595,11 +771,12 @@ function onKey(e) {
   const info = selInfo();
   const cfg = load();
   const cur = effective(cfg, info.group, info.key);
-  const v = (cfg[info.group][info.key] ||= {});
-  v.dx = num(cur.dx) + step[0] * mult;
-  v.dy = num(cur.dy) + step[1] * mult;
+  writeVal(cfg, info.group, info.key, {
+    dx: num(cur.dx) + step[0] * mult,
+    dy: num(cur.dy) + step[1] * mult,
+  });
   store(cfg);
-  applyBattleSimLayout();
+  applyAll();
   installHandles();
   buildPanel();
 }
@@ -607,12 +784,22 @@ function onKey(e) {
 // ── EDITOR PANEL ──
 function selInfo() {
   const key = simState?.sel || 'ally';
+  if (String(key).startsWith('char:')) {
+    const ch = liveChars().find(c => c.sel === key);
+    // The selected character can walk off stage -- swap the species and
+    // its art key changes underneath the selection. Fall back rather
+    // than editing a key nothing on screen uses.
+    if (ch) {
+      return { group: 'chars', key, label: ch.label, isSprite: true, isChar: true, isEnemy: ch.isEnemy, pose: ch.info };
+    }
+    return { group: 'sides', key: 'ally', label: SIDE_TARGETS[0][1], isSprite: true, isChar: false, isEnemy: false, pose: liveInfo(false) };
+  }
   const side = SIDE_TARGETS.find(r => r[0] === key);
-  if (side) return { group: 'sides', key, label: side[1], isSprite: true, isEnemy: key === 'foe' };
+  if (side) return { group: 'sides', key, label: side[1], isSprite: true, isChar: false, isEnemy: key === 'foe', pose: liveInfo(key === 'foe') };
   const bar = BAR_TARGETS.find(r => r[0] === key);
-  if (bar) return { group: 'bars', key, label: bar[1], isSprite: false, isEnemy: false };
+  if (bar) return { group: 'bars', key, label: bar[1], isSprite: false, isChar: false, isEnemy: false, pose: null };
   const ui = UI_TARGETS.find(r => r[0] === key);
-  return { group: 'ui', key, label: ui ? ui[1] : key, isSprite: false, isEnemy: false };
+  return { group: 'ui', key, label: ui ? ui[1] : key, isSprite: false, isChar: false, isEnemy: false, pose: null };
 }
 
 function buildPanel() {
@@ -628,22 +815,32 @@ function buildPanel() {
   p.id = PANEL_ID;
   p.className = 'dbs-sheet';
 
-  // Grouped, because there are now three sprites-and-boxes worth of
-  // targets plus seven gauges and a flat list of twenty is unreadable.
-  // Gauges the current scene does not render (the foe has no MP) are
-  // dropped from the list rather than offered and then ignored.
+  // Grouped, because there are now characters, sides, seven gauges and
+  // nine panels, and a flat list of twenty-odd is unreadable. Gauges
+  // the current scene does not render (the foe has no MP) are dropped
+  // from the list rather than offered and then ignored.
   const optsFor = rows => rows
     .filter(([, , sel]) => !!document.querySelector(sel))
     .map(([key, label]) => `<option value="${key}" ${key === info.key ? 'selected' : ''}>${esc(label)}</option>`)
     .join('');
+  const charOpts = liveChars()
+    .map(c => `<option value="${esc(c.sel)}" ${c.sel === info.key ? 'selected' : ''}>${esc(c.label)}</option>`)
+    .join('');
   const options = `
-    <optgroup label="Characters">${optsFor(SIDE_TARGETS)}</optgroup>
+    <optgroup label="Characters — one at a time">${charOpts}</optgroup>
+    <optgroup label="Whole side — moves everyone on it">${optsFor(SIDE_TARGETS)}</optgroup>
     <optgroup label="Bars — one at a time">${optsFor(BAR_TARGETS)}</optgroup>
     <optgroup label="Panels">${optsFor(UI_TARGETS)}</optgroup>`;
 
+  const scopeNote = info.isChar
+    ? `<p class="dbs-note">Moving and resizing <b>${esc(info.key.replace(/^char:(pets|monsters):/, ''))}</b> only. Saved against the artwork, so it holds for this character in every fight, on every screen — not just this scene. Size grows from the feet, so a bigger sprite still stands on the ground.</p>`
+    : info.group === 'sides'
+      ? `<p class="dbs-note">This moves the <b>whole side</b> — every character standing on it travels together. To move one character on its own, pick it under “Characters”.</p>`
+      : '';
+
   let spriteRows = '';
   if (info.isSprite && pet) {
-    const pose = liveInfo(info.isEnemy);
+    const pose = info.pose;
     const keys = info.isEnemy ? ENEMY_KEYS : PET_KEYS;
     const table = info.isEnemy ? ANTIVIRUZ : SPECIES;
     const curId = info.isEnemy ? (simState.foe.gif || simState.foe.speciesId) : pet.speciesId;
@@ -655,7 +852,7 @@ function buildPanel() {
       <label class="dbs-check"><input id="dbs-hover" type="checkbox" ${isFloating(pose) ? 'checked' : ''}> Hover / floating (applies game-wide)</label>
       <label class="dbs-check"><input id="dbs-faceleft" type="checkbox" ${drawnFacing(pose) === 'left' ? 'checked' : ''}> Art is drawn facing LEFT</label>
       <p class="dbs-note">Pose key: <b>${esc(pose.kind === 'pet' ? pose.id + ':' + pose.form : pose.id)}</b>. Tick “drawn facing LEFT” if this art already points left — the game flips whatever disagrees with the side it stands on.</p>`
-      : `<p class="dbs-note">This unit renders as a procedural SVG, not an art file, so facing.js does not manage its pose — hover and flip come from the renderer.</p>`;
+      : `<p class="dbs-note">This unit renders as a procedural SVG, not an art file, so facing.js does not manage its pose — size, hover and flip all come from the renderer.</p>`;
     spriteRows = `
       ${slots}
       <label>Character
@@ -678,6 +875,7 @@ function buildPanel() {
     </div>
     <div class="dbs-body">
       <label>Editing<select id="dbs-target">${options}</select></label>
+      ${scopeNote}
       <div class="dbs-grid">
         <label>Move X<input id="dbs-dx" type="number" step="1" value="${Math.round(num(v.dx))}"></label>
         <label>Move Y<input id="dbs-dy" type="number" step="1" value="${Math.round(num(v.dy))}"></label>
@@ -691,7 +889,7 @@ function buildPanel() {
         <button class="dbs-btn" id="dbs-reset-one" type="button">Reset this</button>
         <button class="dbs-btn danger" id="dbs-reset-all" type="button">Reset all</button>
       </div>
-      <p class="dbs-note">Drag the pink labels on the scene, arrow keys nudge 1px (Shift 10px), and the bench chips swap who is on stage. Small yellow tags are the individual HP / MP / SPD / CRT gauges. Reset returns a box to the layout that ships with the game, not to zero. Everything you see is the real fight UI — not a mock-up.</p>
+      <p class="dbs-note">Green tags are individual characters, pink are panels, small yellow ones are the HP / MP / SPD / CRT gauges. Drag them, or nudge with arrow keys (Shift for 10px). Bench chips swap who is on stage — that is also how you reach a benched pet's own size. Reset returns something to what ships with the game, not to zero. Everything here is the real fight UI, not a mock-up.</p>
     </div>`;
   document.body.appendChild(p);
 
@@ -707,9 +905,9 @@ function buildPanel() {
 
   const write = patch => {
     const c = load();
-    c[info.group][info.key] = Object.assign({}, c[info.group][info.key], patch);
+    writeVal(c, info.group, info.key, patch);
     store(c);
-    applyBattleSimLayout();
+    applyAll();
     installHandles();
   };
   g('dbs-dx').onchange = e => write({ dx: Math.round(num(e.target.value)) });
@@ -720,16 +918,17 @@ function buildPanel() {
   };
   g('dbs-reset-one').onclick = () => {
     const c = load();
-    delete c[info.group][info.key];
+    clearVal(c, info.group, info.key);
     store(c);
-    applyBattleSimLayout(); installHandles(); buildPanel();
+    applyAll(); installHandles(); buildPanel();
   };
   g('dbs-reset-all').onclick = () => {
-    if (!confirm('Reset every battle layout edit back to the shipped positions?')) return;
+    if (!confirm('Reset every battle layout and character edit back to what ships with the game?')) return;
     const c = load();
     c.ui = {}; c.sides = {}; c.bars = {};
+    c.chars = { pets: {}, monsters: {} };
     store(c);
-    applyBattleSimLayout(); installHandles(); buildPanel();
+    applyAll(); installHandles(); buildPanel();
   };
 
   if (info.isSprite && pet) {
@@ -753,12 +952,12 @@ function buildPanel() {
     };
     const hover = g('dbs-hover');
     if (hover) hover.onchange = async e => {
-      setFloating(liveInfo(info.isEnemy), e.target.checked);
+      setFloating(info.pose, e.target.checked);
       await paint(); installHandles(); buildPanel();
     };
     const face = g('dbs-faceleft');
     if (face) face.onchange = async e => {
-      setDrawnFacing(liveInfo(info.isEnemy), e.target.checked ? 'left' : 'right');
+      setDrawnFacing(info.pose, e.target.checked ? 'left' : 'right');
       await paint(); installHandles(); buildPanel();
     };
   }
@@ -786,8 +985,8 @@ async function swapFighter(isEnemy, idx, speciesId, level) {
 }
 
 // Exports the developer's own edits only. Anything already written
-// into SHIPPED is deliberately absent -- it does not need pasting
-// anywhere, it is already in the repository.
+// into SHIPPED, or into facing.js's tables, is deliberately absent --
+// it does not need pasting anywhere, it is already in the repository.
 async function copyJson() {
   const text = JSON.stringify({ battleSimulator: load() }, null, 2);
   try { await navigator.clipboard.writeText(text); toast('Battle layout JSON copied'); }
@@ -817,8 +1016,10 @@ function injectStyles() {
 .dbs-handle{position:fixed;z-index:200001;transform:translate(-50%,-50%);pointer-events:auto;touch-action:none;border:2px solid #fff;background:rgba(255,64,182,.92);color:#fff;border-radius:999px;padding:3px 8px;font:11px var(--mono,monospace);white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.4)}
 .dbs-handle.on{background:#ffd23f;color:#2a1400;border-color:#2a1400}
 .dbs-handle.mini{padding:1px 6px;font-size:10px;border-width:1px;background:rgba(108,92,255,.95)}
-.dbs-handle.mini.on{background:#ffd23f;color:#2a1400}
+.dbs-handle.char{background:rgba(38,190,120,.95)}
+.dbs-handle.mini.on,.dbs-handle.char.on{background:#ffd23f;color:#2a1400}
 body.dbs-editing #battle-stage{outline:1px dashed rgba(255,112,215,.5);outline-offset:-1px}
+body.dbs-editing .bunit{outline:1px dashed rgba(38,190,120,.45)}
 body.dbs-editing #plate-ally .np-hp,body.dbs-editing #plate-ally .np-mp,body.dbs-editing #plate-ally .gauge-bar,body.dbs-editing #plate-foe .np-hp,body.dbs-editing #plate-foe .gauge-bar{outline:1px dashed rgba(108,92,255,.6)}
 body.dbs-editing .dbs-lit{outline:2px solid #ffd23f!important;outline-offset:2px}
 body.dbs-editing .dev-battle-overlay{display:none!important}
@@ -861,6 +1062,10 @@ function boot() {
   injectStyles();
   dropRedundantEdits();   // before applySavedPose, which would mask it
   applySavedPose();
+  // Only needs to run once at boot: from here on facing.js re-applies
+  // the tables to every unit it sees inserted, in real fights as well
+  // as in the tool.
+  applyCharTweaks();
   dropLegacyBattleLayout();
   applyBattleSimLayout();
   ensureButton();
