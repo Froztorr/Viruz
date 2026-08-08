@@ -1,8 +1,8 @@
-// ════════════════════════════════════════════════════════════
-// VIRUZ — SPRITE POSE (facing + grounding)
+// ═════════════════════════════════════════════════════════
+// VIRUZ — SPRITE POSE (facing + grounding + per-character offset)
 //
-// Owns two questions about a battle sprite that the renderer gets wrong
-// by default: WHICH WAY IT LOOKS, and WHETHER IT HOVERS.
+// Owns the questions about a battle sprite that the renderer gets wrong
+// by default: WHICH WAY IT LOOKS, WHETHER IT HOVERS, and WHERE IT SITS.
 //
 // ── 1. FACING ──
 // An ally on the left must face RIGHT, a foe on the right must face
@@ -12,9 +12,9 @@
 //
 //   • Monsters take `faces` from their ANTIVIRUZ def. The 16 celestial
 //     monsters are registered by cloning a template, so they inherited
-//     the TEMPLATE's facing — and the whole celestial pack is drawn
-//     facing left, so every one of them was mirrored into staring away
-//     from the player.
+//     the TEMPLATE's facing — and almost the whole celestial pack is
+//     drawn facing left, so they were mirrored into staring away from
+//     the player.
 //
 //   • Pets never had a facing at all. createPet() does not set `faces`,
 //     so `pet.faces || 'right'` is always 'right' for a pet, which
@@ -31,10 +31,18 @@
 // nudged down by GROUND_DROP so they rest on the floor instead of
 // hanging just above it.
 //
-// Both answers are properties of the ARTWORK, so both are resolved from
-// the sprite's own src path. Pets and monsters flow through one code
-// path and neither depends on data.js declaring anything.
-// ════════════════════════════════════════════════════════════
+// ── 3. PER-CHARACTER OFFSET AND SIZE ──
+// Art comes in at different sizes and with different amounts of empty
+// space around the creature, so some sprites land too high, too low or
+// too large for the stage even when everything else is right. That is
+// a fact about one art set, not about the battle screen, so it is
+// keyed and resolved here exactly like facing and float.
+//
+// All three answers are properties of the ARTWORK, so all three are
+// resolved from the sprite's own src path. Pets and monsters flow
+// through one code path and none of it depends on data.js declaring
+// anything.
+// ═════════════════════════════════════════════════════════
 
 // How far a planted sprite sits below where the renderer put it.
 // Applied as a margin PAIR, never as a transform: `flip` is a transform
@@ -44,7 +52,7 @@
 // HP/MP bars underneath do not move with it.
 const GROUND_DROP = '0.5cm';
 
-// ───────────────────────────── FACING ─────────────────────────────
+// ───────────────────────── FACING ─────────────────────────
 
 // Keyed by ART FOLDER under assets/sprites (not always the species id —
 // e.g. butler_vamp draws from `butler`). Front-facing sprites with no
@@ -63,7 +71,8 @@ const MONSTER_FACING = {
   sand_worm:     'right',
   tank_imp:      'left',
 
-  // ── celestial pack (Galaxy realm) — uniformly drawn facing left ──
+  // ── celestial pack (Galaxy realm) — drawn facing left, with one
+  // exception noted below ──
   ember_pup:          'left',
   solar_moth:         'left',
   magma_golem:        'left',
@@ -78,7 +87,10 @@ const MONSTER_FACING = {
   frostflare_phoenix: 'left',
   cable_rat:          'left',
   repair_drone:       'left',
-  void_mimic:         'left',
+  // The odd one out: this art already points right, so the blanket
+  // 'left' the rest of the pack uses was mirroring it into facing away
+  // from the player.
+  void_mimic:         'right',
   corrupted_captain:  'left',
 };
 
@@ -99,7 +111,7 @@ const PET_FACING = {
   'inkarm:stage1': 'left',
 };
 
-// ─────────────────────────── GROUNDING ──────────────────────────
+// ─────────────────────── GROUNDING ───────────────────────
 
 // Any pet in this mutation form hovers regardless of species — a
 // phantom is a ghost, it has no business standing on anything.
@@ -121,24 +133,66 @@ const FLOAT_PETS = new Set([
 // nulworm, spikeling — all have legs or sit on the floor.
 
 // Monsters that fly. Keyed by art folder, same as MONSTER_FACING.
+//
+// This list was originally written from what each creature IS — a
+// phoenix flies, a comet streaks, a hovering construct hovers. Seen on
+// the stage, four of those read better planted: their art already sits
+// high in its frame, so the hover bob lifted them off the top of the
+// scene rather than making them look airborne.
 const FLOAT_MONSTERS = new Set([
   // ── original roster ──
   'flying_fish',
 
   // ── celestial pack ──
-  'solar_moth',         // wings
-  'corona_dragon',      // winged serpent riding its sun ring
-  'comet_bunny',        // streaking on a comet trail
-  'orbit_ray',          // manta ray gliding
-  'ring_guardian',      // hovering construct
-  'star_jelly',         // jellyfish, drifts
-  'frostflare_phoenix', // bird of fire
-  'repair_drone',       // literally a drone
+  'solar_moth',    // wings
+  'orbit_ray',     // manta ray gliding
+  'star_jelly',    // jellyfish, drifts
+  'repair_drone',  // literally a drone
 ]);
 // Grounded celestials: ember_pup, magma_golem, crystal_crab,
-// azure_slime, plasma_fox, cable_rat, void_mimic, corrupted_captain.
+// azure_slime, plasma_fox, cable_rat, void_mimic, corrupted_captain,
+// and — by eye on the stage rather than by biology — corona_dragon,
+// comet_bunny, ring_guardian and frostflare_phoenix.
 
-// ─────────────────────────── RESOLUTION ─────────────────────────
+// ──────────────── PER-CHARACTER OFFSET AND SIZE ───────────────
+
+// { dx, dy, scale } per art set. dx/dy are pixels, scale is a
+// multiplier where 1 means untouched. Keys match the facing tables
+// exactly: pets by '<species>' or the more specific '<species>:<form>',
+// monsters by art folder.
+//
+// Both start EMPTY — nothing here overrides the renderer until a value
+// is actually tuned. Fill them from the battle simulator, which writes
+// straight into these objects and can print them back out for pasting
+// in here.
+//
+// Deliberately per ART SET, not per battle slot: "this creature is
+// drawn too big" is true of the creature everywhere it appears, so the
+// same correction should hold in the arena, in a raid and on the bench
+// without being re-entered for each.
+const PET_TWEAKS = {};
+const MONSTER_TWEAKS = {};
+
+// translate/scale as INDEPENDENT properties where they exist, so they
+// compose with any transform the stylesheet or an animation already
+// puts on the wrapper rather than replacing it. Same reasoning as the
+// battle simulator's layout rules.
+const HAS_TRANSFORM_PROPS = (() => {
+  try { return !!(window.CSS && CSS.supports && CSS.supports('translate', '1px')); }
+  catch { return false; }
+})();
+
+const numOf = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
+
+function tweakFor(info) {
+  if (!info) return null;
+  if (info.kind === 'pet') {
+    return PET_TWEAKS[info.id + ':' + info.form] || PET_TWEAKS[info.id] || null;
+  }
+  return MONSTER_TWEAKS[info.id] || null;
+}
+
+// ────────────────────── RESOLUTION ────────────────────────
 
 // assets/sprites_v2/<species>/<form>_<attr>.<ext>  →  pet
 // assets/sprites/<folder>/<anim>.<ext>             →  monster
@@ -176,10 +230,50 @@ function drawnFacingFor(src) {
   return info ? drawnFacing(info) : null;
 }
 
-// Re-decides facing, floating and ground offset for one battle unit.
-// These are SET rather than toggled, so this lands on the same answer
-// however many times it runs, and can correct the renderer in either
-// direction.
+// Writes one art set's offset and size onto the sprite wrapper.
+//
+// The WRAPPER, not the img: the img already carries `flip` and the
+// creature scale as transforms, and this would overwrite them. The
+// wrapper carries only the grounding margins, which are margins and so
+// do not collide.
+//
+// Scaled from `center bottom` so growing a sprite makes it taller
+// rather than pushing it through the floor — the feet stay where the
+// renderer put them, which is the whole point of GROUND_DROP.
+//
+// Values are always SET or CLEARED, never adjusted from what is
+// already there, so this stays correct however many times it runs.
+function applyTweak(wrap, info) {
+  const tw = tweakFor(info);
+  const dx = Math.round(numOf(tw && tw.dx));
+  const dy = Math.round(numOf(tw && tw.dy));
+  const sc = numOf(tw && tw.scale, 1) || 1;
+
+  if (!dx && !dy && sc === 1) {
+    wrap.style.translate = '';
+    wrap.style.scale = '';
+    wrap.style.transformOrigin = '';
+    if (!HAS_TRANSFORM_PROPS) wrap.style.transform = '';
+    return;
+  }
+
+  wrap.style.transformOrigin = 'center bottom';
+  if (HAS_TRANSFORM_PROPS) {
+    wrap.style.translate = dx + 'px ' + dy + 'px';
+    wrap.style.scale = String(sc);
+  } else {
+    // Older engines only: this one DOES take over the wrapper's
+    // transform. Nothing in the battle CSS puts a transform there
+    // today, but an animation added to .bu-sprite-wrap later would be
+    // suppressed on a tweaked character in these browsers.
+    wrap.style.transform = `translate(${dx}px,${dy}px) scale(${sc})`;
+  }
+}
+
+// Re-decides facing, floating, ground offset and per-character tweak
+// for one battle unit. These are SET rather than toggled, so this
+// lands on the same answer however many times it runs, and can correct
+// the renderer in either direction.
 function applyPose(unitEl) {
   const img = unitEl.querySelector('img.bu-sprite');
   if (!img) return; // procedural SVG unit — not ours to touch
@@ -199,6 +293,8 @@ function applyPose(unitEl) {
   wrap.classList.toggle('grounded', !airborne);
   wrap.style.marginTop = airborne ? '' : GROUND_DROP;
   wrap.style.marginBottom = airborne ? '' : '-' + GROUND_DROP;
+
+  applyTweak(wrap, info);
 }
 
 function scan(node) {
@@ -206,6 +302,15 @@ function scan(node) {
   if (node.matches && node.matches('.bunit')) applyPose(node);
   const inner = node.querySelectorAll && node.querySelectorAll('.bunit');
   if (inner) inner.forEach(applyPose);
+}
+
+// Re-runs the pose pass over everything currently on screen. The
+// observer below only fires on newly inserted units, which is all the
+// game itself ever needs; an editor changing one of the tables above
+// needs the units that are ALREADY standing there to pick the change
+// up without a full repaint.
+function refreshPoses() {
+  scan(document.body);
 }
 
 function install() {
@@ -235,6 +340,10 @@ export {
   FLOAT_FORMS,
   FLOAT_PETS,
   FLOAT_MONSTERS,
+  PET_TWEAKS,
+  MONSTER_TWEAKS,
   drawnFacingFor,
+  refreshPoses,
   spriteInfo,
+  tweakFor,
 };
