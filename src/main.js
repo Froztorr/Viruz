@@ -4,6 +4,7 @@ import './img-fallback.js';  // retries failed .gif creature art as .png
 import './sprites-gif.js';  // switches pets + monsters over to the animated .gif art
 import './facing.js';       // sprite pose: which way art faces, and what floats
 import './battle-bg.js';    // per-map fight backdrops from assets/battle/
+import './battle-hud.js';   // pixel HP/MP icons + Rockman-style SPD/CRT bars
 import './icons.js';        // stamps img/iconImg onto data.js tables
 import './icon-style.js';   // injects .data-icon sizing rule
 import './menu-icons.js';   // swaps hardcoded shell/pet-detail emoji for PNGs
