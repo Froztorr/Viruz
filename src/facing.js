@@ -90,6 +90,13 @@ const PET_FACING = {
   // Drawn head-left in stage1, overclock, bulwark and corrupted alike
   // (phantom is a featureless ghost, so it reads the same either way).
   dustmoth: 'left',
+
+  // Squid, drawn with its arms trailing to the left. Keyed to the BASE
+  // form ONLY, on purpose: that is the art that was actually checked
+  // on screen, and a bare `inkarm` key would mirror the four evolved
+  // art sets on nothing but an assumption. Promote it to a plain
+  // `inkarm: 'left'` once the other forms are confirmed to match.
+  'inkarm:stage1': 'left',
 };
 
 // ─────────────────────────── GROUNDING ──────────────────────────

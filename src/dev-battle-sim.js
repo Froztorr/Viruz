@@ -37,6 +37,12 @@
 // one stylesheet sidesteps the whole problem: the rules re-match the
 // new elements the moment they exist, no re-application needed.
 //
+// A TUNED LAYOUT BELONGS IN SOURCE, NOT IN localStorage. Positions
+// that have been settled on are written into SHIPPED below, so every
+// player gets them on every device. localStorage then holds only what
+// a developer is still moving around. See SHIPPED for how the two
+// layer.
+//
 // combat.js is pulled in with a dynamic import rather than a static
 // one. This module is loaded early and combat.js sits in a dense
 // import cycle (combat -> turn-loop -> combat, combat -> ui-shell);
@@ -93,6 +99,46 @@ const BAR_TARGETS = [
   ['foeCrit',  'Enemy CRT bar',  '#plate-foe .gauge-bar.crit',  'CRT'],
 ];
 
+// ── THE LAYOUT THAT SHIPS WITH THE GAME ──
+// Tuned in this tool, then promoted here so it applies to every player
+// on every device instead of living in whichever browser did the
+// tuning. A developer's own saved edit is layered ON TOP of these, per
+// key and per field, so dragging still overrides a shipped value and
+// "Reset this" puts a box back to what is written here rather than to
+// the bare CSS position. An edit that merely restates a shipped value
+// is dropped at boot (see dropRedundantEdits) so it cannot mask a
+// later change made in this file.
+//
+// These are absolute pixel offsets, not percentages, measured on one
+// screen. Nearly all of them are small relative to the box they move,
+// which is why they travel well; the one exception is called out
+// below.
+const SHIPPED = {
+  ui: {
+    plateAlly: { dx: -7, dy: -8 },
+    plateFoe:  { dx: -5, dy: -9 },
+    top:       { dx: 3,  dy: 7  },
+  },
+  sides: {
+    // Both fighters pulled in toward the middle of the stage.
+    ally: { dx: 41,  dy: 0  },
+    foe:  { dx: -29, dy: -2 },
+  },
+  bars: {
+    allyMp:   { dx: -29, dy: 0 },
+    allySpd:  { dx: -2, dy: -10, scale: 0.71 },
+    allyCrit: { dx: -8, dy: -10, scale: 0.72 },
+    // The enemy's two gauges are lifted clear out of its plate. 129px
+    // is a large fixed offset and it was measured against a
+    // phone-sized stage: on a much taller viewport these will not land
+    // in the same spot relative to the sprite, because the distance
+    // they need to travel scales with the stage and this number does
+    // not. Kept exactly as tuned -- worth re-checking on a tablet.
+    foeSpd:   { dx: 4,  dy: -129, scale: 0.71 },
+    foeCrit:  { dx: -2, dy: -129, scale: 0.71 },
+  },
+};
+
 const PET_KEYS = (SPECIES_KEYS && SPECIES_KEYS.length ? SPECIES_KEYS : Object.keys(SPECIES));
 const ENEMY_KEYS = Object.keys(ANTIVIRUZ).filter(id => !id.startsWith('guard_'));
 
@@ -102,9 +148,10 @@ const num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
 const round2 = n => Math.round(num(n) * 100) / 100;
 
 // ── SAVED LAYOUT ──
-// Everything defaults to empty. A fresh install therefore changes
-// nothing about the live game until the developer actually moves
-// something -- no baked-in "default" positions to fight the real CSS.
+// Everything defaults to empty. What load() returns is ONLY the
+// developer's own edits -- the shipped layout is folded in by
+// effective() at the point of use, so a saved file never accumulates a
+// stale copy of values this module already states in source.
 function blank() {
   return {
     ui: {},
@@ -152,6 +199,48 @@ function store(cfg) {
   } catch { /* patch export is best-effort only */ }
 }
 
+// What is actually in force for one box: the shipped position with the
+// developer's saved edit written over the top of it, field by field.
+// Merging per FIELD matters -- a drag saves dx/dy only, and must not
+// silently discard a shipped scale.
+function effective(cfg, group, key) {
+  return Object.assign({}, (SHIPPED[group] || {})[key], (cfg[group] || {})[key]);
+}
+
+// A saved edit that says exactly what SHIPPED already says is dead
+// weight twice over: it pins the box to today's value even if this
+// file changes tomorrow, and it fills "Copy JSON" with lines that no
+// longer need pasting anywhere. Same for a pose that facing.js now
+// states outright. Cleared once, at boot.
+function dropRedundantEdits() {
+  const cfg = load();
+  let changed = false;
+  const same = (a, b) =>
+    Math.round(num(a.dx)) === Math.round(num(b.dx)) &&
+    Math.round(num(a.dy)) === Math.round(num(b.dy)) &&
+    num(a.scale, 1) === num(b.scale, 1) &&
+    (a.origin || '') === (b.origin || '');
+  ['ui', 'sides', 'bars'].forEach(group => {
+    Object.keys(cfg[group]).forEach(key => {
+      const ship = (SHIPPED[group] || {})[key];
+      if (ship && same(cfg[group][key] || {}, ship)) { delete cfg[group][key]; changed = true; }
+    });
+  });
+  // Must run BEFORE applySavedPose(), which would otherwise write the
+  // saved copy back over the table and make every comparison match.
+  Object.keys(cfg.facing.pets).forEach(k => {
+    const id = k.split(':')[0];
+    const shipped = PET_FACING[k] || PET_FACING[id];
+    if (shipped && shipped === cfg.facing.pets[k]) { delete cfg.facing.pets[k]; changed = true; }
+  });
+  Object.keys(cfg.facing.monsters).forEach(k => {
+    if (MONSTER_FACING[k] && MONSTER_FACING[k] === cfg.facing.monsters[k]) {
+      delete cfg.facing.monsters[k]; changed = true;
+    }
+  });
+  if (changed) store(cfg);
+}
+
 // ── APPLYING THE LAYOUT TO THE REAL SCREEN ──
 // Movement is a transform, never position:absolute + left/top. An
 // absolute position rips the element out of normal flow, which is what
@@ -188,9 +277,9 @@ function ruleFor(sel, v) {
 export function applyBattleSimLayout() {
   const cfg = load();
   let css = '';
-  SIDE_TARGETS.forEach(([key, , sel]) => { css += ruleFor(sel, cfg.sides[key]); });
-  UI_TARGETS.forEach(([key, , sel]) => { css += ruleFor(sel, cfg.ui[key]); });
-  BAR_TARGETS.forEach(([key, , sel]) => { css += ruleFor(sel, cfg.bars[key]); });
+  SIDE_TARGETS.forEach(([key, , sel]) => { css += ruleFor(sel, effective(cfg, 'sides', key)); });
+  UI_TARGETS.forEach(([key, , sel]) => { css += ruleFor(sel, effective(cfg, 'ui', key)); });
+  BAR_TARGETS.forEach(([key, , sel]) => { css += ruleFor(sel, effective(cfg, 'bars', key)); });
   let st = document.getElementById(LAYOUT_STYLE_ID);
   if (!st) {
     st = document.createElement('style');
@@ -462,8 +551,10 @@ function installHandles() {
 }
 function beginDrag(e, group, key, handle) {
   e.preventDefault(); e.stopPropagation();
-  const cfg = load();
-  const cur = (cfg[group][key] ||= {});
+  // Starts from where the box actually IS, shipped offset included --
+  // otherwise the first pixel of a drag would snap a shipped box back
+  // to the bare CSS position.
+  const cur = effective(load(), group, key);
   drag = { group, key, handle, x0: e.clientX, y0: e.clientY, dx0: num(cur.dx), dy0: num(cur.dy), hx: parseFloat(handle.style.left), hy: parseFloat(handle.style.top) };
   if (simState) simState.sel = key;
   document.querySelectorAll('.dbs-handle').forEach(h => h.classList.toggle('on', h.dataset.key === key));
@@ -503,9 +594,10 @@ function onKey(e) {
   const mult = e.shiftKey ? 10 : 1;
   const info = selInfo();
   const cfg = load();
+  const cur = effective(cfg, info.group, info.key);
   const v = (cfg[info.group][info.key] ||= {});
-  v.dx = num(v.dx) + step[0] * mult;
-  v.dy = num(v.dy) + step[1] * mult;
+  v.dx = num(cur.dx) + step[0] * mult;
+  v.dy = num(cur.dy) + step[1] * mult;
   store(cfg);
   applyBattleSimLayout();
   installHandles();
@@ -528,7 +620,7 @@ function buildPanel() {
   document.getElementById(PANEL_ID)?.remove();
   const cfg = load();
   const info = selInfo();
-  const v = Object.assign({ dx: 0, dy: 0, scale: 1 }, cfg[info.group][info.key]);
+  const v = Object.assign({ dx: 0, dy: 0, scale: 1 }, effective(cfg, info.group, info.key));
   const idx = battle ? num(battle.activeIdx) : 0;
   const pet = info.isEnemy ? simState.foe : activePet();
 
@@ -599,7 +691,7 @@ function buildPanel() {
         <button class="dbs-btn" id="dbs-reset-one" type="button">Reset this</button>
         <button class="dbs-btn danger" id="dbs-reset-all" type="button">Reset all</button>
       </div>
-      <p class="dbs-note">Drag the pink labels on the scene, arrow keys nudge 1px (Shift 10px), and the bench chips swap who is on stage. Small yellow tags are the individual HP / MP / SPD / CRT gauges. Everything you see is the real fight UI — not a mock-up.</p>
+      <p class="dbs-note">Drag the pink labels on the scene, arrow keys nudge 1px (Shift 10px), and the bench chips swap who is on stage. Small yellow tags are the individual HP / MP / SPD / CRT gauges. Reset returns a box to the layout that ships with the game, not to zero. Everything you see is the real fight UI — not a mock-up.</p>
     </div>`;
   document.body.appendChild(p);
 
@@ -633,7 +725,7 @@ function buildPanel() {
     applyBattleSimLayout(); installHandles(); buildPanel();
   };
   g('dbs-reset-all').onclick = () => {
-    if (!confirm('Reset every battle layout edit?')) return;
+    if (!confirm('Reset every battle layout edit back to the shipped positions?')) return;
     const c = load();
     c.ui = {}; c.sides = {}; c.bars = {};
     store(c);
@@ -693,6 +785,9 @@ async function swapFighter(isEnemy, idx, speciesId, level) {
   installHandles();
 }
 
+// Exports the developer's own edits only. Anything already written
+// into SHIPPED is deliberately absent -- it does not need pasting
+// anywhere, it is already in the repository.
 async function copyJson() {
   const text = JSON.stringify({ battleSimulator: load() }, null, 2);
   try { await navigator.clipboard.writeText(text); toast('Battle layout JSON copied'); }
@@ -764,6 +859,7 @@ function watchBattleScreen() {
 
 function boot() {
   injectStyles();
+  dropRedundantEdits();   // before applySavedPose, which would mask it
   applySavedPose();
   dropLegacyBattleLayout();
   applyBattleSimLayout();
