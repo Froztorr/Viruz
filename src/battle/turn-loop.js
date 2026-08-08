@@ -1,5 +1,20 @@
 // Auto-split from the original monolithic game.js as part of a
 // codebase reorganization pass -- see git history for prior structure.
+//
+// ── WHAT "ONE TURN" MEANS (changed) ──
+// A turn is ONE FULL ROUND: both sides having acted once. It is not one
+// side's action. Every duration in the game -- ailment `turns`, shield
+// countdowns, the stat-buff chips' "3t" readout -- is counted in these
+// rounds, so `turns: 3` lasts three exchanges.
+//
+// This used to be wrong in a way that was easy to miss. runTurn() runs
+// once per HALF-turn, and it used to end with:
+//     await endOfTurnTicks(attacker);
+//     await endOfTurnTicks(target);
+// Both participants ticked on every half-turn, so each unit was ticked
+// TWICE per round and a `turns: 3` poison actually expired after a turn
+// and a half. Ticks are now gated behind finishRound(), which only fires
+// on the foe's half -- the one that closes a round.
 
 import { AILMENTS, BOSS_TUNING, LOYALTY_PER_WIN, TUNING, loyaltyTier } from '../data.js';
 import { addAilment, advanceSpeedCounter, availableSkills, canCast, clamp, clearAilments, combatStats, computeDamage, enterBossRage, grantExp, habitOf, hasAilment, healTeam, markDown, petState, signatureSkillOf, spendMP, statsOf, tickAilments, uid, unlockedSpecials } from '../engine.js';
@@ -11,6 +26,7 @@ import { renderClinic } from '../screens/shop.js';
 import { showMimicRewardCards, travelTo } from '../screens/world.js';
 import { $, G, VIBE_DEATH, VIBE_SKILL, activeTeam, battle, battleSpeed, creatureMarkup, el, save, setText, vibrate, setBattle } from '../state.js';
 import { blog, log, renderAll, showScreen, toast } from '../ui-shell.js';
+import { onRoundComplete } from '../dice.js';
 
 // Purely internal to the turn loop -- nothing outside this file reads
 // or writes these, so they live here rather than in shared state.
@@ -132,7 +148,10 @@ export async function runTurn() {
       const stunId = hasAilment(goesFirst, 'stoned') ? 'stoned' : 'freeze';
       const stunLabel = stunId === 'stoned' ? 'กลายเป็นหิน ขยับไม่ได้' : 'ถูกแช่แข็ง ขยับไม่ได้';
       blog(`${AILMENTS[stunId].icon} ${goesFirst.name} ${stunLabel}`, side);
-      await endOfTurnTicks(goesFirst);
+      // A skipped action still has to be able to CLOSE a round, or a
+      // stun would freeze every other duration in the fight alongside
+      // it — including its own, making it permanent.
+      await finishRound(goesFirst, other, side);
       if (await checkBattleEnd()) return;
       scheduleTurn();
       return;
@@ -173,8 +192,10 @@ export async function runTurn() {
       }
     }
 
-    await endOfTurnTicks(attacker);
-    await endOfTurnTicks(target);
+    // goesFirst/other, NOT attacker/target: while charmed those two are
+    // the SAME unit, which used to tick the charmed unit twice and its
+    // opponent not at all.
+    await finishRound(goesFirst, other, side);
     refreshBattleUnits();
 
     if (await checkBattleEnd()) return;
@@ -182,6 +203,22 @@ export async function runTurn() {
   } finally {
     releaseBattleBusy();
   }
+}
+
+// Closes a round. Only the FOE's half does that — an exchange is not
+// complete until both sides have acted, which is the definition every
+// duration in the game is now counted in.
+//
+// Everything that steps once per turn hangs off this: ailment durations
+// and poison damage, shield countdowns, the Plants regen check, the
+// round counter, and the d20 roll on dice maps.
+async function finishRound(unitA, unitB, side) {
+  if (!battle || side !== 'foe') return;
+  battle.roundNo = (battle.roundNo || 0) + 1;
+  await endOfTurnTicks(unitA);
+  await endOfTurnTicks(unitB);
+  // Dice maps only (see DICE_MAPS in dice.js); a no-op everywhere else.
+  await onRoundComplete(battle, battle.roundNo);
 }
 
 // Guaranteed-crit bonus strike, fired once a unit's crit gauge fills —
@@ -380,7 +417,8 @@ function supportCasterPop(caster, sp) {
 // contributor — the stat stays at its current (aggregated) % until
 // that expires, though the % itself may step down sooner if a
 // shorter-lived contributor runs out first; recomputed fresh from
-// pet.ailments on every call so that's always reflected live.
+// pet.ailments on every call so that's always reflected live. The "t"
+// suffix counts FULL ROUNDS -- see finishRound().
 const STAT_BUFF_META = {
   atk:  { label: 'ATK',  color: '#ff5a5a' },
   def:  { label: 'DEF',  color: '#d9a066' },
@@ -632,8 +670,10 @@ async function castSpecial(caster, target, sp, side, atkTeam, defTeam) {
   refreshBattleUnits();
 }
 
-// Poison tick, shield countdown, frenzy/charm/freeze duration — run at
-// the end of a unit's turn for BOTH participants.
+// Poison tick, shield countdown, frenzy/charm/freeze duration — run
+// ONCE PER FULL ROUND for both participants, from finishRound(). It
+// used to run on every half-turn, which made every duration in the
+// game expire in half the stated number of turns.
 async function endOfTurnTicks(unit) {
   if (!unit || unit.hp <= 0) return;
   const events = tickAilments(unit);
@@ -949,4 +989,3 @@ export function fleeBattle() {
   showScreen(returnTo);
   renderAll();
 }
-
