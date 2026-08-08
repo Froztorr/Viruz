@@ -24,6 +24,15 @@ const DEV_FLAG_KEY = 'viruz.devMode.enabled';
 const PATCH_KEY = 'viruz.devMode.patchExport.v3';
 const OLD_PATCH_KEY = 'viruz.devMode.patchExport.v2';
 
+// Nodes authored here that have since been written into the real source
+// files. Without this, applySavedPatch() keeps re-injecting the local
+// draft on every boot and the map shows two pins on the same spot: the
+// real one, and the stale draft still carrying the placeholder level
+// range and rewards it was exported with. Listing the id retires just
+// that draft, on every device, with no need to remember to press
+// "Clear local dev edits" (which would also throw away unrelated work).
+const PROMOTED_LOCAL_IDS = ['zone_mskmkaqw'];   // -> gs_commander (Commander's Room)
+
 let enabled = localStorage.getItem(DEV_FLAG_KEY) === '1';
 let wired = false;
 let dragging = null;
@@ -78,6 +87,28 @@ function dropLegacyBattleLayout() {
     node.style.left = ''; node.style.top = ''; node.style.right = ''; node.style.bottom = '';
   });
 }
+// Runs before anything is applied, so a promoted draft never reaches the
+// map. Also removes it if an earlier applySavedPatch() already pushed it.
+function dropPromotedLocalEdits() {
+  const p = loadPatch();
+  let changed = false;
+  PROMOTED_LOCAL_IDS.forEach(id => {
+    if ((p.newZones || []).some(z => z.id === id)) { p.newZones = p.newZones.filter(z => z.id !== id); changed = true; }
+    if ((p.newCity || []).some(n => n.id === id)) { p.newCity = p.newCity.filter(n => n.id !== id); changed = true; }
+    if (p.zones?.[id]) { delete p.zones[id]; changed = true; }
+    if (p.city?.[id]) { delete p.city[id]; changed = true; }
+    if (p.enemyOverrides?.[id]) { delete p.enemyOverrides[id]; changed = true; }
+    const zi = ZONES.findIndex(z => z.id === id); if (zi >= 0) ZONES.splice(zi, 1);
+    const ci = MAP_NODES.findIndex(n => n.id === id); if (ci >= 0) MAP_NODES.splice(ci, 1);
+  });
+  // Saving a node without editing it records an empty diff against the
+  // base values. It applies as a no-op, but it rides along in every
+  // later export and reads like a change that was made.
+  ['zones', 'city'].forEach(k => Object.keys(p[k] || {}).forEach(id => {
+    if (!Object.keys(p[k][id] || {}).length) { delete p[k][id]; changed = true; }
+  }));
+  if (changed) savePatch(p);
+}
 function changedOnly(base, now, keys) {
   const out = {};
   keys.forEach(k => { if (JSON.stringify(base?.[k]) !== JSON.stringify(now?.[k])) out[k] = clone(now[k]); });
@@ -106,6 +137,7 @@ function saveEnemyOverride(zoneId, enemyId, over) {
 function removeCity(id) { const p = loadPatch(); delete p.city[id]; p.newCity = p.newCity.filter(n => n.id !== id); if (baseCity.has(id) && !p.deletedCity.includes(id)) p.deletedCity.push(id); savePatch(p); const i = MAP_NODES.findIndex(n => n.id === id); if (i >= 0) MAP_NODES.splice(i, 1); }
 function removeZone(id) { const p = loadPatch(); delete p.zones[id]; p.newZones = p.newZones.filter(z => z.id !== id); if (baseZones.has(id) && !p.deletedZones.includes(id)) p.deletedZones.push(id); savePatch(p); const i = ZONES.findIndex(z => z.id === id); if (i >= 0) ZONES.splice(i, 1); }
 function applySavedPatch() {
+  dropPromotedLocalEdits();
   const p = loadPatch();
   Object.entries(p.city || {}).forEach(([id, diff]) => { const n = MAP_NODES.find(x => x.id === id); if (n) Object.assign(n, clone(diff)); });
   Object.entries(p.zones || {}).forEach(([id, diff]) => { const z = ZONES.find(x => x.id === id); if (z) Object.assign(z, clone(diff)); });
