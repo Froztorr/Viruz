@@ -20,6 +20,7 @@ import './win-chrome.js';   // no traffic-light dots on the world + city map pan
 import './galaxy.js';       // Galaxy hub/submaps; final videos can be uploaded later
 import './galaxy-monsters.js'; // celestial roster; must load AFTER galaxy.js
 import './dnd.js';          // Tabletop Realm + hero-class enemies; gate sits on the Galaxy hub, so must load AFTER galaxy.js
+import { wireDevMode } from './dev-mode.js'; // in-game map/node editor for developer builds
 
 // NOTE: equip-board-bg.js is deliberately NOT imported. It drew a stand-in
 // circuit board in SVG while assets/ui/equip_circuit_bg.jpg was missing from
@@ -50,6 +51,7 @@ window.VIRUZ = {
 runPreload()
   .catch(err => console.warn('[boot] preload failed, starting anyway:', err))
   .then(() => boot())
+  .then(() => wireDevMode())
   .catch(err => console.error('[boot] failed:', err))
   .then(() => {
     finishPreload();
