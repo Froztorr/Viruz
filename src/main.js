@@ -9,6 +9,7 @@ import './icons.js';        // stamps img/iconImg onto data.js tables
 import './icon-style.js';   // injects .data-icon sizing rule
 import './menu-icons.js';   // swaps hardcoded shell/pet-detail emoji for PNGs
 import './inv-layout.js';   // fits + centres the inventory grids
+import './win-chrome.js';   // no traffic-light dots on the world + city map panes
 import './galaxy.js';       // Galaxy hub/submaps; final videos can be uploaded later
 import './galaxy-monsters.js'; // celestial roster; must load AFTER galaxy.js
 
