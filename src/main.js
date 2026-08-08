@@ -22,6 +22,19 @@ import './galaxy-monsters.js'; // celestial roster; must load AFTER galaxy.js
 import './dnd.js';          // Tabletop Realm + hero-class enemies; gate sits on the Galaxy hub, so must load AFTER galaxy.js
 import './safe-scene.js';   // per-map merchant portrait + tavern-door entrance; needs every map registered, so AFTER galaxy.js/dnd.js
 
+// ── DEV TOOLS ──
+// These two files existed in the repo but nothing ever imported them.
+// index.html has a single script tag (this file), so an unimported
+// module is simply never fetched: wireDevMode() never ran, the SIM
+// module never self-booted, and neither the ⚙️ DEV button nor the
+// 🎛️ SIM button was ever put in the DOM. That -- not a CSS or z-index
+// problem -- is why the dev icons could not be found anywhere.
+//
+// Imported LAST, and every call below is individually guarded, so a
+// dev tool that throws can never stop the game from booting.
+import './dev-battle-sim.js';                              // battle-scene simulator; self-boots its own button
+import { applyDevMapPatch, wireDevMode } from './dev-mode.js';  // map/enemy patch exporter + the ⚙️ DEV button
+
 // NOTE: equip-board-bg.js is deliberately NOT imported. It drew a stand-in
 // circuit board in SVG while assets/ui/equip_circuit_bg.jpg was missing from
 // the repo. The original art has been restored from git history, so the real
@@ -48,11 +61,19 @@ window.VIRUZ = {
 // with its assets already cached -- not a map filling in as files land.
 // Every step is guarded: a failed preload, or a failed boot, still ends
 // with the overlay removed rather than a permanently blank screen.
+//
+// The saved dev map patch is applied BEFORE boot() so the first paint
+// of the city/world already carries the developer's node edits; the
+// ⚙️ DEV button is wired AFTER, once the screens it overlays exist.
 runPreload()
   .catch(err => console.warn('[boot] preload failed, starting anyway:', err))
+  .then(() => {
+    try { applyDevMapPatch(); } catch (err) { console.warn('[dev] map patch skipped:', err); }
+  })
   .then(() => boot())
   .catch(err => console.error('[boot] failed:', err))
   .then(() => {
     finishPreload();
     startBackgroundPreload();   // quietly fetch whatever was left for later
+    try { wireDevMode(); } catch (err) { console.warn('[dev] dev mode not wired:', err); }
   });
