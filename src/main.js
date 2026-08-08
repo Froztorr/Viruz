@@ -20,7 +20,7 @@ import './win-chrome.js';   // no traffic-light dots on the world + city map pan
 import './galaxy.js';       // Galaxy hub/submaps; final videos can be uploaded later
 import './galaxy-monsters.js'; // celestial roster; must load AFTER galaxy.js
 import './dnd.js';          // Tabletop Realm + hero-class enemies; gate sits on the Galaxy hub, so must load AFTER galaxy.js
-import './dev-battle-sim.js'; // Safe Dev Mode battle simulator/export scene
+import './safe-scene.js';   // per-map merchant portrait + tavern-door entrance; needs every map registered, so AFTER galaxy.js/dnd.js
 
 // NOTE: equip-board-bg.js is deliberately NOT imported. It drew a stand-in
 // circuit board in SVG while assets/ui/equip_circuit_bg.jpg was missing from
@@ -32,7 +32,6 @@ import { hackState } from './battle/combat.js';
 import { startArena } from './battle/encounters.js';
 import { boot } from './state.js';
 import { closeModal, showScreen } from './ui-shell.js';
-import { wireDevMode } from './dev-mode.js';
 
 window.VIRUZ = {
   startArena, showScreen, closeModal,
@@ -44,14 +43,16 @@ window.VIRUZ = {
 };
 
 // ── BOOT ──
-// Preload the art, THEN boot. Dev Mode is wired only AFTER boot finishes;
-// it never touches preload/startup and it only exports small patch JSON.
+// Preload the art, THEN boot. The loading screen stays up across boot()
+// as well, so the first frame the player sees is a fully painted screen
+// with its assets already cached -- not a map filling in as files land.
+// Every step is guarded: a failed preload, or a failed boot, still ends
+// with the overlay removed rather than a permanently blank screen.
 runPreload()
   .catch(err => console.warn('[boot] preload failed, starting anyway:', err))
   .then(() => boot())
   .catch(err => console.error('[boot] failed:', err))
   .then(() => {
     finishPreload();
-    startBackgroundPreload();
-    wireDevMode();
+    startBackgroundPreload();   // quietly fetch whatever was left for later
   });
