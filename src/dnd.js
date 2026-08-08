@@ -1,72 +1,5 @@
 // ═══════════════════════════════════════════════════════════
 // VIRUZ — TABLETOP REALM (fantasy board-game map)
-//
-// The role reversal of this realm: the player's VIRUZ are the monsters,
-// and the enemies are classic adventuring-party classes -- warrior,
-// rogue, priest, wizard, sorcerer, ranger, paladin, bard, and the
-// Dungeon Master as the final boss.
-//
-// Structure copied deliberately from galaxy.js + galaxy-monsters.js,
-// which are the two working precedents in this codebase:
-//
-// 1. MAPS/ZONES are pushed, never edited in place, and never from
-//    data.js -- that file is ~105KB and stays untouched.
-// 2. Enemies are CLONED from an existing monster rather than declared
-//    from scratch. spawnAntiviruz() reads a dozen fields off a monster
-//    record (base, shape, palette, faces, scale, noFloat, specials,
-//    habitColor, habitType...); cloning inherits all of them so none can
-//    be missed. ANTIVIRUZ is an OBJECT KEYED BY ID, not an array --
-//    getting that wrong once already registered zero monsters and left
-//    the Galaxy zone pools pointing at ids that did not resolve.
-// 3. retuneZones() runs ONLY if every id it references registered
-//    successfully. A pool can never point at a missing monster, because
-//    an unknown id makes spawnAntiviruz() return null and those nulls go
-//    straight into the wave list.
-//
-// TEMPLATE CHOICE: vampire_lord, the strongest monster native to
-// data.js. Deliberately not one of the celestials from
-// galaxy-monsters.js -- those are themselves clones registered at
-// runtime, so depending on them would make this file's correctness
-// depend on another module's load order succeeding first.
-//
-// ── FACING (fixed) ──
-// All nine heroes rendered MIRRORED, staring away from the player. The
-// cause was not `entry.faces` below -- facing.js owns the final say and
-// overrides whatever the renderer decided. Its applyPose() resolves a
-// monster's drawn direction from the SPRITE PATH via MONSTER_FACING,
-// defaulting any unlisted folder to 'right'. The hero art is drawn
-// facing LEFT, so every one of them was flipped to correct a problem
-// that did not exist.
-//
-// The nine ids are therefore registered into MONSTER_FACING at load,
-// below, rather than hard-coded into facing.js: the roster already lives
-// here, so keeping the facing beside it means adding a tenth hero is a
-// one-line change in one file instead of two. `entry.faces` is still set
-// for any code path that reads the def directly.
-//
-// FLOAT: heroes all stand on the ground. facing.js is planted-unless-
-// listed-airborne, so no entry is needed for that.
-//
-// ── MAP LAYOUT (re-pinned against the art) ──
-// Node positions are percentages over the board video. The first pass
-// placed them by eye and four of them missed their tile: the warp gate
-// sat out on the wooden desk beside the paper board, the Starting Square
-// was off its gold hex, the Chapel off its blue tile, and Dragonfoot
-// Ridge had slid off the bottom of the board onto the desk.
-//
-// They were re-solved instead of re-guessed. Grey Fortress, Skeleton Pit,
-// Arcane Tower and the Dungeon Master's Hall were already right, so their
-// percentages against their pixel centres in a screenshot of the rendered
-// map give the percent->pixel mapping of #world-stage; the four bad spots
-// were read back out through its inverse.
-//
-// The trail runs: warp-in on the board's upper-left -> Starting Square ->
-// Grey Fortress -> Chapel -> Skeleton Pit -> Arcane Tower -> Dragonfoot
-// Ridge -> the Dungeon Master on the dragon-marked mountain. The ridge's
-// y (79.3) is LARGER than the hall's (70) on purpose: the ridge is the
-// mountain's lower slope and the hall is its peak, so the last leg reads
-// upward. Every coordinate is a plain x/y pair; nudging one is a one-line
-// change.
 // ═══════════════════════════════════════════════════════════
 
 import * as DATA from './data.js';
@@ -75,11 +8,10 @@ import { MONSTER_FACING } from './facing.js';
 import { G, save } from './state.js';
 
 const MAP_ID = 'board';
-const HUB_ID = 'galaxy';           // the realm this map is entered from
+const HUB_ID = 'galaxy';
 const GATE_ID = 'board_gate';
 const TEMPLATE_ID = 'vampire_lord';
 
-// ── MAP ──
 const boardMap = {
   id: MAP_ID, parentMapId: HUB_ID, parentGateId: GATE_ID,
   name: 'Tabletop Realm', thai: 'อาณาจักรกระดาน',
@@ -90,7 +22,6 @@ const boardMap = {
   warpIn: { x: 18.6, y: 25.5 }, warpOut: null,
 };
 
-// ── GATE on the hub map ──
 const boardGate = {
   id: GATE_ID, map: HUB_ID, kind: 'safe', order: 0,
   targetMapId: MAP_ID, icon: '🎲',
@@ -98,9 +29,6 @@ const boardGate = {
   x: 52, y: 18, desc: 'เข้าสู่แผนที่ย่อย',
 };
 
-// ── ZONES ──
-// Pools are seeded with EXISTING monsters and only swapped to the hero
-// roster by retuneZones() once registration is confirmed.
 const battle = (id, order, name, thai, x, y, lv, waves, pool, bitzMult, expMult, desc) => ({
   id, map: MAP_ID, kind: 'battle', order, name, thai, x, y, lv, waves, pool,
   reward: { bitzMult, expMult }, desc,
@@ -108,17 +36,17 @@ const battle = (id, order, name, thai, x, y, lv, waves, pool, bitzMult, expMult,
 
 const boardZones = [
   { id: 'bd_tavern', map: MAP_ID, kind: 'safe', order: 0,
-    name: "Adventurers' Rest", thai: 'โรงเตี๊ยมนักผจญภัย', x: 14, y: 30,
+    name: "Adventurers' Rest", thai: 'โรงเตี๊ยมนักผจญภัย', x: 80.95, y: 42.14,
     desc: 'โต๊ะมุมโรงเตี๊ยมสำหรับพักฟื้นและซื้อยา' },
-  battle('bd_gate', 1, 'Starting Square', 'ช่องเริ่มต้น', 31.8, 24.6, [166, 169], [3, 4],
+  battle('bd_gate', 1, 'Starting Square', 'ช่องเริ่มต้น', 43.62, 23.77, [166, 169], [3, 4],
     ['vampire_lord', 'black_beast'], 12.5, 11.8, 'ช่องแรกของกระดาน — หน่วยลาดตระเวนของปาร์ตี้'),
-  battle('bd_fortress', 2, 'Grey Fortress', 'ป้อมปราการสีเทา', 62, 26, [170, 173], [3, 4],
+  battle('bd_fortress', 2, 'Grey Fortress', 'ป้อมปราการสีเทา', 29.85, 36.26, [170, 173], [3, 4],
     ['vampire_lord', 'fire_golem'], 12.9, 12.1, 'ป้อมหินสีเทา — ที่มั่นของนักรบ อัศวิน และกวี'),
-  battle('bd_chapel', 3, 'Candlelit Chapel', 'โบสถ์แสงเทียน', 39.2, 54, [174, 177], [4, 4],
+  battle('bd_chapel', 3, 'Candlelit Chapel', 'โบสถ์แสงเทียน', 19.81, 48.98, [174, 177], [4, 4],
     ['vampire_lady', 'vampire_lord'], 13.2, 12.4, 'แท่นบูชาที่สวดภาวนาขับไล่ไวรัส'),
-  battle('bd_pit', 4, 'Skeleton Pit', 'หลุมโครงกระดูก', 70, 50, [178, 181], [4, 4],
+  battle('bd_pit', 4, 'Skeleton Pit', 'หลุมโครงกระดูก', 37.84, 61.42, [178, 181], [4, 4],
     ['black_beast', 'vampire_lady'], 13.6, 12.8, 'หลุมมืดเต็มไปด้วยโครงกระดูก — ที่ซุ่มของโจรและผู้วิเศษ'),
-  battle('bd_tower', 5, 'Arcane Tower', 'หอคอยเวทมนตร์', 30, 64, [182, 184], [4, 5],
+  battle('bd_tower', 5, 'Arcane Tower', 'หอคอยเวทมนตร์', 19.81, 75.24, [182, 184], [4, 5],
     ['fire_golem', 'rock_golem'], 14, 13.1, 'หอคอยที่คลื่นเวทมนตร์แปรปรวนตลอดเวลา'),
   battle('bd_ridge', 6, 'Dragonfoot Ridge', 'สันเขาเชิงมังกร', 73, 79.3, [185, 187], [4, 5],
     ['rock_golem', 'fire_golem'], 14.5, 13.5, 'เชิงเขามังกร — ด่านสุดท้ายก่อนขึ้นสู่ยอด'),
@@ -126,9 +54,6 @@ const boardZones = [
     ['vampire_lord', 'fire_golem', 'black_beast'], 15, 14, 'ยอดเขามังกร โต๊ะสุดท้าย ที่ลูกเต๋าตัดสินทุกอย่าง'),
 ];
 
-// ── HERO ENEMIES ──
-// `power` scales the template's base stat line, ramping across Lv 166-190
-// and spiking on the boss. Continues the Galaxy ramp, which ended at 2.00.
 const HEROES = [
   { id: 'hero_warrior',        name: 'Warrior',        thai: 'นักรบ',              power: 2.05 },
   { id: 'hero_rogue',          name: 'Rogue',          thai: 'โจรเงา',             power: 2.12 },
@@ -151,10 +76,6 @@ const ZONE_POOLS = {
   bd_hall:     ['hero_dungeon_master', 'hero_ranger'],
 };
 
-// The art is drawn facing left; see the FACING note in the header for
-// why this lives here and not in facing.js. Mutating the imported object
-// is safe and immediate -- facing.js reads MONSTER_FACING on every
-// applyPose() call, not once at import.
 HEROES.forEach(h => { MONSTER_FACING[h.id] = 'left'; });
 
 function scaleNumbers(source, mult) {
@@ -182,15 +103,12 @@ function registerHeroes() {
   const ready = new Set();
 
   HEROES.forEach((def, i) => {
-    if (roster[def.id]) { ready.add(def.id); return; }   // never clobber
+    if (roster[def.id]) { ready.add(def.id); return; }
 
     const entry = { ...template, id: def.id, name: def.name };
-    // sprites.js resolves a monster folder as
-    // MONSTER_GIF_FOLDERS[speciesId] || species.gif, so pointing `gif` at
-    // the id yields assets/sprites/<id>/still.gif.
     entry.gif = def.id;
     entry.ext = 'gif';
-    entry.faces = 'left';                                 // art is drawn facing left
+    entry.faces = 'left';
     if ('thai' in template) entry.thai = def.thai;
     if (attrKeys) entry.attr = attrKeys[i % attrKeys.length];
     const scaled = scaleNumbers(template.base, def.power);
@@ -220,7 +138,6 @@ function retuneZones(ready) {
   return retuned;
 }
 
-// ── REGISTER ──
 if (!MAPS.some(m => m.id === MAP_ID)) MAPS.push(boardMap);
 for (const zone of [boardGate, ...boardZones]) {
   if (!ZONES.some(z => z.id === zone.id)) ZONES.push(zone);
@@ -232,11 +149,6 @@ try {
   console.warn('[dnd] registration skipped:', err);
 }
 
-// ── GATE BEHAVIOUR ──
-// Mirrors galaxy.js: the gate is an ordinary zone pin so the existing
-// player-position marker can track it, then its appearance and click
-// action are upgraded here. Two-tap confirm, matching the world map's own
-// pin behaviour.
 let armedKey = null;
 let armedTimer = null;
 
@@ -274,8 +186,6 @@ function returnToHub() {
   redrawWorld();
 }
 
-// `pin.dataset.dndGate` doubles as the re-entry guard that stops the
-// MutationObserver below from re-triggering on its own writes.
 function decorateGate() {
   if (G.currentMapId !== HUB_ID) return;
   document.querySelectorAll('#world-pins .zone-pin').forEach(pin => {
@@ -298,9 +208,6 @@ if (pinLayer) {
   queueMicrotask(decorateGate);
 }
 
-// Capture phase, same as galaxy.js. That module's handler runs first and
-// falls through harmlessly for this pin, since it only acts on pins
-// carrying its own dataset.galaxyGate marker.
 document.addEventListener('click', event => {
   const pin = event.target.closest?.('.zone-pin');
   if (!pin) return;
@@ -317,7 +224,6 @@ document.addEventListener('click', event => {
   }
 }, true);
 
-// Direct-src video errors do not bubble reliably, so listen in capture.
 const worldVideo = document.getElementById('world-video');
 if (worldVideo) worldVideo.addEventListener('error', () => {
   if (G.currentMapId !== MAP_ID) return;
