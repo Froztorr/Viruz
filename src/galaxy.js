@@ -42,6 +42,13 @@ const battle = (id,map,order,name,thai,x,y,lv,waves,pool,bitzMult,expMult,desc) 
 });
 const safe = (id,map,name,thai,x,y,desc) => ({id,map,kind:'safe',order:0,name,thai,x,y,desc});
 
+// The `pool` given to each battle zone below is deliberately made of
+// base-game monsters. galaxy-monsters.js replaces it with the themed
+// celestial pool, but only after it has verified every one of those
+// monsters actually registered -- an unregistered id makes
+// spawnAntiviruz() return null and buildHackRun() drops that null
+// straight into the wave list. Naming celestial ids directly here would
+// be the one pool skipping that check.
 const galaxyZones = [
   battle('gr_corona','galaxy_red',1,'Corona Reach','ขอบโคโรนา',38.1,24.97,[101,105],[3,4],['fire_golem','black_beast'],7,6.5,'ทางผ่านเหนือขอบโคโรนาที่ปั่นป่วน'),
   battle('gr_sunspots','galaxy_red',2,'Sunspot Castle','ปราสาทสุริยคราส',80.78,21.62,[106,110],[3,4],['black_beast','vampire_lady'],7.4,6.9,'ซากปราสาทโบราณ'),
@@ -58,7 +65,12 @@ const galaxyZones = [
   safe('gs_medbay','galaxy_ship','Restored Med-Bay','ห้องพยาบาลที่กู้คืน',80.95,54.48,'ระบบพยาบาลที่ยังใช้พักฟื้นและซื้อยาได้'),
   battle('gs_navigation','galaxy_ship',1,'Navigation Chamber','ห้องนำทาง',18.28,63.67,[148,153],[4,4],['goblin_miner','butler_vamp'],11,10.3,'ห้องนำทางที่ถูกระบบไวรัสยึดครอง'),
   battle('gs_engine','galaxy_ship',2,'Engine Vault','ห้องเครื่องปฏิกรณ์',50.6,38.6,[154,159],[4,5],['fire_golem','rock_golem'],11.5,10.8,'ห้องเครื่องที่พลังงานกำลังไม่เสถียร'),
-  battle('gs_command','galaxy_ship',3,'Sealed Command Bridge','สะพานบัญชาการปิดผนึก',49.66,58.12,[160,165],[5,5],['vampire_lord','fire_golem','black_beast'],12.2,11.5,'ศูนย์บัญชาการสุดท้ายของยานร้าง'),
+  // Authored in Safe Dev Mode and promoted from its exported patch. Level
+  // range taken from that export's repair-drone override (155-160); the
+  // reward multipliers are interpolated between the two neighbouring
+  // rooms, since the export still carried the 1.0 placeholder.
+  battle('gs_commander','galaxy_ship',3,"Commander's Room",'ส่วนบัญชาการยาน',50.26,13.78,[155,160],[1,1],['vampire_lord','fire_golem'],11.8,11.1,'ส่วนบัญชาการยานรบที่ใช้การไม่ได้แล้ว'),
+  battle('gs_command','galaxy_ship',4,'Sealed Command Bridge','สะพานบัญชาการปิดผนึก',49.66,58.12,[160,165],[5,5],['vampire_lord','fire_golem','black_beast'],12.2,11.5,'ศูนย์บัญชาการสุดท้ายของยานร้าง'),
 ];
 
 const hell = MAPS.find(m => m.id === 'hell');
