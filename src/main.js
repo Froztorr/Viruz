@@ -1,5 +1,12 @@
 // Auto-split from the original monolithic game.js as part of a
 // codebase reorganization pass -- see git history for prior structure.
+//
+// IMPORT ORDER MATTERS HERE. preload.js comes first and deliberately has
+// no static imports of its own: its module body paints the loading
+// screen, so the overlay is up before data.js (~100 KB) and the rest of
+// the graph are parsed. Everything below it is the same side-effect
+// import list as before.
+import { finishPreload, runPreload, startBackgroundPreload } from './preload.js';  // loading screen + asset preload
 import './img-fallback.js';  // retries failed .gif creature art as .png
 import './sprites-gif.js';  // switches pets + monsters over to the animated .gif art
 import './facing.js';       // sprite pose: which way art faces, and what floats
@@ -33,4 +40,18 @@ window.VIRUZ = {
   },
   _hackAnswer: () => hackState && hackState.puzzle && hackState.puzzle.answer,
 };
-boot();
+
+// ── BOOT ──
+// Preload the art, THEN boot. The loading screen stays up across boot()
+// as well, so the first frame the player sees is a fully painted screen
+// with its assets already cached -- not a map filling in as files land.
+// Every step is guarded: a failed preload, or a failed boot, still ends
+// with the overlay removed rather than a permanently blank screen.
+runPreload()
+  .catch(err => console.warn('[boot] preload failed, starting anyway:', err))
+  .then(() => boot())
+  .catch(err => console.error('[boot] failed:', err))
+  .then(() => {
+    finishPreload();
+    startBackgroundPreload();   // quietly fetch whatever was left for later
+  });
