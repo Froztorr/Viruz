@@ -3,14 +3,13 @@
 // exported/downloaded as a replacement src/data.js so the changes become code.
 
 import { ANTIVIRUZ, MAP_NODES, ZONES } from './data.js';
-import { $, G, el, save } from './state.js';
+import { $, G, el } from './state.js';
 import { closeModal, modal, toast } from './ui-shell.js';
 
 const STORAGE_KEY = 'viruz.devMode.mapPatch.v1';
 const DEV_FLAG_KEY = 'viruz.devMode.enabled';
 
 let devEnabled = localStorage.getItem(DEV_FLAG_KEY) === '1';
-let selected = null;
 let dragging = null;
 let editorReady = false;
 
@@ -45,12 +44,7 @@ function applyPatchToArray(arr, changes, deleted, baseIds) {
     const i = arr.findIndex(x => x.id === id);
     if (i >= 0) arr.splice(i, 1);
   });
-  // Keep originals first, new nodes after, while preserving hand-added order.
-  arr.sort((a, b) => {
-    const ab = baseIds.has(a.id) ? 0 : 1;
-    const bb = baseIds.has(b.id) ? 0 : 1;
-    return ab - bb;
-  });
+  arr.sort((a, b) => (baseIds.has(a.id) ? 0 : 1) - (baseIds.has(b.id) ? 0 : 1));
 }
 
 export function applyDevMapPatch() {
@@ -88,9 +82,7 @@ function removeZone(id) {
   if (i >= 0) ZONES.splice(i, 1);
 }
 
-function stageForKind(kind) {
-  return kind === 'city' ? $('map-stage') : $('world-stage');
-}
+function stageForKind(kind) { return kind === 'city' ? $('map-stage') : $('world-stage'); }
 function posFromEvent(e, stage) {
   const r = stage.getBoundingClientRect();
   return {
@@ -98,24 +90,14 @@ function posFromEvent(e, stage) {
     y: pct(Math.max(0, Math.min(100, ((e.clientY - r.top) / r.height) * 100))),
   };
 }
-
 function getMapIdForWorld() { return G.currentMapId || 'forest'; }
 function battlePoolDefault() { return Object.keys(ANTIVIRUZ).filter(id => !id.startsWith('guard_')).slice(0, 2); }
 function uniqueId(prefix, arr) {
-  let i = 1;
-  let id;
-  do { id = `${prefix}_${Date.now().toString(36)}_${i++}`; }
-  while (arr.some(x => x.id === id));
+  let i = 1, id;
+  do { id = `${prefix}_${Date.now().toString(36)}_${i++}`; } while (arr.some(x => x.id === id));
   return id;
 }
-
-function refreshScreens() {
-  // Re-render the current map without importing render functions (avoids cycles).
-  const screen = $('app')?.dataset.screen;
-  const target = document.querySelector('[data-goto="' + screen + '"]');
-  if (target) target.click();
-  else window.VIRUZ?.showScreen?.(screen || 'map');
-}
+function refreshScreens() { window.VIRUZ?.showScreen?.($('app')?.dataset.screen || 'map'); setTimeout(installOverlays, 80); }
 
 function enableDev(on) {
   devEnabled = !!on;
@@ -128,15 +110,15 @@ function enableDev(on) {
 
 function renderDevButton() {
   let btn = $('dev-mode-btn');
-  const right = document.querySelector('#topbar .topbar-right') || $('topbar');
-  if (!right) return;
   if (!btn) {
-    btn = el('button', 'tb-qn-btn dev-mode-btn');
+    btn = document.createElement('button');
     btn.id = 'dev-mode-btn';
+    btn.type = 'button';
     btn.title = 'Dev Mode';
-    btn.textContent = '⚙️';
-    btn.onclick = () => openDevPanel();
-    right.prepend(btn);
+    btn.setAttribute('aria-label', 'Dev Mode');
+    btn.textContent = '⚙️ DEV';
+    btn.onclick = openDevPanel;
+    document.body.appendChild(btn);
   }
   btn.classList.toggle('on', devEnabled);
 }
@@ -148,50 +130,32 @@ function installOverlays() {
   if (appScreen === 'map') installCityOverlay();
   if (appScreen === 'world') installWorldOverlay();
 }
-
 function installCityOverlay() {
-  const stage = $('map-stage');
-  if (!stage) return;
+  const stage = $('map-stage'); if (!stage) return;
   const layer = el('div', 'dev-overlay dev-city-overlay');
   MAP_NODES.forEach(n => addDevDot(layer, 'city', n.id, n.x, n.y, n.label));
   stage.appendChild(layer);
 }
 function installWorldOverlay() {
-  const stage = $('world-stage');
-  if (!stage) return;
+  const stage = $('world-stage'); if (!stage) return;
   const mapId = getMapIdForWorld();
   const layer = el('div', 'dev-overlay dev-world-overlay');
   ZONES.filter(z => z.map === mapId).forEach(z => addDevDot(layer, 'zone', z.id, z.x, z.y, z.name));
   stage.appendChild(layer);
 }
-
 function addDevDot(layer, kind, id, x, y, label) {
   const dot = el('button', 'dev-dot', '✥');
-  dot.style.left = x + '%';
-  dot.style.top = y + '%';
-  dot.title = label || id;
-  dot.onpointerdown = e => {
-    e.preventDefault(); e.stopPropagation();
-    selected = { kind, id };
-    dragging = { kind, id, dot };
-    dot.setPointerCapture?.(e.pointerId);
-  };
+  dot.style.left = x + '%'; dot.style.top = y + '%'; dot.title = label || id;
+  dot.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); dragging = { kind, id, dot }; dot.setPointerCapture?.(e.pointerId); };
   dot.onpointermove = e => {
     if (!dragging || dragging.id !== id) return;
     const stage = stageForKind(kind === 'city' ? 'city' : 'zone');
     const p = posFromEvent(e, stage);
     dot.style.left = p.x + '%'; dot.style.top = p.y + '%';
-    if (kind === 'city') {
-      const n = MAP_NODES.find(v => v.id === id); if (n) { n.x = p.x; n.y = p.y; saveCityNode(n); }
-    } else {
-      const z = ZONES.find(v => v.id === id); if (z) { z.x = p.x; z.y = p.y; saveZone(z); }
-    }
+    if (kind === 'city') { const n = MAP_NODES.find(v => v.id === id); if (n) { n.x = p.x; n.y = p.y; saveCityNode(n); } }
+    else { const z = ZONES.find(v => v.id === id); if (z) { z.x = p.x; z.y = p.y; saveZone(z); } }
   };
-  dot.onpointerup = e => {
-    e.preventDefault(); e.stopPropagation();
-    dragging = null;
-    openNodeEditor(kind, id);
-  };
+  dot.onpointerup = e => { e.preventDefault(); e.stopPropagation(); dragging = null; openNodeEditor(kind, id); };
   layer.appendChild(dot);
 }
 
@@ -205,22 +169,16 @@ function openDevPanel() {
       <button class="btn wide" id="dev-export">⬇ Download patched src/data.js</button>
       <button class="btn wide" id="dev-copy">📋 Copy patch JSON</button>
       <button class="btn danger wide" id="dev-clear">Reset local dev edits</button>
-      <p class="muted">Drag the pink ✥ handles directly on the map to move nodes. Edits are saved locally immediately. Use Download to make the edits permanent in the codebase by replacing <code>src/data.js</code>.</p>`;
+      <p class="muted">Drag the pink ✥ handles directly on the map to move nodes. Edits save locally right away. Use Download to replace src/data.js on GitHub.</p>`;
     wrap.appendChild(box);
     $('dev-enabled-toggle').onchange = e => enableDev(e.target.checked);
     $('dev-add-city').onclick = addCityNode;
     $('dev-add-zone').onclick = addWorldNode;
     $('dev-export').onclick = downloadPatchedData;
     $('dev-copy').onclick = copyPatch;
-    $('dev-clear').onclick = () => {
-      if (!confirm('Clear all local dev map edits?')) return;
-      localStorage.removeItem(STORAGE_KEY);
-      toast('Dev edits cleared. Reload to restore original code data.');
-      closeModal();
-    };
+    $('dev-clear').onclick = () => { if (!confirm('Clear all local dev map edits?')) return; localStorage.removeItem(STORAGE_KEY); toast('Dev edits cleared. Reload to restore original code data.'); closeModal(); };
   });
 }
-
 function addCityNode() {
   const id = uniqueId('city_node', MAP_NODES);
   const n = { id, label:'New Node', x:50, y:50, textX:50, textY:44, zoneR:12, screen:'home', hint:'Dev-created node' };
@@ -264,52 +222,22 @@ function openNodeEditor(kind, id) {
     const kindSel = $('dev-kind'); if (kindSel) kindSel.value = obj.kind || 'battle';
     $('dev-save-node').onclick = () => {
       if (isCity) {
-        Object.assign(obj, {
-          label: $('dev-label').value.trim() || obj.label,
-          screen: $('dev-screen').value.trim() || 'map',
-          hint: $('dev-hint').value.trim(),
-          x: pct(parseFloat($('dev-x').value) || obj.x), y: pct(parseFloat($('dev-y').value) || obj.y),
-          textX: pct(parseFloat($('dev-textx').value) || obj.x), textY: pct(parseFloat($('dev-texty').value) || obj.y),
-          zoneR: Math.max(4, parseInt($('dev-r').value, 10) || 12),
-        });
+        Object.assign(obj, { label: $('dev-label').value.trim() || obj.label, screen: $('dev-screen').value.trim() || 'map', hint: $('dev-hint').value.trim(), x: pct(parseFloat($('dev-x').value) || obj.x), y: pct(parseFloat($('dev-y').value) || obj.y), textX: pct(parseFloat($('dev-textx').value) || obj.x), textY: pct(parseFloat($('dev-texty').value) || obj.y), zoneR: Math.max(4, parseInt($('dev-r').value, 10) || 12) });
         saveCityNode(obj);
       } else {
-        Object.assign(obj, {
-          name: $('dev-name').value.trim() || obj.name,
-          thai: $('dev-thai').value.trim(),
-          kind: $('dev-kind').value,
-          x: pct(parseFloat($('dev-x').value) || obj.x), y: pct(parseFloat($('dev-y').value) || obj.y),
-          lv: [parseInt($('dev-lv0').value, 10) || 1, parseInt($('dev-lv1').value, 10) || 1],
-          waves: [parseInt($('dev-w0').value, 10) || 1, parseInt($('dev-w1').value, 10) || 1],
-          pool: $('dev-pool').value.split(',').map(s => s.trim()).filter(Boolean),
-          desc: $('dev-desc').value.trim(),
-          reward: obj.reward || { bitzMult:1, expMult:1 },
-        });
+        Object.assign(obj, { name: $('dev-name').value.trim() || obj.name, thai: $('dev-thai').value.trim(), kind: $('dev-kind').value, x: pct(parseFloat($('dev-x').value) || obj.x), y: pct(parseFloat($('dev-y').value) || obj.y), lv: [parseInt($('dev-lv0').value, 10) || 1, parseInt($('dev-lv1').value, 10) || 1], waves: [parseInt($('dev-w0').value, 10) || 1, parseInt($('dev-w1').value, 10) || 1], pool: $('dev-pool').value.split(',').map(s => s.trim()).filter(Boolean), desc: $('dev-desc').value.trim(), reward: obj.reward || { bitzMult:1, expMult:1 } });
         if (obj.kind === 'safe') { delete obj.lv; delete obj.waves; delete obj.pool; delete obj.reward; }
         saveZone(obj);
       }
       closeModal(); refreshScreens(); toast('Node saved');
     };
-    $('dev-delete-node').onclick = () => {
-      if (!confirm('Delete this node?')) return;
-      isCity ? removeCityNode(id) : removeZone(id);
-      closeModal(); refreshScreens(); toast('Node deleted');
-    };
+    $('dev-delete-node').onclick = () => { if (!confirm('Delete this node?')) return; isCity ? removeCityNode(id) : removeZone(id); closeModal(); refreshScreens(); toast('Node deleted'); };
   });
 }
 
-function objectLiteral(obj) {
-  return JSON.stringify(obj, null, 2)
-    .replace(/"([A-Za-z_$][\w$]*)":/g, '$1:')
-    .replace(/"/g, "'");
-}
+function objectLiteral(obj) { return JSON.stringify(obj, null, 2).replace(/"([A-Za-z_$][\w$]*)":/g, '$1:').replace(/"/g, "'"); }
 function arrayLiteral(arr) { return '[\n' + arr.map(o => '  ' + objectLiteral(o).replace(/\n/g, '\n  ')).join(',\n\n') + '\n]'; }
-
-async function getOriginalDataText() {
-  const res = await fetch('src/data.js?devExport=' + Date.now());
-  if (!res.ok) throw new Error('Cannot fetch src/data.js');
-  return await res.text();
-}
+async function getOriginalDataText() { const res = await fetch('src/data.js?devExport=' + Date.now()); if (!res.ok) throw new Error('Cannot fetch src/data.js'); return await res.text(); }
 function replaceExportArray(src, exportName, arrText) {
   const re = new RegExp(`export const ${exportName} = \\[\\n[\\s\\S]*?\\n\\];`);
   const next = `export const ${exportName} = ${arrText};`;
@@ -323,36 +251,21 @@ async function downloadPatchedData() {
     src = replaceExportArray(src, 'MAP_NODES', arrayLiteral(MAP_NODES));
     const blob = new Blob([src], { type:'text/javascript' });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'data.js';
-    a.click();
-    URL.revokeObjectURL(a.href);
+    a.href = URL.createObjectURL(blob); a.download = 'data.js'; a.click(); URL.revokeObjectURL(a.href);
     toast('Downloaded patched data.js');
-  } catch (err) {
-    console.error(err);
-    toast('Export failed: ' + err.message);
-  }
+  } catch (err) { console.error(err); toast('Export failed: ' + err.message); }
 }
-async function copyPatch() {
-  const txt = JSON.stringify(currentPatch(), null, 2);
-  await navigator.clipboard?.writeText(txt);
-  toast('Patch JSON copied');
-}
+async function copyPatch() { await navigator.clipboard?.writeText(JSON.stringify(currentPatch(), null, 2)); toast('Patch JSON copied'); }
 
 function injectStyles() {
   if ($('dev-mode-styles')) return;
   const st = document.createElement('style');
   st.id = 'dev-mode-styles';
   st.textContent = `
-    #dev-mode-btn{border:1px solid var(--line2);border-radius:50%;width:24px;height:24px;filter:none;opacity:.85}
-    #dev-mode-btn.on{color:var(--gold);box-shadow:0 0 10px rgba(255,207,63,.65);opacity:1}
-    .dev-overlay{position:absolute;inset:0;z-index:30;pointer-events:none}
-    .dev-dot{position:absolute;transform:translate(-50%,-50%);z-index:31;pointer-events:auto;width:26px;height:26px;border-radius:50%;background:rgba(255,40,180,.88);border:2px solid #fff;color:#fff;font-size:14px;box-shadow:0 0 14px rgba(255,40,180,.8);touch-action:none;cursor:grab}
-    .dev-dot:active{cursor:grabbing;transform:translate(-50%,-50%) scale(1.2)}
-    .dev-panel .btn,.dev-form .btn{margin-top:8px}
-    .dev-form label{display:flex;flex-direction:column;gap:4px;margin:8px 0;color:var(--muted);font-size:14px}
-    .dev-form input,.dev-form textarea,.dev-form select{width:100%;font:16px var(--mono);padding:8px;background:var(--panel-solid);border:1px solid var(--line2);color:var(--txt);user-select:text;-webkit-user-select:text}
-    .dev-form textarea{min-height:74px}.dev-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    #dev-mode-btn{position:fixed;top:38px;right:8px;z-index:10000;padding:7px 10px;border-radius:999px;border:2px solid var(--gold,#ffcf3f);background:linear-gradient(180deg,#fff6c9,#e8a91c);color:#231602;font:12px var(--pixel,monospace);box-shadow:0 3px 12px rgba(0,0,0,.35);opacity:.95}
+    #dev-mode-btn.on{background:linear-gradient(180deg,#ff5ce0,#7a4de0);color:#fff;border-color:#fff;box-shadow:0 0 16px rgba(255,92,224,.9)}
+    .dev-overlay{position:absolute;inset:0;z-index:30;pointer-events:none}.dev-dot{position:absolute;transform:translate(-50%,-50%);z-index:31;pointer-events:auto;width:26px;height:26px;border-radius:50%;background:rgba(255,40,180,.88);border:2px solid #fff;color:#fff;font-size:14px;box-shadow:0 0 14px rgba(255,40,180,.8);touch-action:none;cursor:grab}.dev-dot:active{cursor:grabbing;transform:translate(-50%,-50%) scale(1.2)}
+    .dev-panel .btn,.dev-form .btn{margin-top:8px}.dev-form label{display:flex;flex-direction:column;gap:4px;margin:8px 0;color:var(--muted);font-size:14px}.dev-form input,.dev-form textarea,.dev-form select{width:100%;font:16px var(--mono);padding:8px;background:var(--panel-solid);border:1px solid var(--line2);color:var(--txt);user-select:text;-webkit-user-select:text}.dev-form textarea{min-height:74px}.dev-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   `;
   document.head.appendChild(st);
 }
@@ -364,9 +277,9 @@ export function wireDevMode() {
   applyDevMapPatch();
   renderDevButton();
   document.documentElement.classList.toggle('dev-mode', devEnabled);
-  const mo = new MutationObserver(() => setTimeout(installOverlays, 0));
+  const mo = new MutationObserver(() => setTimeout(() => { renderDevButton(); installOverlays(); }, 0));
   const app = $('app');
   if (app) mo.observe(app, { attributes:true, attributeFilter:['data-screen'] });
   document.addEventListener('click', () => setTimeout(installOverlays, 0), true);
-  setTimeout(installOverlays, 500);
+  setTimeout(() => { renderDevButton(); installOverlays(); }, 500);
 }
