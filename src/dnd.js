@@ -47,13 +47,26 @@
 // FLOAT: heroes all stand on the ground. facing.js is planted-unless-
 // listed-airborne, so no entry is needed for that.
 //
-// ── MAP LAYOUT ──
-// Node positions are percentages over the board video and were placed
-// against the art. The trail runs: warp-in at the upper-left border ->
-// Starting Square -> Grey Fortress -> Chapel -> Skeleton Pit -> Arcane
-// Tower -> Dragonfoot Ridge -> the Dungeon Master on the dragon-marked
-// mountain. Every coordinate is a plain x/y pair; nudging one is a
-// one-line change.
+// ── MAP LAYOUT (re-pinned against the art) ──
+// Node positions are percentages over the board video. The first pass
+// placed them by eye and four of them missed their tile: the warp gate
+// sat out on the wooden desk beside the paper board, the Starting Square
+// was off its gold hex, the Chapel off its blue tile, and Dragonfoot
+// Ridge had slid off the bottom of the board onto the desk.
+//
+// They were re-solved instead of re-guessed. Grey Fortress, Skeleton Pit,
+// Arcane Tower and the Dungeon Master's Hall were already right, so their
+// percentages against their pixel centres in a screenshot of the rendered
+// map give the percent->pixel mapping of #world-stage; the four bad spots
+// were read back out through its inverse.
+//
+// The trail runs: warp-in on the board's upper-left -> Starting Square ->
+// Grey Fortress -> Chapel -> Skeleton Pit -> Arcane Tower -> Dragonfoot
+// Ridge -> the Dungeon Master on the dragon-marked mountain. The ridge's
+// y (79.3) is LARGER than the hall's (70) on purpose: the ridge is the
+// mountain's lower slope and the hall is its peak, so the last leg reads
+// upward. Every coordinate is a plain x/y pair; nudging one is a one-line
+// change.
 // ═══════════════════════════════════════════════════════════
 
 import * as DATA from './data.js';
@@ -74,7 +87,7 @@ const boardMap = {
   fallbackVideo: 'assets/maps/hell.mp4', fallbackPoster: 'assets/maps/hell.jpg',
   levelRange: [166, 190],
   desc: 'กระดานผจญภัยบนโต๊ะไม้ — ที่นี่คุณคือฝ่ายมอนสเตอร์',
-  warpIn: { x: 12, y: 14 }, warpOut: null,
+  warpIn: { x: 18.6, y: 25.5 }, warpOut: null,
 };
 
 // ── GATE on the hub map ──
@@ -97,17 +110,17 @@ const boardZones = [
   { id: 'bd_tavern', map: MAP_ID, kind: 'safe', order: 0,
     name: "Adventurers' Rest", thai: 'โรงเตี๊ยมนักผจญภัย', x: 14, y: 30,
     desc: 'โต๊ะมุมโรงเตี๊ยมสำหรับพักฟื้นและซื้อยา' },
-  battle('bd_gate', 1, 'Starting Square', 'ช่องเริ่มต้น', 28, 18, [166, 169], [3, 4],
+  battle('bd_gate', 1, 'Starting Square', 'ช่องเริ่มต้น', 31.8, 24.6, [166, 169], [3, 4],
     ['vampire_lord', 'black_beast'], 12.5, 11.8, 'ช่องแรกของกระดาน — หน่วยลาดตระเวนของปาร์ตี้'),
   battle('bd_fortress', 2, 'Grey Fortress', 'ป้อมปราการสีเทา', 62, 26, [170, 173], [3, 4],
     ['vampire_lord', 'fire_golem'], 12.9, 12.1, 'ป้อมหินสีเทา — ที่มั่นของนักรบ อัศวิน และกวี'),
-  battle('bd_chapel', 3, 'Candlelit Chapel', 'โบสถ์แสงเทียน', 34, 44, [174, 177], [4, 4],
+  battle('bd_chapel', 3, 'Candlelit Chapel', 'โบสถ์แสงเทียน', 39.2, 54, [174, 177], [4, 4],
     ['vampire_lady', 'vampire_lord'], 13.2, 12.4, 'แท่นบูชาที่สวดภาวนาขับไล่ไวรัส'),
   battle('bd_pit', 4, 'Skeleton Pit', 'หลุมโครงกระดูก', 70, 50, [178, 181], [4, 4],
     ['black_beast', 'vampire_lady'], 13.6, 12.8, 'หลุมมืดเต็มไปด้วยโครงกระดูก — ที่ซุ่มของโจรและผู้วิเศษ'),
   battle('bd_tower', 5, 'Arcane Tower', 'หอคอยเวทมนตร์', 30, 64, [182, 184], [4, 5],
     ['fire_golem', 'rock_golem'], 14, 13.1, 'หอคอยที่คลื่นเวทมนตร์แปรปรวนตลอดเวลา'),
-  battle('bd_ridge', 6, 'Dragonfoot Ridge', 'สันเขาเชิงมังกร', 66, 86, [185, 187], [4, 5],
+  battle('bd_ridge', 6, 'Dragonfoot Ridge', 'สันเขาเชิงมังกร', 73, 79.3, [185, 187], [4, 5],
     ['rock_golem', 'fire_golem'], 14.5, 13.5, 'เชิงเขามังกร — ด่านสุดท้ายก่อนขึ้นสู่ยอด'),
   battle('bd_hall', 7, "Dungeon Master's Hall", 'ห้องโถงเจ้าแห่งดันเจี้ยน', 68, 70, [188, 190], [5, 5],
     ['vampire_lord', 'fire_golem', 'black_beast'], 15, 14, 'ยอดเขามังกร โต๊ะสุดท้าย ที่ลูกเต๋าตัดสินทุกอย่าง'),
