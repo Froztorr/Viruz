@@ -28,6 +28,15 @@
 // renderer then never looks up. Saved poses are replayed at boot, so
 // an edit survives a reload and shows up in real fights too.
 //
+// THE LAYOUT IS CSS, NOT INLINE STYLE. Individual gauges live inside
+// the name plates, and renderBattleSide() rebuilds plate.innerHTML
+// from scratch on every paint -- an inline transform on .np-hp is
+// destroyed by the very next HP tick. (Inline style worked for the
+// containers only because #plate-ally, #skill-bar and friends are
+// never themselves rebuilt.) Writing the layout as real CSS rules in
+// one stylesheet sidesteps the whole problem: the rules re-match the
+// new elements the moment they exist, no re-application needed.
+//
 // combat.js is pulled in with a dynamic import rather than a static
 // one. This module is loaded early and combat.js sits in a dense
 // import cycle (combat -> turn-loop -> combat, combat -> ui-shell);
@@ -45,14 +54,15 @@ const SIM_KEY = 'viruz.devMode.battleSim.v3';
 const OLD_SIM_KEY = 'viruz.devMode.battleSim.v2';
 const PATCH_KEY = 'viruz.devMode.patchExport.v3';
 const STYLE_ID = 'dev-battle-sim-style';
+const LAYOUT_STYLE_ID = 'dev-battle-sim-layout';
 const PANEL_ID = 'dbs-panel';
 const TEAM_SIZE = 3;
 
 // Every editable box in the real battle screen, as [key, label,
 // selector]. These are the actual game elements -- not stand-ins.
 const UI_TARGETS = [
-  ['plateAlly', 'My plate (HP / MP / name)', '#plate-ally'],
-  ['plateFoe',  'Enemy plate (HP / SPD / CRT)', '#plate-foe'],
+  ['plateAlly', 'My plate (whole block)', '#plate-ally'],
+  ['plateFoe',  'Enemy plate (whole block)', '#plate-foe'],
   ['top',       'Title / wave text', '#battle-top'],
   ['skills',    'Skill cards', '#skill-bar'],
   ['potions',   'Bag / poison buttons', '#potion-bar'],
@@ -64,6 +74,23 @@ const UI_TARGETS = [
 const SIDE_TARGETS = [
   ['ally', 'My pet (sprite)', '#battle-allies'],
   ['foe',  'Enemy (sprite)',  '#battle-enemies'],
+];
+// The gauges inside the plates, individually, as
+// [key, label, selector, short]. Selectors come straight from
+// renderBattleSide()/vitalHtml()/gaugeBarHtml() in battle/combat.js.
+// The ally keeps HP as a heart and MP as a circle; when its sprite is
+// large those two get wrapped in .np-vitals-inline, which a descendant
+// selector still matches. The foe plate is built WITHOUT an .np-mp at
+// all, so there is deliberately no enemy MP target here -- a handle
+// for an element the game never renders would just be a lie.
+const BAR_TARGETS = [
+  ['allyHp',   'My HP heart',    '#plate-ally .np-hp',          'HP'],
+  ['allyMp',   'My MP orb',      '#plate-ally .np-mp',          'MP'],
+  ['allySpd',  'My SPD bar',     '#plate-ally .gauge-bar.spd',  'SPD'],
+  ['allyCrit', 'My CRT bar',     '#plate-ally .gauge-bar.crit', 'CRT'],
+  ['foeHp',    'Enemy HP heart', '#plate-foe .np-hp',           'HP'],
+  ['foeSpd',   'Enemy SPD bar',  '#plate-foe .gauge-bar.spd',   'SPD'],
+  ['foeCrit',  'Enemy CRT bar',  '#plate-foe .gauge-bar.crit',  'CRT'],
 ];
 
 const PET_KEYS = (SPECIES_KEYS && SPECIES_KEYS.length ? SPECIES_KEYS : Object.keys(SPECIES));
@@ -82,6 +109,7 @@ function blank() {
   return {
     ui: {},
     sides: {},
+    bars: {},
     facing: { pets: {}, monsters: {} },
     float: { pets: {}, forms: {}, monsters: {} },
     actors: { team: [], foe: {} },
@@ -94,6 +122,7 @@ function load() {
   const cfg = blank();
   Object.assign(cfg.ui, raw.ui || {});
   Object.assign(cfg.sides, raw.sides || {});
+  Object.assign(cfg.bars, raw.bars || {});
   // v2 stored facing/float as one flat id->value map with no way to
   // tell a pet id from a form name from a monster folder. Those cannot
   // be replayed safely, so only the box positions carry over.
@@ -124,26 +153,51 @@ function store(cfg) {
 }
 
 // ── APPLYING THE LAYOUT TO THE REAL SCREEN ──
-// Uses transform rather than position:absolute + left/top. An absolute
-// position rips the element out of normal flow, which is what made the
-// older battle-UI editor collapse the rows around whatever it moved.
-// A transform leaves layout completely intact and still moves + scales.
-function applyOne(sel, v) {
-  const t = document.querySelector(sel);
-  if (!t) return;
-  if (!v || (!v.dx && !v.dy && (v.scale == null || v.scale === 1))) {
-    t.style.transform = '';
-    t.style.transformOrigin = '';
-    return;
-  }
+// Movement is a transform, never position:absolute + left/top. An
+// absolute position rips the element out of normal flow, which is what
+// made the older battle-UI editor collapse the rows around whatever it
+// moved. A transform leaves layout completely intact.
+//
+// Where the browser supports them, the INDEPENDENT translate/scale
+// properties are used instead of the transform shorthand. The gauges
+// are animated by the game itself (the crit bar pulses when ready, a
+// struck unit shakes), and those keyframes drive `transform`; writing
+// the offset into the same property would mean either the animation
+// snapping the bar back to its old spot, or an !important that kills
+// the animation outright. translate/scale compose with transform
+// rather than competing with it, so a moved gauge keeps its pulse.
+// Engines without them fall back to the shorthand.
+const HAS_INDEPENDENT_TRANSFORMS = (() => {
+  try { return !!(window.CSS && CSS.supports && CSS.supports('translate', '1px')); }
+  catch { return false; }
+})();
+
+function ruleFor(sel, v) {
+  if (!v) return '';
+  const dx = Math.round(num(v.dx));
+  const dy = Math.round(num(v.dy));
   const s = num(v.scale, 1) || 1;
-  t.style.transform = `translate(${num(v.dx)}px, ${num(v.dy)}px) scale(${s})`;
-  t.style.transformOrigin = v.origin || 'center bottom';
+  if (!dx && !dy && s === 1) return '';
+  const origin = v.origin || 'center bottom';
+  if (HAS_INDEPENDENT_TRANSFORMS) {
+    return `${sel}{translate:${dx}px ${dy}px;scale:${s};transform-origin:${origin};}\n`;
+  }
+  return `${sel}{transform:translate(${dx}px,${dy}px) scale(${s})!important;transform-origin:${origin}!important;}\n`;
 }
+
 export function applyBattleSimLayout() {
   const cfg = load();
-  UI_TARGETS.forEach(([key, , sel]) => applyOne(sel, cfg.ui[key]));
-  SIDE_TARGETS.forEach(([key, , sel]) => applyOne(sel, cfg.sides[key]));
+  let css = '';
+  SIDE_TARGETS.forEach(([key, , sel]) => { css += ruleFor(sel, cfg.sides[key]); });
+  UI_TARGETS.forEach(([key, , sel]) => { css += ruleFor(sel, cfg.ui[key]); });
+  BAR_TARGETS.forEach(([key, , sel]) => { css += ruleFor(sel, cfg.bars[key]); });
+  let st = document.getElementById(LAYOUT_STYLE_ID);
+  if (!st) {
+    st = document.createElement('style');
+    st.id = LAYOUT_STYLE_ID;
+    document.head.appendChild(st);
+  }
+  if (st.textContent !== css) st.textContent = css;
 }
 
 // The previous battle-UI editor (in dev-mode.js) wrote absolute
@@ -271,10 +325,10 @@ async function paint() {
   } catch (err) {
     console.warn('[battle-sim] renderBattle failed:', err);
   }
-  // Let facing.js's observer settle, then re-assert the saved layout --
-  // renderBattle() rebuilds the units but not their containers, so the
-  // transforms survive; this is belt and braces for the UI boxes.
-  setTimeout(() => { applyBattleSimLayout(); wireBench(); }, 30);
+  // The layout itself is CSS and re-matches the rebuilt plate on its
+  // own, but the drag handles are absolutely positioned from measured
+  // rectangles, so those do have to be re-measured after a repaint.
+  setTimeout(() => { applyBattleSimLayout(); wireBench(); installHandles(); }, 30);
 }
 
 // Real bench chips, made selectable. renderBench() paints one per
@@ -352,6 +406,7 @@ function closeSim() {
   window.removeEventListener('resize', installHandles);
   document.getElementById(PANEL_ID)?.remove();
   document.querySelectorAll('.dbs-handle').forEach(h => h.remove());
+  document.querySelectorAll('.dbs-lit').forEach(n => n.classList.remove('dbs-lit'));
   document.body.classList.remove('dbs-editing');
   if (!st) return;
   setBattle(st.prevBattle || null);
@@ -361,24 +416,46 @@ function closeSim() {
 // ── DRAG HANDLES OVER THE REAL ELEMENTS ──
 let drag = null;
 
-function targetsAll() { return [...SIDE_TARGETS.map(r => ['sides', ...r]), ...UI_TARGETS.map(r => ['ui', ...r])]; }
+// [group, key, label, selector, short?] for every draggable thing.
+function targetsAll() {
+  return [
+    ...SIDE_TARGETS.map(r => ['sides', ...r]),
+    ...UI_TARGETS.map(r => ['ui', ...r]),
+    ...BAR_TARGETS.map(r => ['bars', ...r]),
+  ];
+}
 
 function installHandles() {
   document.querySelectorAll('.dbs-handle').forEach(h => h.remove());
+  document.querySelectorAll('.dbs-lit').forEach(n => n.classList.remove('dbs-lit'));
   if (!simState) return;
   document.body.classList.add('dbs-editing');
-  targetsAll().forEach(([group, key, label, sel]) => {
+  const placed = [];
+  targetsAll().forEach(([group, key, label, sel, short]) => {
     const t = document.querySelector(sel);
-    if (!t) return;
+    if (!t) return;                       // e.g. the foe plate has no .np-mp
     const r = t.getBoundingClientRect();
     if (!r.width && !r.height) return;
+    if (simState.sel === key) t.classList.add('dbs-lit');
+    const isBar = group === 'bars';
+    let x = r.left + r.width / 2;
+    let y = r.top + r.height / 2;
+    // A gauge can be a few pixels wide, so several bar handles would
+    // land on top of each other and only the last one would be
+    // clickable. Push each one clear of whatever is already there.
+    if (isBar) {
+      let guard = 0;
+      while (placed.some(p => Math.abs(p.x - x) < 34 && Math.abs(p.y - y) < 17) && guard++ < 8) y += 18;
+      placed.push({ x, y });
+    }
     const h = document.createElement('button');
     h.type = 'button';
-    h.className = 'dbs-handle' + (simState.sel === key ? ' on' : '');
+    h.className = 'dbs-handle' + (isBar ? ' mini' : '') + (simState.sel === key ? ' on' : '');
     h.dataset.key = key;
-    h.textContent = '✥ ' + label;
-    h.style.left = (r.left + r.width / 2) + 'px';
-    h.style.top = (r.top + r.height / 2) + 'px';
+    h.textContent = isBar ? (short || label) : ('✥ ' + label);
+    h.title = label;
+    h.style.left = x + 'px';
+    h.style.top = y + 'px';
     h.onpointerdown = e => beginDrag(e, group, key, h);
     document.body.appendChild(h);
   });
@@ -414,7 +491,8 @@ function endDrag() {
 }
 
 // Arrow keys nudge the selected box by 1px, Shift+arrow by 10 -- a drag
-// is fine for roughing a position in, useless for the last few pixels.
+// is fine for roughing a position in, useless for the last few pixels,
+// and a gauge is far too small to drag accurately in the first place.
 function onKey(e) {
   if (!simState) return;
   const tag = e.target && e.target.tagName;
@@ -439,6 +517,8 @@ function selInfo() {
   const key = simState?.sel || 'ally';
   const side = SIDE_TARGETS.find(r => r[0] === key);
   if (side) return { group: 'sides', key, label: side[1], isSprite: true, isEnemy: key === 'foe' };
+  const bar = BAR_TARGETS.find(r => r[0] === key);
+  if (bar) return { group: 'bars', key, label: bar[1], isSprite: false, isEnemy: false };
   const ui = UI_TARGETS.find(r => r[0] === key);
   return { group: 'ui', key, label: ui ? ui[1] : key, isSprite: false, isEnemy: false };
 }
@@ -456,9 +536,18 @@ function buildPanel() {
   p.id = PANEL_ID;
   p.className = 'dbs-sheet';
 
-  const options = targetsAll()
-    .map(([, key, label]) => `<option value="${key}" ${key === info.key ? 'selected' : ''}>${esc(label)}</option>`)
+  // Grouped, because there are now three sprites-and-boxes worth of
+  // targets plus seven gauges and a flat list of twenty is unreadable.
+  // Gauges the current scene does not render (the foe has no MP) are
+  // dropped from the list rather than offered and then ignored.
+  const optsFor = rows => rows
+    .filter(([, , sel]) => !!document.querySelector(sel))
+    .map(([key, label]) => `<option value="${key}" ${key === info.key ? 'selected' : ''}>${esc(label)}</option>`)
     .join('');
+  const options = `
+    <optgroup label="Characters">${optsFor(SIDE_TARGETS)}</optgroup>
+    <optgroup label="Bars — one at a time">${optsFor(BAR_TARGETS)}</optgroup>
+    <optgroup label="Panels">${optsFor(UI_TARGETS)}</optgroup>`;
 
   let spriteRows = '';
   if (info.isSprite && pet) {
@@ -484,6 +573,10 @@ function buildPanel() {
       ${poseRows}`;
   }
 
+  const barNote = info.group === 'bars'
+    ? `<p class="dbs-note">Moving a gauge does not move the rest of its plate — the plate keeps its own layout, so nothing else shifts to fill the gap. Arrow keys are usually easier than dragging something this small.</p>`
+    : '';
+
   p.innerHTML = `
     <div class="dbs-bar">
       <b>🎛️ Simulator</b>
@@ -500,12 +593,13 @@ function buildPanel() {
       <label>Size <span class="dbs-val" id="dbs-scale-val">${round2(v.scale || 1)}×</span>
         <input id="dbs-scale" type="range" min="0.35" max="2.5" step="0.01" value="${num(v.scale, 1) || 1}">
       </label>
+      ${barNote}
       ${spriteRows}
       <div class="dbs-grid">
         <button class="dbs-btn" id="dbs-reset-one" type="button">Reset this</button>
         <button class="dbs-btn danger" id="dbs-reset-all" type="button">Reset all</button>
       </div>
-      <p class="dbs-note">Drag the pink labels on the scene, arrow keys nudge 1px (Shift 10px), and the bench chips swap who is on stage. Everything you see is the real fight UI — not a mock-up.</p>
+      <p class="dbs-note">Drag the pink labels on the scene, arrow keys nudge 1px (Shift 10px), and the bench chips swap who is on stage. Small yellow tags are the individual HP / MP / SPD / CRT gauges. Everything you see is the real fight UI — not a mock-up.</p>
     </div>`;
   document.body.appendChild(p);
 
@@ -515,7 +609,7 @@ function buildPanel() {
   g('dbs-fold').onclick = () => p.classList.toggle('folded');
   g('dbs-target').onchange = e => {
     simState.sel = e.target.value;
-    document.querySelectorAll('.dbs-handle').forEach(h => h.classList.toggle('on', h.dataset.key === simState.sel));
+    installHandles();
     buildPanel();
   };
 
@@ -541,10 +635,9 @@ function buildPanel() {
   g('dbs-reset-all').onclick = () => {
     if (!confirm('Reset every battle layout edit?')) return;
     const c = load();
-    c.ui = {}; c.sides = {};
+    c.ui = {}; c.sides = {}; c.bars = {};
     store(c);
-    UI_TARGETS.concat(SIDE_TARGETS).forEach(([, , sel]) => applyOne(sel, null));
-    installHandles(); buildPanel();
+    applyBattleSimLayout(); installHandles(); buildPanel();
   };
 
   if (info.isSprite && pet) {
@@ -628,7 +721,11 @@ function injectStyles() {
 #dev-battle-sim-btn{position:fixed;top:calc(env(safe-area-inset-top,0px) + 48px);right:8px;z-index:9999;padding:8px 10px;border-radius:999px;border:2px solid #fff;background:#6c5cff;color:#fff;font:12px var(--pixel,monospace);box-shadow:0 3px 12px rgba(0,0,0,.25)}
 .dbs-handle{position:fixed;z-index:200001;transform:translate(-50%,-50%);pointer-events:auto;touch-action:none;border:2px solid #fff;background:rgba(255,64,182,.92);color:#fff;border-radius:999px;padding:3px 8px;font:11px var(--mono,monospace);white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.4)}
 .dbs-handle.on{background:#ffd23f;color:#2a1400;border-color:#2a1400}
+.dbs-handle.mini{padding:1px 6px;font-size:10px;border-width:1px;background:rgba(108,92,255,.95)}
+.dbs-handle.mini.on{background:#ffd23f;color:#2a1400}
 body.dbs-editing #battle-stage{outline:1px dashed rgba(255,112,215,.5);outline-offset:-1px}
+body.dbs-editing #plate-ally .np-hp,body.dbs-editing #plate-ally .np-mp,body.dbs-editing #plate-ally .gauge-bar,body.dbs-editing #plate-foe .np-hp,body.dbs-editing #plate-foe .gauge-bar{outline:1px dashed rgba(108,92,255,.6)}
+body.dbs-editing .dbs-lit{outline:2px solid #ffd23f!important;outline-offset:2px}
 body.dbs-editing .dev-battle-overlay{display:none!important}
 .dev-moved-battle-ui{position:static!important;left:auto!important;top:auto!important;right:auto!important;bottom:auto!important}
 .dbs-sheet{position:fixed;left:0;right:0;bottom:0;z-index:200002;background:#0f1324;color:#fff;border-top:2px solid #ff70d7;font-family:var(--mono,monospace);max-height:52vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -652,8 +749,10 @@ body.dbs-editing .dev-battle-overlay{display:none!important}
 }
 
 // ── BOOT ──
-// The saved layout is re-applied every time the battle screen appears,
-// so edits are live in real fights and not just inside the tool.
+// The layout stylesheet is written once at boot and lives for the
+// whole session, so saved positions are in force during real fights,
+// not just inside the tool. It is refreshed on screen changes as well
+// in case a saved edit was made in another tab.
 function watchBattleScreen() {
   const run = () => setTimeout(applyBattleSimLayout, 40);
   const app = document.getElementById('app');
@@ -667,6 +766,7 @@ function boot() {
   injectStyles();
   applySavedPose();
   dropLegacyBattleLayout();
+  applyBattleSimLayout();
   ensureButton();
   setInterval(ensureButton, 800);
   watchBattleScreen();
