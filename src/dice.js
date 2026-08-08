@@ -35,13 +35,15 @@
 // Every theme here is reachable through the existing ailment system, so
 // this whole module stays out of combat internals.
 //
-// NOT YET WIRED: turn-loop.js does not call this yet. It is imported by
-// that file in a follow-up commit, together with the change that makes
-// one "turn" mean one full round (both sides acting once).
+// PRESENTATION: the roll plays as a full-screen animation (dice-fx.js)
+// that darkens the battle and holds the turn loop until it finishes --
+// the loop is suspended simply because turn-loop.js awaits
+// onRoundComplete(). This previously fired two showBanner() flashes,
+// which were far too easy to miss and read as "the dice never happened".
 // ═══════════════════════════════════════════════════════════
 
 import { addAilment } from './engine.js';
-import { showBanner } from './battle/combat.js';
+import { playDiceRoll } from './dice-fx.js';
 import { G } from './state.js';
 import { blog } from './ui-shell.js';
 
@@ -123,12 +125,17 @@ export async function onRoundComplete(b, roundNo) {
   applySide(b.team, theme, band.you);
   applySide(b.enemies, theme, band.foe);
 
-  const crit = roll === 20;
-  await showBanner(`🎲 d20 · ${roll}`, crit ? 'crit' : 'speed');
-  await showBanner(`${theme.icon} ${theme.name} ×${band.you}`, 'sig');
+  // The stats are already applied above, so a failure in the animation
+  // must not swallow the roll itself -- worst case the boon lands with
+  // no visual and the battle log still explains it.
+  try {
+    await playDiceRoll({ roll, theme, band });
+  } catch (err) {
+    console.warn('[dice] roll animation failed:', err);
+  }
 
   const foeText = band.foe > 1 ? ` · ศัตรู ×${band.foe}` : ' · ศัตรูไม่ได้รับผล';
-  blog(`🎲 ทอย d20 ได้ ${roll} — ${theme.thai} ฝั่งคุณ ×${band.you}${foeText}`, crit ? 'buff' : 'sys');
+  blog(`🎲 ทอย d20 ได้ ${roll} — ${theme.thai} ฝั่งคุณ ×${band.you}${foeText}`, roll === 20 ? 'buff' : 'sys');
 }
 
 // Mimic reward scaling for this realm. Returns a value multiplier for a

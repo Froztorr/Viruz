@@ -29,26 +29,36 @@
 // runtime, so depending on them would make this file's correctness
 // depend on another module's load order succeeding first.
 //
-// FACING: every hero is drawn facing LEFT (it is baked into the art
-// prompts), which is the direction an enemy needs to face on the battle
-// stage. `faces: 'left'` is set explicitly here so src/facing.js needs no
-// new table entry. If one ever renders backwards, adding its id to
-// MONSTER_FACING in facing.js overrides this.
+// ── FACING (fixed) ──
+// All nine heroes rendered MIRRORED, staring away from the player. The
+// cause was not `entry.faces` below -- facing.js owns the final say and
+// overrides whatever the renderer decided. Its applyPose() resolves a
+// monster's drawn direction from the SPRITE PATH via MONSTER_FACING,
+// defaulting any unlisted folder to 'right'. The hero art is drawn
+// facing LEFT, so every one of them was flipped to correct a problem
+// that did not exist.
+//
+// The nine ids are therefore registered into MONSTER_FACING at load,
+// below, rather than hard-coded into facing.js: the roster already lives
+// here, so keeping the facing beside it means adding a tenth hero is a
+// one-line change in one file instead of two. `entry.faces` is still set
+// for any code path that reads the def directly.
 //
 // FLOAT: heroes all stand on the ground. facing.js is planted-unless-
-// listed-airborne, so no entry is needed for that either.
+// listed-airborne, so no entry is needed for that.
 //
-// ART PENDING: the map video, battle backdrop and nine sprite GIFs are
-// being generated. Until they are uploaded the map falls back to the
-// Hell video (same fallback galaxy.js shipped with), and the enemies
-// will show missing art. Expected paths:
-//   assets/maps/board.mp4 + board.jpg
-//   assets/battle/board.mp4        (picked up automatically by battle-bg.js)
-//   assets/sprites/<id>/still.gif  (one folder per hero id below)
+// ── MAP LAYOUT ──
+// Node positions are percentages over the board video and were placed
+// against the art. The trail runs: warp-in at the upper-left border ->
+// Starting Square -> Grey Fortress -> Chapel -> Skeleton Pit -> Arcane
+// Tower -> Dragonfoot Ridge -> the Dungeon Master on the dragon-marked
+// mountain. Every coordinate is a plain x/y pair; nudging one is a
+// one-line change.
 // ═══════════════════════════════════════════════════════════
 
 import * as DATA from './data.js';
 import { MAPS, ZONES } from './data.js';
+import { MONSTER_FACING } from './facing.js';
 import { G, save } from './state.js';
 
 const MAP_ID = 'board';
@@ -64,7 +74,7 @@ const boardMap = {
   fallbackVideo: 'assets/maps/hell.mp4', fallbackPoster: 'assets/maps/hell.jpg',
   levelRange: [166, 190],
   desc: 'กระดานผจญภัยบนโต๊ะไม้ — ที่นี่คุณคือฝ่ายมอนสเตอร์',
-  warpIn: { x: 50, y: 88 }, warpOut: null,
+  warpIn: { x: 12, y: 14 }, warpOut: null,
 };
 
 // ── GATE on the hub map ──
@@ -85,16 +95,22 @@ const battle = (id, order, name, thai, x, y, lv, waves, pool, bitzMult, expMult,
 
 const boardZones = [
   { id: 'bd_tavern', map: MAP_ID, kind: 'safe', order: 0,
-    name: "Adventurers' Rest", thai: 'โรงเตี๊ยมนักผจญภัย', x: 30, y: 26,
+    name: "Adventurers' Rest", thai: 'โรงเตี๊ยมนักผจญภัย', x: 14, y: 30,
     desc: 'โต๊ะมุมโรงเตี๊ยมสำหรับพักฟื้นและซื้อยา' },
-  battle('bd_gate', 1, 'Starting Square', 'ช่องเริ่มต้น', 68, 30, [166, 171], [3, 4],
+  battle('bd_gate', 1, 'Starting Square', 'ช่องเริ่มต้น', 28, 18, [166, 169], [3, 4],
     ['vampire_lord', 'black_beast'], 12.5, 11.8, 'ช่องแรกของกระดาน — หน่วยลาดตระเวนของปาร์ตี้'),
-  battle('bd_chapel', 2, 'Candlelit Chapel', 'โบสถ์แสงเทียน', 34, 48, [172, 177], [4, 4],
+  battle('bd_fortress', 2, 'Grey Fortress', 'ป้อมปราการสีเทา', 62, 26, [170, 173], [3, 4],
+    ['vampire_lord', 'fire_golem'], 12.9, 12.1, 'ป้อมหินสีเทา — ที่มั่นของนักรบ อัศวิน และกวี'),
+  battle('bd_chapel', 3, 'Candlelit Chapel', 'โบสถ์แสงเทียน', 34, 44, [174, 177], [4, 4],
     ['vampire_lady', 'vampire_lord'], 13.2, 12.4, 'แท่นบูชาที่สวดภาวนาขับไล่ไวรัส'),
-  battle('bd_tower', 3, 'Arcane Tower', 'หอคอยเวทมนตร์', 70, 60, [178, 183], [4, 5],
+  battle('bd_pit', 4, 'Skeleton Pit', 'หลุมโครงกระดูก', 70, 50, [178, 181], [4, 4],
+    ['black_beast', 'vampire_lady'], 13.6, 12.8, 'หลุมมืดเต็มไปด้วยโครงกระดูก — ที่ซุ่มของโจรและผู้วิเศษ'),
+  battle('bd_tower', 5, 'Arcane Tower', 'หอคอยเวทมนตร์', 30, 64, [182, 184], [4, 5],
     ['fire_golem', 'rock_golem'], 14, 13.1, 'หอคอยที่คลื่นเวทมนตร์แปรปรวนตลอดเวลา'),
-  battle('bd_hall', 4, "Dungeon Master's Hall", 'ห้องโถงเจ้าแห่งดันเจี้ยน', 38, 74, [184, 190], [5, 5],
-    ['vampire_lord', 'fire_golem', 'black_beast'], 15, 14, 'โต๊ะสุดท้าย ที่ลูกเต๋าตัดสินทุกอย่าง'),
+  battle('bd_ridge', 6, 'Dragonfoot Ridge', 'สันเขาเชิงมังกร', 66, 86, [185, 187], [4, 5],
+    ['rock_golem', 'fire_golem'], 14.5, 13.5, 'เชิงเขามังกร — ด่านสุดท้ายก่อนขึ้นสู่ยอด'),
+  battle('bd_hall', 7, "Dungeon Master's Hall", 'ห้องโถงเจ้าแห่งดันเจี้ยน', 68, 70, [188, 190], [5, 5],
+    ['vampire_lord', 'fire_golem', 'black_beast'], 15, 14, 'ยอดเขามังกร โต๊ะสุดท้าย ที่ลูกเต๋าตัดสินทุกอย่าง'),
 ];
 
 // ── HERO ENEMIES ──
@@ -113,11 +129,20 @@ const HEROES = [
 ];
 
 const ZONE_POOLS = {
-  bd_gate:   ['hero_warrior', 'hero_rogue'],
-  bd_chapel: ['hero_priest', 'hero_paladin'],
-  bd_tower:  ['hero_wizard', 'hero_sorcerer'],
-  bd_hall:   ['hero_dungeon_master', 'hero_ranger', 'hero_bard'],
+  bd_gate:     ['hero_warrior', 'hero_rogue'],
+  bd_fortress: ['hero_warrior', 'hero_paladin', 'hero_bard'],
+  bd_chapel:   ['hero_priest', 'hero_paladin'],
+  bd_pit:      ['hero_rogue', 'hero_sorcerer'],
+  bd_tower:    ['hero_wizard', 'hero_sorcerer'],
+  bd_ridge:    ['hero_sorcerer', 'hero_wizard'],
+  bd_hall:     ['hero_dungeon_master', 'hero_ranger'],
 };
+
+// The art is drawn facing left; see the FACING note in the header for
+// why this lives here and not in facing.js. Mutating the imported object
+// is safe and immediate -- facing.js reads MONSTER_FACING on every
+// applyPose() call, not once at import.
+HEROES.forEach(h => { MONSTER_FACING[h.id] = 'left'; });
 
 function scaleNumbers(source, mult) {
   if (!source || typeof source !== 'object') return null;
