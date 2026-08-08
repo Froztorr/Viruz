@@ -262,8 +262,8 @@ function injectStyles() {
   const st = document.createElement('style');
   st.id = 'dev-mode-styles';
   st.textContent = `
-    #dev-mode-btn{position:fixed;top:38px;right:8px;z-index:10000;padding:7px 10px;border-radius:999px;border:2px solid var(--gold,#ffcf3f);background:linear-gradient(180deg,#fff6c9,#e8a91c);color:#231602;font:12px var(--pixel,monospace);box-shadow:0 3px 12px rgba(0,0,0,.35);opacity:.95}
-    #dev-mode-btn.on{background:linear-gradient(180deg,#ff5ce0,#7a4de0);color:#fff;border-color:#fff;box-shadow:0 0 16px rgba(255,92,224,.9)}
+    #dev-mode-btn{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);right:8px;z-index:100001;padding:9px 12px;border-radius:999px;border:3px solid #fff;background:linear-gradient(180deg,#ffef5a,#ff8a00);color:#160a00;font:700 13px var(--pixel,monospace);box-shadow:0 0 0 2px #000,0 0 22px rgba(255,220,40,.95);opacity:1;line-height:1;display:block!important;visibility:visible!important;pointer-events:auto!important}
+    #dev-mode-btn.on{background:linear-gradient(180deg,#ff5ce0,#7a4de0);color:#fff;border-color:#fff;box-shadow:0 0 0 2px #000,0 0 22px rgba(255,92,224,.95)}
     .dev-overlay{position:absolute;inset:0;z-index:30;pointer-events:none}.dev-dot{position:absolute;transform:translate(-50%,-50%);z-index:31;pointer-events:auto;width:26px;height:26px;border-radius:50%;background:rgba(255,40,180,.88);border:2px solid #fff;color:#fff;font-size:14px;box-shadow:0 0 14px rgba(255,40,180,.8);touch-action:none;cursor:grab}.dev-dot:active{cursor:grabbing;transform:translate(-50%,-50%) scale(1.2)}
     .dev-panel .btn,.dev-form .btn{margin-top:8px}.dev-form label{display:flex;flex-direction:column;gap:4px;margin:8px 0;color:var(--muted);font-size:14px}.dev-form input,.dev-form textarea,.dev-form select{width:100%;font:16px var(--mono);padding:8px;background:var(--panel-solid);border:1px solid var(--line2);color:var(--txt);user-select:text;-webkit-user-select:text}.dev-form textarea{min-height:74px}.dev-grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   `;
