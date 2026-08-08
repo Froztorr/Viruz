@@ -42,6 +42,11 @@ window.VIRUZ = {
   _hackAnswer: () => hackState && hackState.puzzle && hackState.puzzle.answer,
 };
 
+// Draw the Dev button as soon as the module loads, before preload/boot.
+// That makes it visible even on tall phone layouts and even while the
+// loading screen is still up. wireDevMode is guarded, so the later call is safe.
+wireDevMode();
+
 // ── BOOT ──
 // Preload the art, THEN boot. The loading screen stays up across boot()
 // as well, so the first frame the player sees is a fully painted screen
